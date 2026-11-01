@@ -1,4 +1,14 @@
-import React, { useState } from 'react';
+// ====================================================================
+// SPRACHMEISTERSCHAFT — UNIVERSAL DOCUMENT IMPORT CENTER
+// Tuân thủ 12 nguyên tắc nghiêm ngặt:
+// 1. Đa nguồn: PDF, DOCX, XLSX/XLS, CSV/TSV, TXT, JSON, OCR Ảnh, YouTube
+// 2. Quy trình 4 bước chuẩn: Chọn nguồn/đích -> Trích xuất -> Xem trước & Sửa -> Lưu & Báo cáo
+// 3. Bảo toàn nguyên bản (ä/ö/ü/ß), chống Prompt Injection
+// 4. Chuẩn hóa 14 cột từ vựng, hỗ trợ chọn sheet XLSX, nhận diện BOM CSV
+// 5. Phân quyền: Super Admin (Toàn hệ thống / Cá nhân / Nội bộ) - User (Cá nhân)
+// ====================================================================
+
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import {
   X,
@@ -12,90 +22,447 @@ import {
   AlertCircle,
   HelpCircle,
   Sparkles,
+  Plus,
+  Trash2,
+  Eye,
+  Edit3,
+  Layers,
+  RefreshCw,
+  FileSpreadsheet,
+  Image as ImageIcon,
+  Check,
+  AlertTriangle,
+  ArrowRight,
+  ArrowLeft,
+  Search,
 } from 'lucide-react';
 import { LEVEL_IDS } from '@/data/levels';
 import { toast } from 'sonner';
+import {
+  detectFileType,
+  parseExcelFile,
+  parseCsvTsvText,
+  parseTxtVocab,
+  parseDocxFile,
+  parsePdfFile,
+  parseYouTubeSubtitles,
+  extractYouTubeInfo,
+  parseGrammarInput,
+  parseExamJsonInput,
+  parseSituationInput,
+  performImageOcr,
+  VOCAB_14_COLUMNS,
+} from '@/lib/document-parsers';
 
 export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', onSuccess }) {
+  // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
+  const [step, setStep] = useState(1);
+
+  // General Settings
   const [contentType, setContentType] = useState(defaultType);
   const [title, setTitle] = useState('');
   const [level, setLevel] = useState('B1');
   const [scope, setScope] = useState('public');
-  const [rawContent, setRawContent] = useState('');
+  const [inputMethod, setInputMethod] = useState('file'); // 'file' | 'manual'
+
+  // File Upload State
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileType, setFileType] = useState('unknown');
+  const [excelSheets, setExcelSheets] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processProgress, setProcessProgress] = useState({ message: '', percent: 0 });
+
+  // Direct Manual Content State
+  const [manualText, setManualText] = useState('');
+  const [grammarExercisesJson, setGrammarExercisesJson] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [rawSubtitles, setRawSubtitles] = useState('');
+  const [youtubeSubtitles, setYoutubeSubtitles] = useState('');
+
+  // Extracted Data for Preview & Editing
+  const [extractedItems, setExtractedItems] = useState([]);
+  const [duplicateMode, setDuplicateMode] = useState('fill_blank'); // 'skip' | 'fill_blank' | 'overwrite'
+  const [grammarContent, setGrammarContent] = useState({ rule: '', exercises: [] });
+  const [examContent, setExamContent] = useState(null);
+  const [situationContent, setSituationContent] = useState(null);
+  const [issuesList, setIssuesList] = useState([]);
+
+  // Final Summary Report
+  const [syncReport, setSyncReport] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const fileInputRef = useRef(null);
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
 
+  // Reset or adjust initial values when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setContentType(defaultType);
+      setStep(1);
+      setExtractedItems([]);
+      setSyncReport(null);
+      setSelectedFile(null);
+      setProcessProgress({ message: '', percent: 0 });
+      // Default scope
+      setScope(isAdmin ? 'public' : 'private');
+    }
+  }, [isOpen, defaultType, isAdmin]);
+
   if (!isOpen) return null;
 
-  // Helper to extract YouTube Video ID
-  const extractYouTubeId = (url) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : url;
-  };
+  // Handle File Selection
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // Helper to parse SRT / timestamp text
-  const parseSubtitles = (text) => {
-    if (!text.trim()) return [];
-    const lines = text.split('\n');
-    const subs = [];
-    let curTime = 0;
+    setSelectedFile(file);
+    const detected = detectFileType(file);
+    setFileType(detected);
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      // Check format: 0:05 - Wie lange lernen Sie schon Deutsch?
-      const match = line.match(/^(\d+):(\d+)\s*[-:]\s*(.*?)(?:\s*\|\s*(.*))?$/);
-      if (match) {
-        const startSec = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-        subs.push({
-          id: `sub_${subs.length + 1}`,
-          start: startSec,
-          end: startSec + 4,
-          de: match[3].trim(),
-          vi: match[4] ? match[4].trim() : '',
-        });
-        continue;
-      }
-
-      // Simple text line
-      subs.push({
-        id: `sub_${subs.length + 1}`,
-        start: curTime,
-        end: curTime + 4,
-        de: line,
-        vi: '',
-      });
-      curTime += 4;
+    if (!title) {
+      // Auto-set title from file name without extension
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      setTitle(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
     }
-    return subs;
+
+    // If Excel, inspect sheet names upfront
+    if (detected === 'xlsx') {
+      try {
+        const parsed = await parseExcelFile(file, 0);
+        setExcelSheets(parsed.sheetNames || []);
+        setSelectedSheet(parsed.currentSheet || (parsed.sheetNames?.[0] || ''));
+      } catch (err) {
+        toast.error('Lỗi đọc bảng tính Excel: ' + err.message);
+      }
+    }
   };
 
-  const handleImport = (e) => {
-    e.preventDefault();
+  // Check Duplicates against existing Vocabulary
+  const checkVocabularyDuplicates = (items) => {
+    const existingCards = db.vocabulary.findMany();
+    const existingMap = new Map();
+    existingCards.forEach((c) => {
+      const key = `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase().trim();
+      existingMap.set(key, c);
+    });
+
+    return items.map((item) => {
+      const key = `${(item.article || '').trim()} ${(item.german || '').trim()}`.toLowerCase().trim();
+      const existing = existingMap.get(key);
+      return {
+        ...item,
+        _isDuplicate: !!existing,
+        _existingCard: existing || null,
+      };
+    });
+  };
+
+  // Step 1 -> Step 2: Trigger Extraction Process
+  const handleStartExtraction = async () => {
     if (!title.trim()) {
-      toast.error('Vui lòng nhập tiêu đề cho bộ nội dung!');
+      toast.error('Vui lòng nhập tiêu đề cho bộ tài liệu!');
       return;
     }
 
+    setIsProcessing(true);
+    setProcessProgress({ message: 'Bắt đầu đọc và phân tích cấu trúc...', percent: 10 });
+    setIssuesList([]);
+
+    try {
+      // CASE A: LISTENING (YouTube)
+      if (contentType === 'listening') {
+        const info = extractYouTubeInfo(youtubeUrl);
+        if (!info.videoId) {
+          throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');
+        }
+
+        setProcessProgress({ message: 'Đang phân tích phụ đề và mốc thời gian...', percent: 60 });
+        const subs = parseYouTubeSubtitles(youtubeSubtitles);
+
+        setExtractedItems(subs);
+        setProcessProgress({ message: 'Hoàn thành trích xuất video!', percent: 100 });
+        setStep(2);
+        setIsProcessing(false);
+        return;
+      }
+
+      // CASE B: GRAMMAR
+      if (contentType === 'grammar') {
+        setProcessProgress({ message: 'Phân tích bài giảng Markdown & bài tập...', percent: 50 });
+        let ruleText = manualText;
+        if (inputMethod === 'file' && selectedFile) {
+          if (fileType === 'docx') {
+            const docxRes = await parseDocxFile(selectedFile);
+            ruleText = docxRes.rawText;
+          } else if (fileType === 'pdf') {
+            const pdfRes = await parsePdfFile(selectedFile, (p) => {
+              setProcessProgress({ message: `Đang đọc PDF trang ${p.current}/${p.total}`, percent: p.percent });
+            });
+            ruleText = pdfRes.fullText;
+          } else {
+            ruleText = await selectedFile.text();
+          }
+        }
+
+        const parsedGrammar = parseGrammarInput(ruleText, grammarExercisesJson);
+        setGrammarContent(parsedGrammar);
+        setIssuesList(parsedGrammar.issues || []);
+        setStep(2);
+        setIsProcessing(false);
+        return;
+      }
+
+      // CASE C: EXAM SIMULATION
+      if (contentType === 'exam') {
+        setProcessProgress({ message: 'Kiểm tra cấu trúc đề thi CEFR...', percent: 50 });
+        let jsonStr = manualText;
+        if (inputMethod === 'file' && selectedFile) {
+          jsonStr = await selectedFile.text();
+        }
+        const examRes = parseExamJsonInput(jsonStr);
+        if (!examRes.success) {
+          throw new Error(examRes.issues.join('; '));
+        }
+        setExamContent(examRes.data);
+        setStep(2);
+        setIsProcessing(false);
+        return;
+      }
+
+      // CASE D: SITUATIONS
+      if (contentType === 'situation') {
+        setProcessProgress({ message: 'Phân tích mẫu câu giao tiếp...', percent: 50 });
+        let textOrJson = manualText;
+        if (inputMethod === 'file' && selectedFile) {
+          textOrJson = await selectedFile.text();
+        }
+        const parsedSit = parseSituationInput(textOrJson);
+        setSituationContent(parsedSit);
+        setStep(2);
+        setIsProcessing(false);
+        return;
+      }
+
+      // CASE E: VOCABULARY & OTHER TEXT (PDF, DOCX, XLSX, CSV, TXT, OCR IMAGE)
+      let parsedVocab = [];
+      let issues = [];
+
+      if (inputMethod === 'file') {
+        if (!selectedFile) throw new Error('Vui lòng chọn tệp tin cần tải lên.');
+
+        if (fileType === 'xlsx') {
+          setProcessProgress({ message: `Đang đọc Sheet "${selectedSheet}"...`, percent: 40 });
+          const res = await parseExcelFile(selectedFile, selectedSheet);
+          parsedVocab = res.items;
+          issues = res.issues;
+        } else if (fileType === 'csv' || fileType === 'tsv') {
+          setProcessProgress({ message: 'Đang giải mã CSV/TSV chuẩn UTF-8...', percent: 40 });
+          const text = await selectedFile.text();
+          const res = parseCsvTsvText(text);
+          parsedVocab = res.items;
+          issues = res.issues;
+        } else if (fileType === 'txt') {
+          setProcessProgress({ message: 'Đang đọc từng dòng văn bản TXT...', percent: 40 });
+          const text = await selectedFile.text();
+          const res = parseTxtVocab(text);
+          parsedVocab = res.items;
+          issues = res.issues;
+        } else if (fileType === 'docx') {
+          setProcessProgress({ message: 'Đang trích xuất văn bản từ tài liệu DOCX...', percent: 40 });
+          const docxRes = await parseDocxFile(selectedFile);
+          const txtRes = parseTxtVocab(docxRes.rawText);
+          parsedVocab = txtRes.items;
+          issues = txtRes.issues;
+        } else if (fileType === 'pdf') {
+          setProcessProgress({ message: 'Đang quét các trang tệp PDF...', percent: 30 });
+          const pdfRes = await parsePdfFile(selectedFile, (p) => {
+            setProcessProgress({ message: `Đang quét PDF trang ${p.current}/${p.total}`, percent: p.percent });
+          });
+          const txtRes = parseTxtVocab(pdfRes.fullText);
+          parsedVocab = txtRes.items;
+          issues = txtRes.issues;
+          if (pdfRes.hasScannedPages) {
+            issues.push(`Tệp PDF có ${pdfRes.scannedPagesCount} trang scan hình ảnh (ít văn bản số).`);
+          }
+        } else if (fileType === 'image') {
+          const ocrRes = await performImageOcr(selectedFile, (msg) => {
+            setProcessProgress({ message: msg, percent: 65 });
+          });
+          if (ocrRes.items && Array.isArray(ocrRes.items)) {
+            parsedVocab = ocrRes.items.map((it, idx) => ({
+              _id: `ocr_${idx}`,
+              _valid: !!it.german,
+              german: it.german || '',
+              article: it.article || '',
+              vietnamese: it.vietnamese || '',
+              english: '',
+              word_type: it.article ? 'noun' : 'word',
+              level,
+              topic: title,
+              example_de: it.example_de || '',
+              example_vi: '',
+              explanation_de: '',
+              synonyms: '',
+              collocations: '',
+              plural: '',
+              notes: 'Trích xuất từ OCR Ảnh',
+            }));
+          }
+        } else {
+          // Plain Text fallback
+          const text = await selectedFile.text();
+          const txtRes = parseTxtVocab(text);
+          parsedVocab = txtRes.items;
+          issues = txtRes.issues;
+        }
+      } else {
+        // Manual Text input
+        setProcessProgress({ message: 'Đang phân tích văn bản nhập tay...', percent: 50 });
+        const res = parseTxtVocab(manualText);
+        parsedVocab = res.items;
+        issues = res.issues;
+      }
+
+      // Check duplicates for vocabulary
+      const withDuplicates = checkVocabularyDuplicates(parsedVocab);
+      setExtractedItems(withDuplicates);
+      setIssuesList(issues);
+
+      setProcessProgress({ message: 'Hoàn thành!', percent: 100 });
+      setStep(2);
+      setIsProcessing(false);
+    } catch (err) {
+      setIsProcessing(false);
+      toast.error('Lỗi trích xuất tài liệu: ' + err.message);
+    }
+  };
+
+  // Update a single field in the preview table
+  const handleUpdateItemField = (index, field, value) => {
+    setExtractedItems((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      if (field === 'german' || field === 'vietnamese') {
+        copy[index]._valid = !!(copy[index].german && copy[index].vietnamese);
+      }
+      return copy;
+    });
+  };
+
+  // Delete an item from the preview list
+  const handleDeleteItem = (index) => {
+    setExtractedItems((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Add a blank row to the preview list
+  const handleAddBlankItem = () => {
+    const newItem = {
+      _id: `manual_new_${Date.now()}`,
+      _valid: false,
+      german: '',
+      article: '',
+      vietnamese: '',
+      english: '',
+      word_type: 'noun',
+      level,
+      topic: title,
+      example_de: '',
+      example_vi: '',
+      explanation_de: '',
+      synonyms: '',
+      collocations: '',
+      plural: '',
+      notes: '',
+    };
+    setExtractedItems((prev) => [newItem, ...prev]);
+  };
+
+  // Step 2 -> Step 3: Confirm Save and Synchronize
+  const handleConfirmSave = async () => {
     setIsSubmitting(true);
 
     try {
-      // 1. IMPORT LISTENING VIDEO
-      if (contentType === 'listening') {
-        const ytId = extractYouTubeId(youtubeUrl);
-        const parsedSubs = parseSubtitles(rawSubtitles);
-        const effectiveScope = scope; // Allow user choice
+      let savedCount = 0;
+      let skippedCount = 0;
+      let updatedCount = 0;
+
+      // 1. VOCABULARY IMPORT
+      if (contentType === 'vocabulary') {
+        const validItems = extractedItems.filter((i) => i._valid);
+
+        for (const item of validItems) {
+          if (item._isDuplicate) {
+            if (duplicateMode === 'skip') {
+              skippedCount++;
+              continue;
+            } else if (duplicateMode === 'fill_blank' && item._existingCard) {
+              // Fill blanks only, never overwrite existing values
+              const existing = item._existingCard;
+              const updates = {};
+              if (!existing.example_de && item.example_de) updates.example_de = item.example_de;
+              if (!existing.example_vi && item.example_vi) updates.example_vi = item.example_vi;
+              if (!existing.vietnamese && item.vietnamese) updates.vietnamese = item.vietnamese;
+              if (!existing.article && item.article) updates.article = item.article;
+              if (Object.keys(updates).length > 0) {
+                db.vocabulary.update(existing.id, updates);
+                updatedCount++;
+              } else {
+                skippedCount++;
+              }
+              continue;
+            } else if (duplicateMode === 'overwrite' && item._existingCard) {
+              db.vocabulary.update(item._existingCard.id, {
+                german: item.german,
+                article: item.article,
+                vietnamese: item.vietnamese,
+                example_de: item.example_de,
+                example_vi: item.example_vi,
+                level: item.level || level,
+                topic: item.topic || title,
+              });
+              updatedCount++;
+              continue;
+            }
+          }
+
+          // New card creation
+          db.vocabulary.create({
+            german: item.german,
+            article: item.article,
+            vietnamese: item.vietnamese,
+            example_de: item.example_de,
+            example_vi: item.example_vi,
+            word_type: item.word_type,
+            level: item.level || level,
+            topic: item.topic || title,
+          });
+          savedCount++;
+        }
+
+        // Record into Universal Imports for audit & scope tracking
+        db.universal.create({
+          type: 'vocabulary',
+          title,
+          level,
+          data: {
+            totalExtracted: extractedItems.length,
+            savedCount,
+            updatedCount,
+            skippedCount,
+          },
+          scope: isAdmin ? scope : 'private',
+        });
+      }
+
+      // 2. LISTENING / YOUTUBE IMPORT
+      else if (contentType === 'listening') {
+        const info = extractYouTubeInfo(youtubeUrl);
+        const effectiveScope = isAdmin ? scope : 'private';
 
         let targetCollectionId = 'nicos-weg-a1';
 
         if (effectiveScope === 'private') {
-          // Put in user's personal collection
           let myCol = db.listening.getCollections({ scope: 'private' }).find((c) => c.id === 'my-personal-videos');
           if (!myCol) {
             myCol = db.listening.createCollection({
@@ -104,130 +471,141 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
               deTitle: 'Meine persönliche Videosammlung',
               provider: 'Video của tôi',
               level,
-              thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+              thumbnail: `https://img.youtube.com/vi/${info.videoId}/hqdefault.jpg`,
               description: 'Các video YouTube do bạn tự nhập để luyện nghe và chép chính tả riêng.',
               scope: 'private',
             });
           }
           targetCollectionId = myCol.id;
         } else {
-          // Public or Admin Only: Create a new visible collection for the app
           const newCol = db.listening.createCollection({
             title,
             deTitle: title,
             provider: 'Elio Einfach Official',
             level,
-            thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-            description: `Bộ luyện nghe video cấp độ ${level}: ${title}`,
+            thumbnail: `https://img.youtube.com/vi/${info.videoId}/hqdefault.jpg`,
+            description: `Bộ video luyện nghe chuẩn cấp độ ${level}: ${title}`,
             scope: effectiveScope,
           });
           targetCollectionId = newCol.id;
         }
 
-        const newEpisode = db.listening.createEpisode({
+        db.listening.createEpisode({
           collectionId: targetCollectionId,
           title,
           level,
-          youtubeId: ytId || '4-eDoThe6qo',
-          subtitles: parsedSubs.length > 0 ? parsedSubs : [
+          youtubeId: info.videoId,
+          subtitles: extractedItems.length > 0 ? extractedItems : [
             { id: 'sub-1', start: 0, end: 5, de: title, vi: 'Nội dung video' },
           ],
           scope: effectiveScope,
         });
 
-        toast.success(
-          `Đã import thành công video luyện nghe: "${title}" vào ${
-            effectiveScope === 'public'
-              ? 'Kho chung toàn hệ thống'
-              : effectiveScope === 'private'
-              ? 'Kho cá nhân của bạn'
-              : 'Nội bộ Admin'
-          }!`
-        );
+        savedCount = 1;
       }
-      // 2. IMPORT VOCABULARY
-      else if (contentType === 'vocabulary') {
-        const lines = rawContent.split('\n');
-        let importedCount = 0;
 
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          // Format: [der/die/das] Từ Đức - Nghĩa tiếng Việt - Ví dụ
-          const parts = line.split(/[-–|]/);
-          let germanFull = (parts[0] || '').trim();
-          let vietnamese = (parts[1] || '').trim();
-          let example_de = (parts[2] || '').trim();
-
-          let article = '';
-          let german = germanFull;
-          if (germanFull.toLowerCase().startsWith('der ')) {
-            article = 'der';
-            german = germanFull.substring(4);
-          } else if (germanFull.toLowerCase().startsWith('die ')) {
-            article = 'die';
-            german = germanFull.substring(4);
-          } else if (germanFull.toLowerCase().startsWith('das ')) {
-            article = 'das';
-            german = germanFull.substring(4);
-          }
-
-          if (german && vietnamese) {
-            db.vocabulary.create({
-              german,
-              article,
-              vietnamese,
-              example_de,
-              level,
-              topic: title,
-            });
-            importedCount++;
-          }
-        }
-
+      // 3. GRAMMAR IMPORT
+      else if (contentType === 'grammar') {
         db.universal.create({
-          type: 'vocabulary',
+          type: 'grammar',
           title,
           level,
-          data: { raw: rawContent, count: importedCount },
+          data: {
+            title_vi: title,
+            title_de: title,
+            rule: grammarContent.rule,
+            exercises: grammarContent.exercises,
+          },
           scope: isAdmin ? scope : 'private',
         });
-
-        toast.success(`Đã nạp thành công ${importedCount} từ vựng vào cấp độ ${level}!`);
+        savedCount = 1;
       }
-      // 3. OTHER SKILLS & EXAMS
+
+      // 4. EXAM IMPORT
+      else if (contentType === 'exam') {
+        db.universal.create({
+          type: 'exam',
+          title: examContent?.title || title,
+          level: examContent?.level || level,
+          data: examContent,
+          scope: isAdmin ? scope : 'private',
+        });
+        savedCount = 1;
+      }
+
+      // 5. SITUATION IMPORT
+      else if (contentType === 'situation') {
+        db.universal.create({
+          type: 'situation',
+          title: situationContent?.title_vi || title,
+          level,
+          data: situationContent,
+          scope: isAdmin ? scope : 'private',
+        });
+        savedCount = 1;
+      }
+
+      // 6. OTHER SKILLS (Reading, Writing, Speaking)
       else {
         db.universal.create({
           type: contentType,
           title,
           level,
-          data: { content: rawContent },
+          data: {
+            rawText: manualText,
+            items: extractedItems,
+          },
           scope: isAdmin ? scope : 'private',
         });
-        toast.success(`Đã import thành công nội dung ${contentType.toUpperCase()}: "${title}"!`);
+        savedCount = 1;
       }
 
+      // Prepare Report
+      const report = {
+        title,
+        contentType,
+        level,
+        scope: isAdmin ? scope : 'private',
+        totalExtracted: contentType === 'vocabulary' ? extractedItems.length : 1,
+        validCount: contentType === 'vocabulary' ? extractedItems.filter((i) => i._valid).length : 1,
+        savedCount,
+        updatedCount,
+        skippedCount,
+        timestamp: new Date().toLocaleTimeString('vi-VN'),
+      };
+
+      setSyncReport(report);
+      setStep(3);
       setIsSubmitting(false);
+
+      // Notify entire app of db change
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      toast.success(`Đã nạp thành công bộ tài liệu: "${title}"!`);
+
       if (onSuccess) onSuccess();
-      onClose();
     } catch (err) {
       setIsSubmitting(false);
-      toast.error('Có lỗi xảy ra khi import: ' + err.message);
+      toast.error('Có lỗi xảy ra khi lưu vào hệ thống: ' + err.message);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="surface max-w-2xl w-full p-6 sm:p-8 relative border-2 border-border shadow-2xl animate-rise my-8">
-        {/* Header */}
-        <div className="flex items-start justify-between pb-4 border-b border-border mb-6">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="surface max-w-4xl w-full p-5 sm:p-7 relative border-2 border-border shadow-2xl animate-rise my-4 max-h-[92vh] flex flex-col">
+        {/* Header with 3 Steps Progress */}
+        <div className="flex items-start justify-between pb-4 border-b border-border shrink-0">
           <div>
-            <div className="eyebrow mb-1">TRUNG TÂM IMPORT HỌC THUẬT</div>
-            <h2 className="font-display text-2xl font-bold text-foreground">
-              Nhập nội dung mới vào hệ thống
+            <div className="eyebrow flex items-center gap-2 mb-1">
+              <span>TRUNG TÂM IMPORT TÀI LIỆU TOÀN NĂNG</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent/10 text-accent font-bold">
+                12 Chuẩn Học Thuật
+              </span>
+            </div>
+            <h2 className="font-display text-xl sm:text-2xl font-bold text-foreground">
+              {step === 1 && 'Bước 1: Chọn nguồn tài liệu & Cấu hình đích'}
+              {step === 2 && 'Bước 2: Xem trước, Đối chiếu trùng & Chỉnh sửa'}
+              {step === 3 && 'Bước 3: Báo cáo kết quả & Trạng thái đồng bộ'}
             </h2>
-            <p className="font-heading italic text-xs text-muted-foreground mt-0.5">
-              Hỗ trợ nạp Từ vựng, Video Nghe YouTube kèm phụ đề, Đọc hiểu, Viết, Nói và Đề thi
-            </p>
           </div>
           <button
             onClick={onClose}
@@ -237,224 +615,812 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           </button>
         </div>
 
-        <form onSubmit={handleImport} className="space-y-4">
-          {/* 1. Category and Level */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-mono font-medium text-foreground mb-1">
-                Loại nội dung cần nạp *
-              </label>
-              <select
-                value={contentType}
-                onChange={(e) => setContentType(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground font-mono"
-              >
-                <option value="vocabulary">📚 Bộ từ vựng theo cấp độ</option>
-                <option value="listening">🎧 Kỹ năng Nghe (YouTube Video / Playlist)</option>
-                <option value="reading">📖 Kỹ năng Đọc hiểu văn bản</option>
-                <option value="writing">✍️ Kỹ năng Viết (Đề bài & Bài mẫu)</option>
-                <option value="speaking">🗣️ Kỹ năng Nói & Phát âm</option>
-                <option value="grammar">🧩 Chuyên đề Ngữ pháp</option>
-                <option value="interview">🎙️ Kỹ năng Phỏng vấn (Visa / Việc làm)</option>
-                <option value="exam">📜 Đề thi mô phỏng CEFR</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono font-medium text-foreground mb-1">
-                Cấp độ chuẩn hóa (CEFR) *
-              </label>
-              <select
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
-              >
-                {LEVEL_IDS.map((lvl) => (
-                  <option key={lvl} value={lvl}>
-                    Trình độ {lvl}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Step Indicator Bar */}
+        <div className="flex items-center gap-2 py-3 border-b border-border/60 shrink-0 text-xs font-mono">
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${step === 1 ? 'bg-accent text-accent-foreground font-bold' : 'bg-muted text-muted-foreground'}`}>
+            <span>1. Nguồn & Đích</span>
           </div>
-
-          {/* 2. Title */}
-          <div>
-            <label className="block text-xs font-mono font-medium text-foreground mb-1">
-              Tiêu đề bộ nội dung *
-            </label>
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ví dụ: Nicos Weg Tập 5 / Từ vựng B1 Môi trường / Đề thi thử Goethe B2"
-              className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground font-heading"
-            />
+          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${step === 2 ? 'bg-accent text-accent-foreground font-bold' : 'bg-muted text-muted-foreground'}`}>
+            <span>2. Xem trước & Sửa</span>
           </div>
-
-          {/* 3. Scope Permissions Selector */}
-          <div className="p-3.5 bg-muted/30 rounded-sm border border-border space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-mono font-medium text-foreground">
-                Quyền phân phối & Hiển thị (Scope) *
-              </label>
-              <span className="text-[10px] font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10">
-                Lựa chọn phạm vi xuất bản
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setScope('public')}
-                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                  scope === 'public'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                <div>
-                  <div className="font-bold">🌍 Toàn hệ thống</div>
-                  <div className="text-[10px] text-muted-foreground">Xuất bản kho chung cho mọi học viên</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setScope('private')}
-                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                  scope === 'private'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                <div>
-                  <div className="font-bold">👤 Video cá nhân</div>
-                  <div className="text-[10px] text-muted-foreground">Lưu riêng vào kho cá nhân của bạn</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setScope('admin_only')}
-                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                  scope === 'admin_only'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                <div>
-                  <div className="font-bold">🔒 Nội bộ Admin</div>
-                  <div className="text-[10px] text-muted-foreground">Chỉ ban quản trị kiểm duyệt</div>
-                </div>
-              </button>
-            </div>
+          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${step === 3 ? 'bg-emerald-600 text-white font-bold' : 'bg-muted text-muted-foreground'}`}>
+            <span>3. Báo cáo lưu</span>
           </div>
+        </div>
 
-          {/* 4. CONTENT SPECIFIC INPUTS */}
-          {contentType === 'listening' ? (
-            <div className="space-y-3">
+        {/* ================= STEP 1: CONFIG & INPUT ================= */}
+        {step === 1 && (
+          <div className="overflow-y-auto flex-1 py-4 space-y-4 pr-1">
+            {/* Category and Level */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-mono font-medium text-foreground mb-1 flex items-center gap-1.5">
-                  <Youtube className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Đường link YouTube Video hoặc YouTube ID *</span>
+                <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                  Đích nạp dữ liệu *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=4-eDoThe6qo hoặc 4-eDoThe6qo"
-                  className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
-                />
+                <select
+                  value={contentType}
+                  onChange={(e) => setContentType(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-sm border border-border bg-card text-foreground font-mono"
+                >
+                  <option value="vocabulary">📚 Bộ từ vựng theo cấp độ (14 cột chuẩn)</option>
+                  <option value="listening">🎧 Luyện nghe & Diktat (YouTube Video/Playlist)</option>
+                  <option value="grammar">🧩 Chuyên đề Ngữ pháp (Markdown & Bài tập)</option>
+                  <option value="exam">📜 Bộ đề thi mô phỏng CEFR (Goethe, telc, ÖSD)</option>
+                  <option value="situation">💬 Tình huống giao tiếp (Alltagssituationen)</option>
+                  <option value="reading">📖 Kỹ năng Đọc hiểu văn bản</option>
+                  <option value="writing">✍️ Kỹ năng Viết (Đề bài & Tiêu chí)</option>
+                  <option value="speaking">🗣️ Kỹ năng Nói & Phỏng vấn</option>
+                </select>
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-mono font-medium text-foreground">
-                    Phụ đề kèm timestamp (Định dạng: <code>Phút:Giây - Tiếng Đức | Tiếng Việt</code>)
-                  </label>
-                  <span className="text-[10px] font-mono text-muted-foreground">Không bắt buộc</span>
-                </div>
-                <textarea
-                  rows={6}
-                  value={rawSubtitles}
-                  onChange={(e) => setRawSubtitles(e.target.value)}
-                  placeholder={`0:05 - Wie lange lernen Sie schon Deutsch? | Bạn học tiếng Đức bao lâu rồi?\n0:08 - Ich lerne seit einem Jahr Deutsch. | Tôi học được một năm rồi.\n0:14 - Richtig, ich weiß das! | Đúng rồi, tôi biết điều đó!`}
-                  className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
-                />
+                <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                  Cấp độ chuẩn hóa (CEFR) *
+                </label>
+                <select
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
+                >
+                  {LEVEL_IDS.map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      Trình độ {lvl}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          ) : contentType === 'vocabulary' ? (
+
+            {/* Title */}
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                Tiêu đề bộ tài liệu *
+              </label>
+              <input
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ví dụ: Từ vựng B1 Khí hậu & Năng lượng / Đề thi telc B1 Ả Rập..."
+                className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground font-heading"
+              />
+            </div>
+
+            {/* Scope Permissions: Super Admin vs Regular User */}
+            <div className="p-3.5 bg-muted/30 rounded-sm border border-border space-y-2">
+              <div className="flex items-center justify-between">
                 <label className="text-xs font-mono font-medium text-foreground">
-                  Danh sách từ vựng (Định dạng: <code>[Mạo từ] Từ Đức - Nghĩa tiếng Việt - Câu ví dụ</code>)
+                  Quyền phân phối & Hiển thị (Scope) *
                 </label>
+                <span className="text-[10px] font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10">
+                  {isAdmin ? 'Quản trị viên (Toàn quyền cấu hình)' : 'Học viên (Lưu cá nhân)'}
+                </span>
+              </div>
+
+              {isAdmin ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScope('public')}
+                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                      scope === 'public'
+                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold">🌍 Toàn hệ thống</div>
+                      <div className="text-[10px] text-muted-foreground">Mọi học viên đều học được</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScope('private')}
+                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                      scope === 'private'
+                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold">👤 Kho cá nhân</div>
+                      <div className="text-[10px] text-muted-foreground">Chỉ riêng tài khoản này thấy</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScope('admin_only')}
+                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                      scope === 'admin_only'
+                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-bold">🔒 Nội bộ Admin</div>
+                      <div className="text-[10px] text-muted-foreground">Chỉ ban quản trị kiểm duyệt</div>
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-card border border-border rounded-sm flex items-center gap-2.5 text-xs font-mono text-muted-foreground">
+                  <User className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>Bạn đang nhập nội dung vào <strong>Kho học tập cá nhân của riêng bạn</strong> (Chỉ bạn xem được).</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Method Toggle */}
+            <div>
+              <div className="flex items-center gap-2 border-b border-border mb-3 pb-2 text-xs font-mono">
                 <button
                   type="button"
-                  onClick={() =>
-                    setRawContent(
-                      `der Apfel - quả táo - Ich esse einen Apfel.\ndie Sonne - mặt trời - Die Sonne scheint.\ndas Buch - cuốn sách - Das Buch ist sehr interessant.`
-                    )
-                  }
-                  className="text-[10px] font-mono text-accent hover:underline flex items-center gap-1"
+                  onClick={() => setInputMethod('file')}
+                  className={`tap px-3 py-1.5 rounded-sm flex items-center gap-1.5 ${
+                    inputMethod === 'file'
+                      ? 'bg-accent text-accent-foreground font-bold'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  <Sparkles className="w-3 h-3" />
-                  <span>Điền mẫu nhanh</span>
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Tải tệp tin (PDF, DOCX, XLSX, CSV, TXT, OCR Ảnh)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInputMethod('manual')}
+                  className={`tap px-3 py-1.5 rounded-sm flex items-center gap-1.5 ${
+                    inputMethod === 'manual'
+                      ? 'bg-accent text-accent-foreground font-bold'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Nhập trực tiếp / Dán nội dung</span>
                 </button>
               </div>
-              <textarea
-                rows={7}
-                required
-                value={rawContent}
-                onChange={(e) => setRawContent(e.target.value)}
-                placeholder={`der Vater - người bố - Mein Vater ist Ingenieur.\ndie Mutter - người mẹ - Meine Mutter kocht gut.\ndas Kind - đứa con - Das Kind geht zur Schule.`}
-                className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
-              />
+
+              {/* METHOD 1: FILE UPLOAD */}
+              {inputMethod === 'file' && (
+                <div className="space-y-3">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-border hover:border-accent/60 bg-muted/20 hover:bg-muted/30 p-6 rounded-sm text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2"
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.docx,.xlsx,.xls,.csv,.tsv,.txt,.json,.md,.jpg,.jpeg,.png,.webp"
+                      onChange={handleFileChange}
+                    />
+                    <UploadCloud className="w-8 h-8 text-accent animate-bounce" />
+                    <div className="font-heading font-medium text-sm text-foreground">
+                      {selectedFile ? (
+                        <span className="text-accent font-bold">{selectedFile.name}</span>
+                      ) : (
+                        'Nhấn vào đây để tải tệp từ máy tính của bạn'
+                      )}
+                    </div>
+                    <p className="text-[11px] font-mono text-muted-foreground">
+                      Hỗ trợ: PDF (văn bản & trang scan), DOCX, Excel XLSX (chọn sheet), CSV/TSV chuẩn UTF-8, TXT, JSON, Ảnh JPG/PNG/WebP
+                    </p>
+                  </div>
+
+                  {/* Sheet Selector for Excel */}
+                  {fileType === 'xlsx' && excelSheets.length > 1 && (
+                    <div className="p-3 bg-muted/40 rounded-sm border border-border flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span className="text-xs font-mono font-medium text-foreground">Chọn Sheet cần nạp:</span>
+                      </div>
+                      <select
+                        value={selectedSheet}
+                        onChange={(e) => setSelectedSheet(e.target.value)}
+                        className="px-3 py-1.5 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                      >
+                        {excelSheets.map((sh) => (
+                          <option key={sh} value={sh}>
+                            Sheet: {sh}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* METHOD 2: DIRECT MANUAL INPUT */}
+              {inputMethod === 'manual' && (
+                <div className="space-y-3">
+                  {contentType === 'listening' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-mono font-medium text-foreground mb-1 flex items-center gap-1.5">
+                          <Youtube className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Đường link YouTube Video hoặc YouTube ID *</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={youtubeUrl}
+                          onChange={(e) => setYoutubeUrl(e.target.value)}
+                          placeholder="https://www.youtube.com/watch?v=4-eDoThe6qo hoặc 4-eDoThe6qo"
+                          className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-mono font-medium text-foreground">
+                            Phụ đề kèm timestamp (Định dạng: <code>Phút:Giây - Tiếng Đức | Tiếng Việt</code> hoặc SRT)
+                          </label>
+                          <span className="text-[10px] font-mono text-muted-foreground">Không bắt buộc</span>
+                        </div>
+                        <textarea
+                          rows={6}
+                          value={youtubeSubtitles}
+                          onChange={(e) => setYoutubeSubtitles(e.target.value)}
+                          placeholder={`0:05 - Wie lange lernen Sie schon Deutsch? | Bạn học tiếng Đức bao lâu rồi?\n0:08 - Ich lerne seit einem Jahr Deutsch. | Tôi học được một năm rồi.\n0:14 - Richtig, ich weiß das! | Đúng rồi, tôi biết điều đó!`}
+                          className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                        />
+                      </div>
+                    </div>
+                  ) : contentType === 'grammar' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                          Nội dung bài học Markdown (Giữ nguyên bảng biểu, in đậm, ví dụ Đức - Việt) *
+                        </label>
+                        <textarea
+                          rows={6}
+                          required
+                          value={manualText}
+                          onChange={(e) => setManualText(e.target.value)}
+                          placeholder="### 1. Cấu trúc câu\n\n| Đại từ | Động từ chia | Tân ngữ |\n|---|---|---|\n| Ich | habe | ein Buch |\n\n**Ghi chú:** Động từ luôn ở vị trí thứ 2."
+                          className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                          Ngân hàng bài tập JSON (fill, quiz, build) — Có thể để trống nếu chưa có
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={grammarExercisesJson}
+                          onChange={(e) => setGrammarExercisesJson(e.target.value)}
+                          placeholder={`[\n  {\n    "type": "quiz",\n    "question": "Ich ___ ein Buch.",\n    "options": ["habe", "hast", "hat", "haben"],\n    "answer": "habe",\n    "explanation": "Đại từ Ich đi với habe."\n  }\n]`}
+                          className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono text-accent"
+                        />
+                      </div>
+                    </div>
+                  ) : contentType === 'vocabulary' ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-mono font-medium text-foreground">
+                          Danh sách từ vựng (Định dạng: <code>[Mạo từ] Từ Đức - Nghĩa tiếng Việt - Ví dụ Đức - Dịch Việt</code>)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setManualText(
+                              `der Apfel - quả táo - Ich esse einen Apfel. - Tôi ăn một quả táo.\ndie Sonne - mặt trời - Die Sonne scheint. - Mặt trời đang chiếu sáng.\ndas Buch - cuốn sách - Das Buch ist sehr interessant. - Cuốn sách rất thú vị.`
+                            )
+                          }
+                          className="text-[10px] font-mono text-accent hover:underline flex items-center gap-1"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Điền mẫu nhanh</span>
+                        </button>
+                      </div>
+                      <textarea
+                        rows={7}
+                        required
+                        value={manualText}
+                        onChange={(e) => setManualText(e.target.value)}
+                        placeholder={`der Vater - người bố - Mein Vater ist Ingenieur. - Bố tôi là kỹ sư.\ndie Mutter - người mẹ - Meine Mutter kocht gut. - Mẹ tôi nấu ăn ngon.\ndas Kind - đứa trẻ - Das Kind geht zur Schule. - Đứa trẻ đến trường.`}
+                        className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-mono font-medium text-foreground mb-1">
+                        Nội dung chi tiết (Văn bản thuần, cấu trúc đề thi JSON hoặc tình huống)
+                      </label>
+                      <textarea
+                        rows={7}
+                        required
+                        value={manualText}
+                        onChange={(e) => setManualText(e.target.value)}
+                        placeholder="Dán nội dung JSON đề thi hoặc đoạn văn đọc hiểu tại đây..."
+                        className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
+
+            {/* Processing Progress Bar */}
+            {isProcessing && (
+              <div className="p-3 bg-accent/10 border border-accent/30 rounded-sm space-y-1.5 animate-pulse">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-accent font-bold flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>{processProgress.message}</span>
+                  </span>
+                  <span className="text-accent font-bold">{processProgress.percent}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all duration-300"
+                    style={{ width: `${processProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= STEP 2: PREVIEW & EDIT ================= */}
+        {step === 2 && (
+          <div className="overflow-y-auto flex-1 py-4 space-y-4 pr-1">
+            {/* Header Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+              <div className="p-2.5 bg-muted/40 rounded-sm border border-border">
+                <div className="text-muted-foreground text-[10px]">TỔNG MỤC ĐỌC ĐƯỢC</div>
+                <div className="font-bold text-foreground text-sm">
+                  {contentType === 'vocabulary' ? extractedItems.length : 1}
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-sm">
+                <div className="text-emerald-700 dark:text-emerald-400 text-[10px]">HỢP LỆ SẴN SÀNG NẠP</div>
+                <div className="font-bold text-emerald-700 dark:text-emerald-400 text-sm">
+                  {contentType === 'vocabulary' ? extractedItems.filter((i) => i._valid).length : 1}
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-sm">
+                <div className="text-amber-700 dark:text-amber-400 text-[10px]">MỤC TRÙNG LẶP</div>
+                <div className="font-bold text-amber-700 dark:text-amber-400 text-sm">
+                  {contentType === 'vocabulary' ? extractedItems.filter((i) => i._isDuplicate).length : 0}
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-sm">
+                <div className="text-rose-700 dark:text-rose-400 text-[10px]">CẦN KIỂM TRA</div>
+                <div className="font-bold text-rose-700 dark:text-rose-400 text-sm">
+                  {issuesList.length}
+                </div>
+              </div>
+            </div>
+
+            {/* Warning Issues Banner */}
+            {issuesList.length > 0 && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-sm text-xs font-mono text-amber-800 dark:text-amber-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>Cảnh báo dữ liệu cần lưu ý:</span>
+                </div>
+                <ul className="list-disc list-inside text-[11px] space-y-0.5 max-h-24 overflow-y-auto">
+                  {issuesList.slice(0, 10).map((iss, idx) => (
+                    <li key={idx}>{iss}</li>
+                  ))}
+                  {issuesList.length > 10 && (
+                    <li className="font-semibold">...và {issuesList.length - 10} cảnh báo khác.</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {/* PREVIEW: VOCABULARY TABLE */}
+            {contentType === 'vocabulary' && (
+              <div className="space-y-3">
+                {/* Duplicate Mode Selector */}
+                <div className="p-3 bg-muted/30 border border-border rounded-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="text-xs font-mono font-medium text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-accent" />
+                    <span>Xử lý khi phát hiện từ đã có trong hệ thống:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-mono">
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateMode('fill_blank')}
+                      className={`px-2.5 py-1 rounded-sm border ${
+                        duplicateMode === 'fill_blank'
+                          ? 'bg-accent text-accent-foreground font-bold border-accent'
+                          : 'bg-card border-border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      Chỉ điền ô trống (Không ghi đè)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateMode('skip')}
+                      className={`px-2.5 py-1 rounded-sm border ${
+                        duplicateMode === 'skip'
+                          ? 'bg-accent text-accent-foreground font-bold border-accent'
+                          : 'bg-card border-border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      Bỏ qua từ trùng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateMode('overwrite')}
+                      className={`px-2.5 py-1 rounded-sm border ${
+                        duplicateMode === 'overwrite'
+                          ? 'bg-accent text-accent-foreground font-bold border-accent'
+                          : 'bg-card border-border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      Ghi đè cập nhật
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table Header and Add Button */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-semibold text-foreground">
+                    Bảng xem trước & chỉnh sửa trực tiếp ({extractedItems.length} từ):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddBlankItem}
+                    className="tap px-2.5 py-1 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm dòng mới</span>
+                  </button>
+                </div>
+
+                {/* Inline Editable Table */}
+                <div className="border border-border rounded-sm overflow-x-auto max-h-80">
+                  <table className="w-full text-left text-xs font-mono border-collapse">
+                    <thead className="bg-muted text-muted-foreground sticky top-0 border-b border-border z-10">
+                      <tr>
+                        <th className="p-2 w-12 text-center">#</th>
+                        <th className="p-2 w-20">Mạo từ</th>
+                        <th className="p-2 min-w-[140px]">Từ tiếng Đức *</th>
+                        <th className="p-2 min-w-[160px]">Nghĩa tiếng Việt *</th>
+                        <th className="p-2 min-w-[180px]">Ví dụ tiếng Đức</th>
+                        <th className="p-2 min-w-[160px]">Dịch ví dụ</th>
+                        <th className="p-2 w-16 text-center">Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-card">
+                      {extractedItems.map((item, idx) => (
+                        <tr
+                          key={item._id || idx}
+                          className={`hover:bg-muted/40 transition-colors ${
+                            !item._valid
+                              ? 'bg-rose-500/5'
+                              : item._isDuplicate
+                              ? 'bg-amber-500/5'
+                              : ''
+                          }`}
+                        >
+                          <td className="p-2 text-center text-[10px] text-muted-foreground font-bold">
+                            {idx + 1}
+                            {item._isDuplicate && (
+                              <span className="block text-[8px] text-amber-600 font-bold">TRÙNG</span>
+                            )}
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={item.article || ''}
+                              onChange={(e) => handleUpdateItemField(idx, 'article', e.target.value)}
+                              placeholder="der/die/das"
+                              className="w-full px-1.5 py-1 bg-transparent border border-transparent hover:border-border focus:border-accent rounded text-xs font-mono"
+                            />
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={item.german || ''}
+                              onChange={(e) => handleUpdateItemField(idx, 'german', e.target.value)}
+                              placeholder="Từ tiếng Đức..."
+                              className="w-full px-1.5 py-1 bg-transparent border border-transparent hover:border-border focus:border-accent rounded text-xs font-heading font-semibold text-foreground"
+                            />
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={item.vietnamese || ''}
+                              onChange={(e) => handleUpdateItemField(idx, 'vietnamese', e.target.value)}
+                              placeholder="Nghĩa tiếng Việt..."
+                              className="w-full px-1.5 py-1 bg-transparent border border-transparent hover:border-border focus:border-accent rounded text-xs font-sans text-foreground"
+                            />
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={item.example_de || ''}
+                              onChange={(e) => handleUpdateItemField(idx, 'example_de', e.target.value)}
+                              placeholder="Beispielsatz..."
+                              className="w-full px-1.5 py-1 bg-transparent border border-transparent hover:border-border focus:border-accent rounded text-xs font-heading italic text-muted-foreground"
+                            />
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={item.example_vi || ''}
+                              onChange={(e) => handleUpdateItemField(idx, 'example_vi', e.target.value)}
+                              placeholder="Dịch nghĩa ví dụ..."
+                              className="w-full px-1.5 py-1 bg-transparent border border-transparent hover:border-border focus:border-accent rounded text-xs font-sans text-muted-foreground"
+                            />
+                          </td>
+                          <td className="p-1 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(idx)}
+                              className="p-1 text-muted-foreground hover:text-rose-600 transition-colors rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* PREVIEW: GRAMMAR LESSON & EXERCISES */}
+            {contentType === 'grammar' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-card border border-border rounded-sm space-y-2">
+                  <div className="text-xs font-mono font-bold text-accent">NỘI DUNG BÀI HỌC MARKDOWN:</div>
+                  <pre className="text-xs font-mono bg-muted/40 p-3 rounded-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
+                    {grammarContent.rule}
+                  </pre>
+                </div>
+
+                <div className="p-4 bg-card border border-border rounded-sm space-y-2">
+                  <div className="text-xs font-mono font-bold text-accent">
+                    NGÂN HÀNG BÀI TẬP ({grammarContent.exercises?.length || 0} câu):
+                  </div>
+                  {grammarContent.exercises?.length > 0 ? (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {grammarContent.exercises.map((ex, idx) => (
+                        <div key={idx} className="p-2.5 bg-muted/30 border border-border rounded-sm text-xs font-mono">
+                          <div className="font-bold text-foreground">
+                            Câu {idx + 1} ({ex.type}): {ex.question}
+                          </div>
+                          <div className="text-emerald-600 mt-1">Đáp án: {ex.answer}</div>
+                          {ex.explanation && (
+                            <div className="text-muted-foreground italic text-[11px] mt-0.5">
+                              Giải thích: {ex.explanation}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-mono text-muted-foreground italic">
+                      Chưa có bài tập đính kèm. Bài học sẽ được nạp dưới dạng lý thuyết bài giảng.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* PREVIEW: LISTENING SUBTITLES */}
+            {contentType === 'listening' && (
+              <div className="space-y-3">
+                <div className="p-3 bg-muted/30 border border-border rounded-sm text-xs font-mono flex items-center justify-between">
+                  <span>YouTube ID: <strong>{extractYouTubeInfo(youtubeUrl).videoId}</strong></span>
+                  <span>Tổng số câu phụ đề: <strong>{extractedItems.length}</strong></span>
+                </div>
+
+                <div className="border border-border rounded-sm max-h-72 overflow-y-auto divide-y divide-border bg-card">
+                  {extractedItems.map((sub, idx) => (
+                    <div key={idx} className="p-2.5 text-xs font-mono flex items-start gap-3">
+                      <span className="font-bold text-accent shrink-0 w-16">
+                        {Math.floor(sub.start / 60)}:{(sub.start % 60).toString().padStart(2, '0')}
+                      </span>
+                      <div className="flex-1">
+                        <div className="font-heading font-semibold text-foreground">{sub.de}</div>
+                        {sub.vi && <div className="text-muted-foreground text-[11px] mt-0.5">{sub.vi}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PREVIEW: EXAM SIMULATION */}
+            {contentType === 'exam' && examContent && (
+              <div className="p-4 bg-card border border-border rounded-sm space-y-3 text-xs font-mono">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-foreground">{examContent.title}</span>
+                  <span className="px-2 py-0.5 rounded bg-accent/10 text-accent font-bold">
+                    {examContent.provider} • {examContent.level} • {examContent.minutes} Phút
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-2">
+                  <div className="p-2 bg-muted/40 rounded-sm">
+                    <div className="text-[10px] text-muted-foreground">LESEN</div>
+                    <div className="font-bold">{examContent.reading?.length || 0} Phần</div>
+                  </div>
+                  <div className="p-2 bg-muted/40 rounded-sm">
+                    <div className="text-[10px] text-muted-foreground">HÖREN</div>
+                    <div className="font-bold">{examContent.listening?.length || 0} Phần</div>
+                  </div>
+                  <div className="p-2 bg-muted/40 rounded-sm">
+                    <div className="text-[10px] text-muted-foreground">SCHREIBEN</div>
+                    <div className="font-bold">{examContent.writing?.task ? 'Có đề bài' : 'Chưa có'}</div>
+                  </div>
+                  <div className="p-2 bg-muted/40 rounded-sm">
+                    <div className="text-[10px] text-muted-foreground">SPRECHEN</div>
+                    <div className="font-bold">{examContent.speaking?.prompt ? 'Có đề thi' : 'Chưa có'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= STEP 3: SYNC REPORT ================= */}
+        {step === 3 && syncReport && (
+          <div className="overflow-y-auto flex-1 py-6 space-y-5 pr-1 text-center animate-rise">
+            <div className="w-14 h-14 bg-emerald-500/10 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-500/30">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
             <div>
-              <label className="block text-xs font-mono font-medium text-foreground mb-1">
-                Nội dung chi tiết (Văn bản, Đề bài hoặc JSON cấu trúc)
-              </label>
-              <textarea
-                rows={6}
-                required
-                value={rawContent}
-                onChange={(e) => setRawContent(e.target.value)}
-                placeholder="Nhập nội dung đề bài, câu hỏi trắc nghiệm hoặc bài văn tiếng Đức kèm hướng dẫn..."
-                className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
-              />
+              <h3 className="font-display text-2xl font-bold text-foreground">
+                Đồng bộ thành công vào hệ thống!
+              </h3>
+              <p className="font-heading italic text-sm text-muted-foreground mt-1">
+                Bộ nội dung đã sẵn sàng trong cơ sở dữ liệu và có hiệu lực tức thời.
+              </p>
             </div>
+
+            {/* Report Breakdown Card */}
+            <div className="max-w-md mx-auto surface p-5 border border-border text-left space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-muted-foreground">Bộ tài liệu:</span>
+                <span className="font-bold text-foreground">{syncReport.title}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-muted-foreground">Đích nạp & Cấp độ:</span>
+                <span className="font-bold text-accent uppercase">{syncReport.contentType} ({syncReport.level})</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-muted-foreground">Quyền hiển thị (Scope):</span>
+                <span className="font-bold text-foreground">
+                  {syncReport.scope === 'public' ? '🌍 Toàn hệ thống' : syncReport.scope === 'private' ? '👤 Kho cá nhân' : '🔒 Nội bộ Admin'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-muted-foreground">Số mục thêm mới:</span>
+                <span className="font-bold text-emerald-600">+{syncReport.savedCount}</span>
+              </div>
+              {syncReport.updatedCount > 0 && (
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <span className="text-muted-foreground">Số mục cập nhật / điền thêm:</span>
+                  <span className="font-bold text-blue-600">{syncReport.updatedCount}</span>
+                </div>
+              )}
+              {syncReport.skippedCount > 0 && (
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <span className="text-muted-foreground">Số mục trùng lặp bỏ qua:</span>
+                  <span className="font-bold text-amber-600">{syncReport.skippedCount}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                <span>Thời gian đồng bộ:</span>
+                <span>{syncReport.timestamp}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= FOOTER ACTION BUTTONS ================= */}
+        <div className="pt-4 border-t border-border flex items-center justify-between gap-3 shrink-0">
+          {step === 1 && (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="tap px-4 py-2 rounded-sm border border-border bg-card hover:bg-muted text-xs font-mono text-foreground"
+              >
+                Hủy bỏ
+              </button>
+
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleStartExtraction}
+                className="tap px-6 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang xử lý trích xuất...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Tiếp tục: Xem trước & Sửa</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </>
           )}
 
-          {/* Action buttons */}
-          <div className="pt-4 border-t border-border flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="tap px-4 py-2 rounded-sm border border-border bg-card hover:bg-muted text-xs font-mono text-foreground"
-            >
-              Hủy bỏ
-            </button>
+          {step === 2 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="tap px-4 py-2 rounded-sm border border-border bg-card hover:bg-muted text-xs font-mono text-foreground flex items-center gap-1.5"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Quay lại cấu hình</span>
+              </button>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="tap px-6 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-2"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>{isSubmitting ? 'Đang nạp...' : 'Xác nhận Import'}</span>
-            </button>
-          </div>
-        </form>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleConfirmSave}
+                className="tap px-6 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang lưu vào hệ thống...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Xác nhận nạp vào hệ thống</span>
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
+          {step === 3 && (
+            <div className="w-full flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(1);
+                  setExtractedItems([]);
+                  setSyncReport(null);
+                  setSelectedFile(null);
+                }}
+                className="tap px-4 py-2 rounded-sm border border-border bg-card hover:bg-muted text-xs font-mono text-foreground"
+              >
+                + Nhập tệp tiếp theo
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="tap px-6 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm"
+              >
+                Đóng cửa sổ
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
 export default UniversalImportModal;

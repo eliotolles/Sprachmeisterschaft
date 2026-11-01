@@ -4,7 +4,7 @@ import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { LevelFilter } from '@/components/ui/LevelFilter';
-import { ALL_EXAMS } from '@/data/all-exams';
+import { getAllExams } from '@/data/all-exams';
 import { FileCheck2, Clock, Award, ArrowRight, ShieldCheck, Plus } from 'lucide-react';
 
 export function ExamsListPage() {
@@ -12,11 +12,13 @@ export function ExamsListPage() {
   const [profile] = useState(() => db.learnerProfile.get());
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [examResults, setExamResults] = useState(() => db.examResults.findMany());
+  const [allExamsList, setAllExamsList] = useState(() => getAllExams());
   const [isImportOpen, setIsImportOpen] = useState(false);
 
   useEffect(() => {
     const handleDbChange = () => {
       setExamResults(db.examResults.findMany());
+      setAllExamsList(getAllExams());
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
@@ -30,7 +32,7 @@ export function ExamsListPage() {
     }
   }
 
-  const filteredExams = ALL_EXAMS.filter((e) => {
+  const filteredExams = allExamsList.filter((e) => {
     if (selectedLevel !== 'ALL' && e.level !== selectedLevel) return false;
     return true;
   });
@@ -100,7 +102,14 @@ export function ExamsListPage() {
                   </div>
                 </div>
 
-                <div className="eyebrow text-[9px] mb-0.5">Trình độ {exam.level}</div>
+                <div className="eyebrow text-[9px] mb-0.5 flex items-center gap-1.5">
+                  <span>Trình độ {exam.level}</span>
+                  {exam.isImported && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 font-bold lowercase">
+                      import
+                    </span>
+                  )}
+                </div>
                 <h3 className="font-display text-xl font-bold text-foreground">
                   {exam.title}
                 </h3>
