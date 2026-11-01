@@ -20,7 +20,19 @@ export function getAllExams() {
     }));
   } catch (e) {}
 
-  return [...dbExams, ...EXAMS_CORE, ...EXAMS_LEVELS];
+  const deletedIds = db.exams?.getDeletedIds?.() || [];
+  const overrides = db.exams?.getOverrides?.() || {};
+
+  const combined = [...dbExams, ...EXAMS_CORE, ...EXAMS_LEVELS]
+    .filter((e) => !deletedIds.includes(e.id))
+    .map((e) => {
+      if (overrides[e.id]) {
+        return { ...e, ...overrides[e.id] };
+      }
+      return e;
+    });
+
+  return combined;
 }
 
 export const ALL_EXAMS = [...EXAMS_CORE, ...EXAMS_LEVELS];

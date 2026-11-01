@@ -3,17 +3,36 @@ import { db } from '@/lib/db';
 import { LevelFilter } from '@/components/ui/LevelFilter';
 import { GRAMMAR_CORE } from '@/data/grammar';
 import { GRAMMAR_EXTRA } from '@/data/grammar-extra';
-import { FileText, CheckCircle2, XCircle, Search, Sparkles, Plus, BookOpen } from 'lucide-react';
+import {
+  FileText,
+  CheckCircle2,
+  XCircle,
+  Search,
+  Sparkles,
+  Plus,
+  BookOpen,
+  Edit3,
+  Trash2,
+  RotateCcw,
+  Check,
+  X,
+} from 'lucide-react';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { toast } from 'sonner';
 
 export function GrammarStudio({ onBack }) {
+  const isAdmin = db.auth.isAdmin();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [dbTopics, setDbTopics] = useState(() => db.universal.findMany({ type: 'grammar' }));
+  const [deletedIds, setDeletedIds] = useState(() => db.grammar?.getDeletedIds?.() || []);
+  const [overrides, setOverrides] = useState(() => db.grammar?.getOverrides?.() || {});
+  const [editingTopic, setEditingTopic] = useState(null);
 
   useEffect(() => {
     const handleDbChange = () => {
       setDbTopics(db.universal.findMany({ type: 'grammar' }));
+      setDeletedIds(db.grammar?.getDeletedIds?.() || []);
+      setOverrides(db.grammar?.getOverrides?.() || {});
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
@@ -36,7 +55,14 @@ export function GrammarStudio({ onBack }) {
     isImported: true,
   }));
 
-  const allGrammar = [...importedGrammarList, ...GRAMMAR_CORE, ...GRAMMAR_EXTRA];
+  const allGrammar = [...importedGrammarList, ...GRAMMAR_CORE, ...GRAMMAR_EXTRA]
+    .filter((g) => !deletedIds.includes(g.id))
+    .map((g) => {
+      if (overrides[g.id]) {
+        return { ...g, ...overrides[g.id] };
+      }
+      return g;
+    });
 
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -45,6 +71,41 @@ export function GrammarStudio({ onBack }) {
   // Exercise state per topic
   const [userAnswers, setUserAnswers] = useState({});
   const [exerciseSubmitted, setExerciseSubmitted] = useState({});
+
+  const handleDeleteTopic = (topicId, topicTitle) => {
+    if (window.confirm(`Bạn có chắc muốn xóa chủ điểm ngữ pháp "${topicTitle}" không?`)) {
+      db.grammar.delete(topicId);
+      toast.success(`Đã xóa chủ điểm: "${topicTitle}"!`);
+    }
+  };
+
+  const handleResetGrammar = () => {
+    if (window.confirm('Khôi phục lại toàn bộ 100 chủ đề ngữ pháp gốc của hệ thống?')) {
+      db.grammar.resetDefaults();
+      toast.success('Đã khôi phục ngữ pháp gốc!');
+    }
+  };
+
+  const handleSaveTopicEdit = (e) => {
+    e.preventDefault();
+    if (!editingTopic) return;
+
+    db.grammar.update(editingTopic.id, {
+      title_vi: editingTopic.title_vi,
+      title_de: editingTopic.title_de,
+      level: editingTopic.level,
+      rule: editingTopic.rule,
+      exercise: {
+        ...(editingTopic.exercise || {}),
+        question: editingTopic.exercise?.question || '',
+        answer: editingTopic.exercise?.answer || '',
+        explanation: editingTopic.exercise?.explanation || '',
+      },
+    });
+
+    setEditingTopic(null);
+    toast.success('Đã lưu chỉnh sửa chủ điểm ngữ pháp!');
+  };
 
   const filteredTopics = allGrammar.filter((t) => {
     if (selectedLevel !== 'ALL' && t.level !== selectedLevel) return false;
@@ -103,6 +164,16 @@ export function GrammarStudio({ onBack }) {
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={handleResetGrammar}
+              className="tap px-3 py-1.5 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted text-muted-foreground flex items-center gap-1.5"
+              title="Khôi phục danh sách ngữ pháp gốc"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Khôi phục gốc</span>
+            </button>
+          )}
           <button
             onClick={() => setIsImportOpen(true)}
             className="tap px-3 py-1.5 text-xs font-mono rounded-sm bg-accent text-accent-foreground font-semibold flex items-center gap-1.5 shadow-sm"
@@ -172,18 +243,38 @@ export function GrammarStudio({ onBack }) {
         {/* Right: Topic Content & Live Quiz */}
         {activeTopic ? (
           <div className="md:col-span-2 space-y-5">
-            <div className="space-y-1">
-              <div className="eyebrow flex items-center gap-2">
-                <span>{activeTopic.level} • {activeTopic.title_de}</span>
-                {activeTopic.isImported && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-bold">
-                    Tài liệu đã import
-                  </span>
-                )}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/50 pb-2">
+              <div className="space-y-1">
+                <div className="eyebrow flex items-center gap-2">
+                  <span>{activeTopic.level} • {activeTopic.title_de}</span>
+                  {activeTopic.isImported && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-bold">
+                      Tài liệu đã import
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-display text-2xl font-bold text-foreground">
+                  {activeTopic.title_vi}
+                </h3>
               </div>
-              <h3 className="font-display text-2xl font-bold text-foreground">
-                {activeTopic.title_vi}
-              </h3>
+              {isAdmin && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setEditingTopic({ ...activeTopic })}
+                    className="tap px-2.5 py-1 text-xs font-mono rounded border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1 shadow-sm"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Sửa</span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTopic(activeTopic.id, activeTopic.title_vi)}
+                    className="tap px-2.5 py-1 text-xs font-mono rounded border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 flex items-center gap-1 shadow-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Rule / Theory Content */}
@@ -304,6 +395,152 @@ export function GrammarStudio({ onBack }) {
           setDbTopics(db.universal.findMany({ type: 'grammar' }));
         }}
       />
+
+      {/* Admin Edit Modal */}
+      {editingTopic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="surface p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto space-y-4 rounded-sm border border-border shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <span className="eyebrow">Quản trị viên</span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Chỉnh sửa chủ điểm: {editingTopic.id}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTopic(null)}
+                className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTopicEdit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    Tên tiếng Việt *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingTopic.title_vi || ''}
+                    onChange={(e) => setEditingTopic({ ...editingTopic, title_vi: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    Cấp độ (CEFR) *
+                  </label>
+                  <select
+                    value={editingTopic.level || 'B1'}
+                    onChange={(e) => setEditingTopic({ ...editingTopic, level: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                  >
+                    {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {lvl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                  Tên tiếng Đức / Chủ điểm
+                </label>
+                <input
+                  type="text"
+                  value={editingTopic.title_de || ''}
+                  onChange={(e) => setEditingTopic({ ...editingTopic, title_de: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                  Quy tắc & Giải thích lý thuyết *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editingTopic.rule || ''}
+                  onChange={(e) => setEditingTopic({ ...editingTopic, rule: e.target.value })}
+                  className="w-full px-3 py-2 rounded-sm border border-border bg-card text-foreground font-sans leading-relaxed"
+                />
+              </div>
+
+              <div className="p-3 border border-border rounded-sm bg-muted/20 space-y-2">
+                <span className="font-mono text-accent font-semibold uppercase text-[10px]">
+                  Bài tập mẫu kèm theo
+                </span>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground font-mono">Câu hỏi</label>
+                  <input
+                    type="text"
+                    value={editingTopic.exercise?.question || ''}
+                    onChange={(e) =>
+                      setEditingTopic({
+                        ...editingTopic,
+                        exercise: { ...(editingTopic.exercise || {}), question: e.target.value },
+                      })
+                    }
+                    className="w-full px-3 py-1 rounded-sm border border-border bg-card text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground font-mono">Đáp án đúng</label>
+                  <input
+                    type="text"
+                    value={editingTopic.exercise?.answer || ''}
+                    onChange={(e) =>
+                      setEditingTopic({
+                        ...editingTopic,
+                        exercise: { ...(editingTopic.exercise || {}), answer: e.target.value },
+                      })
+                    }
+                    className="w-full px-3 py-1 rounded-sm border border-border bg-card text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground font-mono">Giải thích</label>
+                  <input
+                    type="text"
+                    value={editingTopic.exercise?.explanation || ''}
+                    onChange={(e) =>
+                      setEditingTopic({
+                        ...editingTopic,
+                        exercise: { ...(editingTopic.exercise || {}), explanation: e.target.value },
+                      })
+                    }
+                    className="w-full px-3 py-1 rounded-sm border border-border bg-card text-foreground"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setEditingTopic(null)}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted font-mono"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="tap px-4 py-1.5 rounded-sm bg-accent text-accent-foreground font-mono font-semibold flex items-center gap-1.5 shadow-sm"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu thay đổi</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

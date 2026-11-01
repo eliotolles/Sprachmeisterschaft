@@ -34,7 +34,17 @@ import {
   Eye,
   RefreshCw,
   ExternalLink,
+  Edit3,
+  RotateCcw,
+  Check,
+  X,
+  BookOpen,
+  Headphones,
 } from 'lucide-react';
+import { getAllExams } from '@/data/all-exams';
+import { GRAMMAR_CORE } from '@/data/grammar';
+import { GRAMMAR_EXTRA } from '@/data/grammar-extra';
+import { SITUATIONS } from '@/data/situations';
 import { toast } from 'sonner';
 
 export function AdminPage() {
@@ -65,6 +75,15 @@ export function AdminPage() {
   // Content State
   const [universalItems, setUniversalItems] = useState(() => db.universal.findMany());
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [contentSubTab, setContentSubTab] = useState('universal');
+  const [examsList, setExamsList] = useState(() => getAllExams());
+  const [grammarDeletedIds, setGrammarDeletedIds] = useState(() => db.grammar?.getDeletedIds?.() || []);
+  const [grammarOverrides, setGrammarOverrides] = useState(() => db.grammar?.getOverrides?.() || {});
+  const [situationDeletedIds, setSituationDeletedIds] = useState(() => db.situations?.getDeletedIds?.() || []);
+  const [situationOverrides, setSituationOverrides] = useState(() => db.situations?.getOverrides?.() || {});
+  const [listeningCols, setListeningCols] = useState(() => db.listening.getCollections());
+  const [vocabCards, setVocabCards] = useState(() => db.vocabulary.findMany());
+  const [adminEditingItem, setAdminEditingItem] = useState(null); // { type, data }
 
   // Users State
   const [usersList, setUsersList] = useState(() => db.users.findAll());
@@ -89,7 +108,29 @@ export function AdminPage() {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+
+    const handleDbChange = () => {
+      setUniversalItems(db.universal.findMany());
+      setExamsList(getAllExams());
+      setGrammarDeletedIds(db.grammar?.getDeletedIds?.() || []);
+      setGrammarOverrides(db.grammar?.getOverrides?.() || {});
+      setSituationDeletedIds(db.situations?.getDeletedIds?.() || []);
+      setSituationOverrides(db.situations?.getOverrides?.() || {});
+      setListeningCols(db.listening.getCollections());
+      setVocabCards(db.vocabulary.findMany());
+      setUsersList(db.users.findAll());
+    };
+    window.addEventListener('sprach_db_change', handleDbChange);
+    return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
+
+  const computedGrammarList = [...GRAMMAR_CORE, ...GRAMMAR_EXTRA]
+    .filter((g) => !grammarDeletedIds.includes(g.id))
+    .map((g) => (grammarOverrides[g.id] ? { ...g, ...grammarOverrides[g.id] } : g));
+
+  const computedSituationsList = SITUATIONS
+    .filter((s) => !situationDeletedIds.includes(s.id))
+    .map((s) => (situationOverrides[s.id] ? { ...s, ...situationOverrides[s.id] } : s));
 
   // Filter models for selected provider
   const availableModelsForProvider = FREE_AI_MODELS.filter(
@@ -152,6 +193,10 @@ export function AdminPage() {
     const finalModel = isCustomModelMode ? customModelInput.trim() : selectedModel;
     if (!finalModel) {
       toast.error('Vui lòng chọn hoặc điền mã model AI!');
+      return;
+    }
+    if (finalModel.includes('@')) {
+      toast.error('Mã model không hợp lệ! Vui lòng không nhập địa chỉ email vào ô Model.');
       return;
     }
     if (!apiKey.trim()) {
@@ -389,11 +434,22 @@ export function AdminPage() {
                   {isCustomModelMode ? (
                     <input
                       type="text"
-                      name="elio_custom_model_input"
-                      autoComplete="off"
+                      name="elio_custom_model_input_text"
+                      id="elio_custom_model_input_text"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-form-type="other"
                       value={customModelInput}
-                      onChange={(e) => setCustomModelInput(e.target.value)}
-                      placeholder="Gõ mã model (vd: gemini-2.0-flash, deepseek-chat...)"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.includes('@')) {
+                          toast.warning('Ô này chỉ để nhập mã Model AI (như gemini-2.0-flash), không phải địa chỉ email!');
+                          return;
+                        }
+                        setCustomModelInput(val);
+                      }}
+                      placeholder="Gõ mã model (vd: gemini-2.0-flash, llama-3.3-70b-versatile...)"
                       className="w-full px-3 py-2 text-xs rounded-sm border border-accent bg-card text-accent font-mono font-bold"
                     />
                   ) : (
@@ -705,7 +761,7 @@ export function AdminPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: NỘI DUNG HỌC & IMPORT TRUNG TÂM */}
+      {/* TAB 2: NỘI DUNG HỌC & TOÀN QUYỀN SỬA/XÓA ADMIN */}
       {/* ========================================================================= */}
       {activeTab === 'content' && (
         <div className="surface p-6 border border-border space-y-6 animate-fade-in">
@@ -713,89 +769,506 @@ export function AdminPage() {
             <div>
               <div className="eyebrow mb-1">KHO TRI THỨC TOÀN HỆ THỐNG</div>
               <h3 className="font-display text-2xl font-bold text-foreground">
-                Quản lý kho học thuật & Phân phối nội dung
+                Quản trị toàn bộ nội dung học (Toàn quyền Sửa / Xóa)
               </h3>
               <p className="font-body text-xs text-muted-foreground mt-0.5">
-                Kiểm soát hiển thị: Công khai toàn app (Public), Nội bộ Admin (Admin Only), hoặc Cá nhân (Private).
+                Admin có quyền sửa, xóa riêng lẻ từng bài hoặc xóa cả bộ trên toàn bộ routing chính của ứng dụng.
               </p>
             </div>
 
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="tap px-4 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-2 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Import nội dung mới</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="tap px-3.5 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Import mới</span>
+              </button>
+            </div>
           </div>
 
-          {/* Universal Imports Table */}
-          <div className="space-y-3">
-            <div className="text-xs font-mono font-bold text-foreground">
-              Các gói nội dung đã nhập vào hệ thống ({universalItems.length}):
-            </div>
+          {/* Content Category Subtabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border text-xs font-mono">
+            {[
+              { id: 'universal', label: 'Tài liệu Import', count: universalItems.length, icon: Layers },
+              { id: 'exams', label: 'Bộ đề thi', count: examsList.length, icon: FileText },
+              { id: 'grammar', label: 'Ngữ pháp', count: computedGrammarList.length, icon: BookOpen },
+              { id: 'listening', label: 'Luyện nghe', count: listeningCols.length, icon: Headphones },
+              { id: 'situations', label: 'Tình huống', count: computedSituationsList.length, icon: MessageSquare },
+              { id: 'vocab', label: 'Từ vựng SRS', count: vocabCards.length, icon: Sparkles },
+            ].map((sub) => {
+              const SubIcon = sub.icon;
+              const isActive = contentSubTab === sub.id;
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => setContentSubTab(sub.id)}
+                  className={`tap px-3 py-1.5 rounded-sm flex items-center gap-2 transition-all shrink-0 ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground font-bold shadow-sm'
+                      : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <SubIcon className="w-3.5 h-3.5" />
+                  <span>{sub.label}</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${isActive ? 'bg-black/20 text-accent-foreground' : 'bg-muted text-foreground'}`}>
+                    {sub.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-            {universalItems.length > 0 ? (
-              <div className="overflow-x-auto">
+          {/* Subtab 1: Universal Imports */}
+          {contentSubTab === 'universal' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Gói tài liệu Universal đã nạp ({universalItems.length}):
+                </span>
+                {universalItems.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Xóa toàn bộ các gói tài liệu Universal đã import?')) {
+                        db.universal.clearAll();
+                        setUniversalItems([]);
+                        toast.success('Đã dọn sạch toàn bộ gói import!');
+                      }
+                    }}
+                    className="tap px-2.5 py-1 text-xs font-mono text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-sm flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa tất cả</span>
+                  </button>
+                )}
+              </div>
+
+              {universalItems.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Loại</th>
+                        <th className="p-3">Tiêu đề</th>
+                        <th className="p-3">Level</th>
+                        <th className="p-3">Phạm vi (Scope)</th>
+                        <th className="p-3">Người tạo</th>
+                        <th className="p-3 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {universalItems.map((item) => (
+                        <tr key={item.id} className="hover:bg-muted/30">
+                          <td className="p-3 uppercase font-bold text-accent">{item.type}</td>
+                          <td className="p-3 font-semibold text-foreground">{item.title}</td>
+                          <td className="p-3 font-bold">{item.level}</td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-sm text-[10px] font-bold ${
+                                item.scope === 'public'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+                                  : item.scope === 'admin_only'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200'
+                              }`}
+                            >
+                              {item.scope === 'public'
+                                ? '🌐 Toàn hệ thống'
+                                : item.scope === 'admin_only'
+                                ? '🔒 Nội bộ Admin'
+                                : '👤 Cá nhân'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-muted-foreground">{item.created_by_name}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Xóa gói tài liệu "${item.title}"?`)) {
+                                  db.universal.delete(item.id);
+                                  setUniversalItems(db.universal.findMany());
+                                  toast.success('Đã xóa gói nội dung!');
+                                }
+                              }}
+                              className="tap text-rose-600 hover:text-rose-700 p-1 hover:bg-rose-50 rounded-sm"
+                              title="Xóa gói này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs font-mono text-muted-foreground border border-dashed border-border rounded-sm">
+                  Chưa có gói import nào. Bấm "Import mới" để đưa tài liệu vào.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Subtab 2: Exams */}
+          {contentSubTab === 'exams' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Danh sách đề thi Goethe, telc, ÖSD ({examsList.length}):
+                </span>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Khôi phục danh sách toàn bộ đề thi chuẩn gốc của hệ thống?')) {
+                      db.exams.resetDefaults();
+                      setExamsList(getAllExams());
+                      toast.success('Đã khôi phục các đề thi gốc!');
+                    }
+                  }}
+                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục đề gốc</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto max-h-[500px]">
                 <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px]">
+                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] sticky top-0 bg-muted">
                     <tr>
-                      <th className="p-3">Loại</th>
-                      <th className="p-3">Tiêu đề</th>
+                      <th className="p-3">Kỳ thi</th>
                       <th className="p-3">Level</th>
-                      <th className="p-3">Quyền phân phối (Scope)</th>
-                      <th className="p-3">Người tạo</th>
+                      <th className="p-3">Tên đề thi</th>
+                      <th className="p-3">Thời gian</th>
                       <th className="p-3 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {universalItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-muted/30">
-                        <td className="p-3 uppercase font-bold text-accent">{item.type}</td>
-                        <td className="p-3 font-semibold text-foreground">{item.title}</td>
-                        <td className="p-3 font-bold">{item.level}</td>
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-sm text-[10px] font-bold ${
-                              item.scope === 'public'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
-                                : item.scope === 'admin_only'
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200'
-                            }`}
-                          >
-                            {item.scope === 'public'
-                              ? '🌐 Toàn hệ thống'
-                              : item.scope === 'admin_only'
-                              ? '🔒 Nội bộ Admin'
-                              : '👤 Cá nhân'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-muted-foreground">{item.created_by_name}</td>
+                    {examsList.map((ex) => (
+                      <tr key={ex.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-bold text-accent uppercase">{ex.provider}</td>
+                        <td className="p-3 font-bold">{ex.level}</td>
+                        <td className="p-3 font-semibold text-foreground">{ex.title}</td>
+                        <td className="p-3 text-muted-foreground">{ex.minutes} phút</td>
                         <td className="p-3 text-right">
-                          <button
-                            onClick={() => {
-                              db.universal.delete(item.id);
-                              setUniversalItems(db.universal.findMany());
-                              toast.success('Đã xóa gói nội dung!');
-                            }}
-                            className="tap text-rose-600 hover:text-rose-700 p-1 hover:bg-muted rounded-sm"
-                            title="Xóa gói này"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setAdminEditingItem({ type: 'exam', data: { ...ex } })}
+                              className="tap p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded"
+                              title="Sửa đề thi"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Xóa đề thi "${ex.title}" (${ex.provider} ${ex.level})?`)) {
+                                  db.exams.delete(ex.id);
+                                  setExamsList(getAllExams());
+                                  toast.success(`Đã xóa đề thi: ${ex.title}`);
+                                }
+                              }}
+                              className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
+                              title="Xóa đề thi"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="p-8 text-center text-xs font-mono text-muted-foreground border border-dashed border-border rounded-sm">
-                Chưa có gói import nào. Hãy bấm nút "Import nội dung mới" ở góc trên để bắt đầu!
+            </div>
+          )}
+
+          {/* Subtab 3: Grammar */}
+          {contentSubTab === 'grammar' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Hệ thống 100 chủ đề Ngữ pháp A1–C2 ({computedGrammarList.length}):
+                </span>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Khôi phục danh sách 100 chủ đề ngữ pháp gốc của hệ thống?')) {
+                      db.grammar.resetDefaults();
+                      setGrammarDeletedIds([]);
+                      setGrammarOverrides({});
+                      toast.success('Đã khôi phục ngữ pháp gốc!');
+                    }
+                  }}
+                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục gốc</span>
+                </button>
               </div>
-            )}
-          </div>
+
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] sticky top-0 bg-muted">
+                    <tr>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Tiếng Việt</th>
+                      <th className="p-3">Tiếng Đức</th>
+                      <th className="p-3">Tóm tắt quy tắc</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {computedGrammarList.map((g) => (
+                      <tr key={g.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-bold text-accent">{g.level}</td>
+                        <td className="p-3 font-semibold text-foreground">{g.title_vi}</td>
+                        <td className="p-3 text-muted-foreground italic">{g.title_de}</td>
+                        <td className="p-3 text-muted-foreground max-w-xs truncate">{g.rule}</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setAdminEditingItem({ type: 'grammar', data: { ...g } })}
+                              className="tap p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded"
+                              title="Sửa chủ điểm"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Xóa chủ điểm ngữ pháp "${g.title_vi}"?`)) {
+                                  db.grammar.delete(g.id);
+                                  setGrammarDeletedIds(db.grammar.getDeletedIds());
+                                  toast.success(`Đã xóa chủ điểm: ${g.title_vi}`);
+                                }
+                              }}
+                              className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
+                              title="Xóa chủ điểm"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 4: Listening */}
+          {contentSubTab === 'listening' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Danh sách bộ video luyện nghe ({listeningCols.length}):
+                </span>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Khôi phục danh sách bộ video luyện nghe Nicos Weg gốc?')) {
+                      db.listening.resetDefaults();
+                      setListeningCols(db.listening.getCollections());
+                      toast.success('Đã khôi phục video luyện nghe gốc!');
+                    }
+                  }}
+                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục video gốc</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px]">
+                    <tr>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Tiêu đề bộ</th>
+                      <th className="p-3">Kênh / Nguồn</th>
+                      <th className="p-3">Số tập</th>
+                      <th className="p-3">Phạm vi</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {listeningCols.map((col) => {
+                      const epCount = db.listening.getEpisodes(col.id).length;
+                      return (
+                        <tr key={col.id} className="hover:bg-muted/30">
+                          <td className="p-3 font-bold text-accent">{col.level}</td>
+                          <td className="p-3 font-semibold text-foreground">{col.title}</td>
+                          <td className="p-3 text-muted-foreground">{col.provider}</td>
+                          <td className="p-3 font-bold">{epCount} tập</td>
+                          <td className="p-3 uppercase text-[10px] font-bold text-accent">{col.scope || 'public'}</td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setAdminEditingItem({ type: 'listening', data: { ...col } })}
+                                className="tap p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded"
+                                title="Sửa bộ video"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Xóa bộ video "${col.title}" cùng toàn bộ các tập con?`)) {
+                                    db.listening.deleteCollection(col.id);
+                                    setListeningCols(db.listening.getCollections());
+                                    toast.success(`Đã xóa bộ video: ${col.title}`);
+                                  }
+                                }}
+                                className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
+                                title="Xóa bộ video"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 5: Situations */}
+          {contentSubTab === 'situations' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Danh sách tình huống giao tiếp thực tế ({computedSituationsList.length}):
+                </span>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Khôi phục danh sách các tình huống giao tiếp gốc?')) {
+                      db.situations.resetDefaults();
+                      setSituationDeletedIds([]);
+                      setSituationOverrides({});
+                      toast.success('Đã khôi phục tình huống gốc!');
+                    }
+                  }}
+                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục tình huống gốc</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px]">
+                    <tr>
+                      <th className="p-3">Tiếng Việt</th>
+                      <th className="p-3">Tiếng Đức</th>
+                      <th className="p-3">Số mẫu câu</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {computedSituationsList.map((s) => (
+                      <tr key={s.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-semibold text-foreground">{s.title_vi}</td>
+                        <td className="p-3 text-muted-foreground italic">{s.title_de}</td>
+                        <td className="p-3 font-bold text-accent">{s.phrases?.length || 0} câu</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setAdminEditingItem({ type: 'situation', data: { ...s } })}
+                              className="tap p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded"
+                              title="Sửa tình huống"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Xóa tình huống "${s.title_vi}"?`)) {
+                                  db.situations.delete(s.id);
+                                  setSituationDeletedIds(db.situations.getDeletedIds());
+                                  toast.success(`Đã xóa tình huống: ${s.title_vi}`);
+                                }
+                              }}
+                              className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
+                              title="Xóa tình huống"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 6: Vocabulary */}
+          {contentSubTab === 'vocab' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Thẻ từ vựng SRS trong cơ sở dữ liệu ({vocabCards.length}):
+                </span>
+                {vocabCards.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Xóa toàn bộ ${vocabCards.length} thẻ từ vựng trong hệ thống? Thao tác này không thể hoàn tác.`)) {
+                        db.vocabulary.clearAll();
+                        setVocabCards([]);
+                        toast.success('Đã xóa toàn bộ thẻ từ vựng!');
+                      }
+                    }}
+                    className="tap px-2.5 py-1 text-xs font-mono text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-sm flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa toàn bộ thẻ từ vựng</span>
+                  </button>
+                )}
+              </div>
+
+              {vocabCards.length > 0 ? (
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] sticky top-0 bg-muted">
+                      <tr>
+                        <th className="p-3">Từ vựng (DE)</th>
+                        <th className="p-3">Nghĩa (VI)</th>
+                        <th className="p-3">Cấp độ</th>
+                        <th className="p-3">Chủ đề</th>
+                        <th className="p-3 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {vocabCards.map((c) => (
+                        <tr key={c.id} className="hover:bg-muted/30">
+                          <td className="p-3 font-bold text-foreground">{c.german}</td>
+                          <td className="p-3 text-accent font-medium">{c.vietnamese}</td>
+                          <td className="p-3">{c.level || 'B1'}</td>
+                          <td className="p-3 text-muted-foreground">{c.topic || 'Chung'}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => {
+                                db.vocabulary.delete(c.id);
+                                setVocabCards(db.vocabulary.findMany());
+                                toast.success(`Đã xóa từ: ${c.german}`);
+                              }}
+                              className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
+                              title="Xóa từ này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs font-mono text-muted-foreground border border-dashed border-border rounded-sm">
+                  Chưa có thẻ từ vựng nào trong kho SRS.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1049,6 +1522,346 @@ export function AdminPage() {
           setUniversalItems(db.universal.findMany());
         }}
       />
+
+      {/* Admin Quick Edit Modal */}
+      {adminEditingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="surface p-6 max-w-lg w-full space-y-4 rounded-sm border border-border shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <span className="eyebrow">Quản trị viên</span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Chỉnh sửa: {adminEditingItem.data.title || adminEditingItem.data.title_vi}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminEditingItem(null)}
+                className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const { type, data } = adminEditingItem;
+                if (type === 'exam') {
+                  db.exams.update(data.id, {
+                    title: data.title,
+                    provider: data.provider,
+                    level: data.level,
+                    minutes: Number(data.minutes) || 60,
+                  });
+                  setExamsList(getAllExams());
+                } else if (type === 'grammar') {
+                  db.grammar.update(data.id, {
+                    title_vi: data.title_vi,
+                    title_de: data.title_de,
+                    level: data.level,
+                    rule: data.rule,
+                  });
+                  setGrammarOverrides(db.grammar.getOverrides());
+                } else if (type === 'listening') {
+                  db.listening.updateCollection(data.id, {
+                    title: data.title,
+                    deTitle: data.deTitle,
+                    level: data.level,
+                    provider: data.provider,
+                    description: data.description,
+                    scope: data.scope,
+                  });
+                  setListeningCols(db.listening.getCollections());
+                } else if (type === 'situation') {
+                  db.situations.update(data.id, {
+                    title_vi: data.title_vi,
+                    title_de: data.title_de,
+                    desc: data.desc,
+                  });
+                  setSituationOverrides(db.situations.getOverrides());
+                }
+                setAdminEditingItem(null);
+                toast.success('Đã lưu thay đổi từ Quản trị viên!');
+              }}
+              className="space-y-3 text-xs"
+            >
+              {/* Exam Fields */}
+              {adminEditingItem.type === 'exam' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Tên đề thi *</label>
+                    <input
+                      type="text"
+                      required
+                      value={adminEditingItem.data.title || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, title: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Kỳ thi</label>
+                      <input
+                        type="text"
+                        value={adminEditingItem.data.provider || ''}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, provider: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Cấp độ</label>
+                      <select
+                        value={adminEditingItem.data.level || 'B1'}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, level: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      >
+                        {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => (
+                          <option key={lvl} value={lvl}>{lvl}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Thời lượng</label>
+                      <input
+                        type="number"
+                        value={adminEditingItem.data.minutes || 60}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, minutes: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Grammar Fields */}
+              {adminEditingItem.type === 'grammar' && (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Tiêu đề tiếng Việt *</label>
+                      <input
+                        type="text"
+                        required
+                        value={adminEditingItem.data.title_vi || ''}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, title_vi: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Level</label>
+                      <select
+                        value={adminEditingItem.data.level || 'B1'}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, level: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      >
+                        {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => (
+                          <option key={lvl} value={lvl}>{lvl}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Tiêu đề tiếng Đức</label>
+                    <input
+                      type="text"
+                      value={adminEditingItem.data.title_de || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, title_de: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Nội dung quy tắc</label>
+                    <textarea
+                      rows={3}
+                      value={adminEditingItem.data.rule || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, rule: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground font-sans"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Listening Collection Fields */}
+              {adminEditingItem.type === 'listening' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Tên bộ video *</label>
+                    <input
+                      type="text"
+                      required
+                      value={adminEditingItem.data.title || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, title: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Level</label>
+                      <select
+                        value={adminEditingItem.data.level || 'B1'}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, level: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      >
+                        {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => (
+                          <option key={lvl} value={lvl}>{lvl}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-mono text-muted-foreground uppercase text-[10px]">Phạm vi (Scope)</label>
+                      <select
+                        value={adminEditingItem.data.scope || 'public'}
+                        onChange={(e) =>
+                          setAdminEditingItem({
+                            ...adminEditingItem,
+                            data: { ...adminEditingItem.data, scope: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                      >
+                        <option value="public">Toàn hệ thống (Public)</option>
+                        <option value="private">Cá nhân (Private)</option>
+                        <option value="admin_only">Nội bộ Admin</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Kênh / Nguồn</label>
+                    <input
+                      type="text"
+                      value={adminEditingItem.data.provider || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, provider: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Situation Fields */}
+              {adminEditingItem.type === 'situation' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Tiêu đề tiếng Việt *</label>
+                    <input
+                      type="text"
+                      required
+                      value={adminEditingItem.data.title_vi || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, title_vi: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Tiêu đề tiếng Đức</label>
+                    <input
+                      type="text"
+                      value={adminEditingItem.data.title_de || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, title_de: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-mono text-muted-foreground uppercase text-[10px]">Mô tả</label>
+                    <textarea
+                      rows={2}
+                      value={adminEditingItem.data.desc || ''}
+                      onChange={(e) =>
+                        setAdminEditingItem({
+                          ...adminEditingItem,
+                          data: { ...adminEditingItem.data, desc: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setAdminEditingItem(null)}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted font-mono"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="tap px-4 py-1.5 rounded-sm bg-accent text-accent-foreground font-mono font-semibold flex items-center gap-1.5 shadow-sm"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu thay đổi</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

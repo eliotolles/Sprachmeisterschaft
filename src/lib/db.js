@@ -19,6 +19,12 @@ function loadDatabase() {
       if (!parsed.listeningEpisodes || parsed.listeningEpisodes.length === 0) parsed.listeningEpisodes = LISTENING_EPISODES;
       if (!parsed.universalImports) parsed.universalImports = [];
       if (!parsed.studyPlans) parsed.studyPlans = {};
+      if (!parsed.deletedGrammarIds) parsed.deletedGrammarIds = [];
+      if (!parsed.grammarOverrides) parsed.grammarOverrides = {};
+      if (!parsed.deletedExamIds) parsed.deletedExamIds = [];
+      if (!parsed.examOverrides) parsed.examOverrides = {};
+      if (!parsed.deletedSituationIds) parsed.deletedSituationIds = [];
+      if (!parsed.situationOverrides) parsed.situationOverrides = {};
       return parsed;
     }
   } catch (e) {
@@ -49,6 +55,12 @@ function loadDatabase() {
         created_at: new Date().toISOString(),
       },
     ],
+    deletedGrammarIds: [],
+    grammarOverrides: {},
+    deletedExamIds: [],
+    examOverrides: {},
+    deletedSituationIds: [],
+    situationOverrides: {},
     aiConfigs: [
       {
         id: 'ai-cfg-gemini',
@@ -254,6 +266,24 @@ export const db = {
 
     delete: (id) => {
       state.vocabularyCards = state.vocabularyCards.filter((c) => c.id !== id);
+      saveDatabase(state);
+      return true;
+    },
+
+    deleteByTopic: (topic) => {
+      state.vocabularyCards = state.vocabularyCards.filter((c) => c.topic !== topic);
+      saveDatabase(state);
+      return true;
+    },
+
+    deleteByLevel: (level) => {
+      state.vocabularyCards = state.vocabularyCards.filter((c) => c.level !== level);
+      saveDatabase(state);
+      return true;
+    },
+
+    clearAll: () => {
+      state.vocabularyCards = [];
       saveDatabase(state);
       return true;
     },
@@ -875,6 +905,48 @@ export const db = {
     deleteEpisode: (id) => {
       state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.id !== id);
       saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    updateCollection: (id, updates) => {
+      const idx = (state.listeningCollections || []).findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        state.listeningCollections[idx] = { ...state.listeningCollections[idx], ...updates };
+        saveDatabase(state);
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        return state.listeningCollections[idx];
+      }
+      return null;
+    },
+    deleteCollection: (id) => {
+      state.listeningCollections = (state.listeningCollections || []).filter((c) => c.id !== id);
+      state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.collectionId !== id);
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteAllCollections: () => {
+      state.listeningCollections = [];
+      state.listeningEpisodes = [];
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteAllEpisodes: (collectionId) => {
+      if (collectionId) {
+        state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.collectionId !== collectionId);
+      } else {
+        state.listeningEpisodes = [];
+      }
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    resetDefaults: () => {
+      state.listeningCollections = JSON.parse(JSON.stringify(LISTENING_COLLECTIONS));
+      state.listeningEpisodes = JSON.parse(JSON.stringify(LISTENING_EPISODES));
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return true;
     },
   },
@@ -905,7 +977,18 @@ export const db = {
 
       state.universalImports.unshift(record);
       saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return record;
+    },
+    update: (id, updates) => {
+      const idx = (state.universalImports || []).findIndex((i) => i.id === id);
+      if (idx !== -1) {
+        state.universalImports[idx] = { ...state.universalImports[idx], ...updates };
+        saveDatabase(state);
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        return state.universalImports[idx];
+      }
+      return null;
     },
     findMany: (filter = {}) => {
       const currentUser = db.auth.getUser();
@@ -928,13 +1011,172 @@ export const db = {
       const item = (state.universalImports || []).find((i) => i.id === id);
       if (!item) return false;
 
-      // Only admin or owner can delete
+      // Admin has full power to delete ANY universal item
       if (!isAdmin && item.created_by !== currentUser?.id) {
         return false;
       }
 
       state.universalImports = (state.universalImports || []).filter((i) => i.id !== id);
       saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteByType: (type) => {
+      state.universalImports = (state.universalImports || []).filter((i) => i.type !== type);
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    clearAll: () => {
+      state.universalImports = [];
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+  },
+
+  // Grammar Administration (Override & Delete Management)
+  grammar: {
+    getOverrides: () => ({ ...(state.grammarOverrides || {}) }),
+    getDeletedIds: () => [...(state.deletedGrammarIds || [])],
+    update: (id, updates) => {
+      const univ = (state.universalImports || []).find((i) => i.id === id && i.type === 'grammar');
+      if (univ) {
+        db.universal.update(id, {
+          title: updates.title_vi || updates.title || univ.title,
+          level: updates.level || univ.level,
+          data: { ...(univ.data || {}), ...updates },
+        });
+        return true;
+      }
+      if (!state.grammarOverrides) state.grammarOverrides = {};
+      state.grammarOverrides[id] = { ...(state.grammarOverrides[id] || {}), ...updates };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    delete: (id) => {
+      const isUniv = (state.universalImports || []).some((i) => i.id === id && i.type === 'grammar');
+      if (isUniv) {
+        db.universal.delete(id);
+      }
+      if (!state.deletedGrammarIds) state.deletedGrammarIds = [];
+      if (!state.deletedGrammarIds.includes(id)) {
+        state.deletedGrammarIds.push(id);
+      }
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteAll: (allCurrentIds = []) => {
+      db.universal.deleteByType('grammar');
+      state.deletedGrammarIds = Array.from(new Set([...(state.deletedGrammarIds || []), ...allCurrentIds]));
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    resetDefaults: () => {
+      state.deletedGrammarIds = [];
+      state.grammarOverrides = {};
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+  },
+
+  // Exam Administration (Override & Delete Management)
+  exams: {
+    getOverrides: () => ({ ...(state.examOverrides || {}) }),
+    getDeletedIds: () => [...(state.deletedExamIds || [])],
+    update: (id, updates) => {
+      const univ = (state.universalImports || []).find((i) => i.id === id && i.type === 'exam');
+      if (univ) {
+        db.universal.update(id, {
+          title: updates.title || univ.title,
+          level: updates.level || univ.level,
+          data: { ...(univ.data || {}), ...updates },
+        });
+        return true;
+      }
+      if (!state.examOverrides) state.examOverrides = {};
+      state.examOverrides[id] = { ...(state.examOverrides[id] || {}), ...updates };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    delete: (id) => {
+      const isUniv = (state.universalImports || []).some((i) => i.id === id && i.type === 'exam');
+      if (isUniv) {
+        db.universal.delete(id);
+      }
+      if (!state.deletedExamIds) state.deletedExamIds = [];
+      if (!state.deletedExamIds.includes(id)) {
+        state.deletedExamIds.push(id);
+      }
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteAll: (allCurrentIds = []) => {
+      db.universal.deleteByType('exam');
+      state.deletedExamIds = Array.from(new Set([...(state.deletedExamIds || []), ...allCurrentIds]));
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    resetDefaults: () => {
+      state.deletedExamIds = [];
+      state.examOverrides = {};
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+  },
+
+  // Situations Administration (Override & Delete Management)
+  situations: {
+    getOverrides: () => ({ ...(state.situationOverrides || {}) }),
+    getDeletedIds: () => [...(state.deletedSituationIds || [])],
+    update: (id, updates) => {
+      const univ = (state.universalImports || []).find((i) => i.id === id && i.type === 'situation');
+      if (univ) {
+        db.universal.update(id, {
+          title: updates.title_vi || updates.title || univ.title,
+          data: { ...(univ.data || {}), ...updates },
+        });
+        return true;
+      }
+      if (!state.situationOverrides) state.situationOverrides = {};
+      state.situationOverrides[id] = { ...(state.situationOverrides[id] || {}), ...updates };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    delete: (id) => {
+      const isUniv = (state.universalImports || []).some((i) => i.id === id && i.type === 'situation');
+      if (isUniv) {
+        db.universal.delete(id);
+      }
+      if (!state.deletedSituationIds) state.deletedSituationIds = [];
+      if (!state.deletedSituationIds.includes(id)) {
+        state.deletedSituationIds.push(id);
+      }
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    deleteAll: (allCurrentIds = []) => {
+      db.universal.deleteByType('situation');
+      state.deletedSituationIds = Array.from(new Set([...(state.deletedSituationIds || []), ...allCurrentIds]));
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return true;
+    },
+    resetDefaults: () => {
+      state.deletedSituationIds = [];
+      state.situationOverrides = {};
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return true;
     },
   },

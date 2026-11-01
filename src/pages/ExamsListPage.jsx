@@ -5,15 +5,30 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { LevelFilter } from '@/components/ui/LevelFilter';
 import { getAllExams } from '@/data/all-exams';
-import { FileCheck2, Clock, Award, ArrowRight, ShieldCheck, Plus } from 'lucide-react';
+import {
+  FileCheck2,
+  Clock,
+  Award,
+  ArrowRight,
+  ShieldCheck,
+  Plus,
+  Trash2,
+  Edit3,
+  RotateCcw,
+  Check,
+  X,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
 export function ExamsListPage() {
   const { navigate } = useRouter();
+  const isAdmin = db.auth.isAdmin();
   const [profile] = useState(() => db.learnerProfile.get());
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [examResults, setExamResults] = useState(() => db.examResults.findMany());
   const [allExamsList, setAllExamsList] = useState(() => getAllExams());
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [editingExam, setEditingExam] = useState(null);
 
   useEffect(() => {
     const handleDbChange = () => {
@@ -23,6 +38,36 @@ export function ExamsListPage() {
     window.addEventListener('sprach_db_change', handleDbChange);
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
+
+  const handleDeleteExam = (examId, examTitle) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa đề thi "${examTitle}" không?`)) {
+      db.exams.delete(examId);
+      setAllExamsList(getAllExams());
+      toast.success(`Đã xóa đề thi: "${examTitle}"!`);
+    }
+  };
+
+  const handleResetExams = () => {
+    if (window.confirm('Khôi phục lại toàn bộ danh mục đề thi mặc định gốc của hệ thống?')) {
+      db.exams.resetDefaults();
+      setAllExamsList(getAllExams());
+      toast.success('Đã khôi phục danh mục đề thi gốc!');
+    }
+  };
+
+  const handleSaveExamEdit = (e) => {
+    e.preventDefault();
+    if (!editingExam) return;
+    db.exams.update(editingExam.id, {
+      title: editingExam.title,
+      provider: editingExam.provider,
+      level: editingExam.level,
+      minutes: Number(editingExam.minutes) || 90,
+    });
+    setAllExamsList(getAllExams());
+    setEditingExam(null);
+    toast.success('Đã cập nhật thông tin đề thi thành công!');
+  };
 
   // Map of last result per exam ID
   const latestByExam = {};
@@ -56,17 +101,29 @@ export function ExamsListPage() {
     <div className="space-y-6 animate-rise">
       <PageHeader
         eyebrow="CHUẨN KHẢO THÍ CHÂU ÂU (GER / CEFR)"
-        title="Luyện 9 đề thi mô phỏng"
+        title={`Luyện ${allExamsList.length} đề thi mô phỏng`}
         deTitle="Prüfungssimulation"
         subtitle="Bộ đề chuẩn hóa quốc tế Goethe A1–C2, telc B1, ÖSD B1 và kỳ thi hội nhập DTZ B1."
         actions={
-          <button
-            onClick={() => setIsImportOpen(true)}
-            className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Import đề thi mới</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={handleResetExams}
+                className="tap px-2.5 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-foreground font-mono text-xs flex items-center gap-1.5"
+                title="Khôi phục các đề mặc định"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Khôi phục gốc</span>
+              </button>
+            )}
+            <button
+              onClick={() => setIsImportOpen(true)}
+              className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Import đề thi mới</span>
+            </button>
+          </div>
         }
       />
 
@@ -77,7 +134,7 @@ export function ExamsListPage() {
         includeAll={true}
       />
 
-      {/* 9 Exams Grid */}
+      {/* Exams Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredExams.map((exam) => {
           const lastResult = latestByExam[exam.id];
@@ -85,7 +142,7 @@ export function ExamsListPage() {
           return (
             <div
               key={exam.id}
-              className="surface p-5 flex flex-col justify-between hover:border-accent/40 transition-colors"
+              className="surface p-5 flex flex-col justify-between hover:border-accent/40 transition-colors relative group"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -96,9 +153,34 @@ export function ExamsListPage() {
                   >
                     {exam.provider}
                   </span>
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{exam.minutes} phút</span>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{exam.minutes}p</span>
+                    </div>
+
+                    {/* Admin Action Buttons on Exam Card */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-1 pl-2 border-l border-border">
+                        <button
+                          type="button"
+                          onClick={() => setEditingExam({ ...exam })}
+                          className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent transition-colors"
+                          title="Sửa thông số đề thi"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExam(exam.id, exam.title)}
+                          className="tap p-1 rounded hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors"
+                          title="Xóa đề thi này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -144,6 +226,100 @@ export function ExamsListPage() {
         })}
       </div>
 
+      {/* Admin Edit Exam Modal */}
+      {isAdmin && editingExam && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="surface max-w-md w-full p-6 border-2 border-border shadow-2xl space-y-4 animate-rise">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="font-display text-lg font-bold text-foreground">
+                Chỉnh sửa đề thi (Admin)
+              </h3>
+              <button
+                onClick={() => setEditingExam(null)}
+                className="p-1 rounded hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExamEdit} className="space-y-3 font-mono text-xs">
+              <div>
+                <label className="block text-muted-foreground mb-1">Tên đề thi *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingExam.title}
+                  onChange={(e) => setEditingExam({ ...editingExam, title: e.target.value })}
+                  className="w-full px-3 py-2 rounded-sm border border-border bg-card text-foreground"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Kỳ thi / Đơn vị *</label>
+                  <select
+                    value={editingExam.provider}
+                    onChange={(e) => setEditingExam({ ...editingExam, provider: e.target.value })}
+                    className="w-full px-3 py-2 rounded-sm border border-border bg-card text-foreground"
+                  >
+                    <option value="Goethe">Goethe</option>
+                    <option value="telc">telc</option>
+                    <option value="ÖSD">ÖSD</option>
+                    <option value="TestDaF">TestDaF</option>
+                    <option value="DTZ">DTZ</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-muted-foreground mb-1">Cấp độ (CEFR) *</label>
+                  <select
+                    value={editingExam.level}
+                    onChange={(e) => setEditingExam({ ...editingExam, level: e.target.value })}
+                    className="w-full px-3 py-2 rounded-sm border border-border bg-card text-foreground font-bold text-accent"
+                  >
+                    {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-muted-foreground mb-1">Thời gian làm bài (Phút) *</label>
+                <input
+                  type="number"
+                  min={10}
+                  max={300}
+                  required
+                  value={editingExam.minutes}
+                  onChange={(e) => setEditingExam({ ...editingExam, minutes: e.target.value })}
+                  className="w-full px-3 py-2 rounded-sm border border-border bg-card text-foreground"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingExam(null)}
+                  className="px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-sm bg-accent text-accent-foreground font-semibold flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu thay đổi</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <UniversalImportModal
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
@@ -152,3 +328,4 @@ export function ExamsListPage() {
     </div>
   );
 }
+

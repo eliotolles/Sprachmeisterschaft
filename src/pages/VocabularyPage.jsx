@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 
 export function VocabularyPage() {
   const { navigate } = useRouter();
+  const isAdmin = db.auth.isAdmin();
   const [cards, setCards] = useState(() => db.vocabulary.findMany());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -111,6 +112,25 @@ export function VocabularyPage() {
         subtitle="Quản lý và ôn luyện các từ vựng tiếng Đức đã lưu theo thuật toán SRS."
         actions={
           <div className="flex items-center gap-2">
+            {isAdmin && cards.length > 0 && (
+              <button
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Bạn có chắc chắn muốn xóa toàn bộ ${cards.length} thẻ từ vựng hiện có không? Thao tác này không thể hoàn tác.`
+                    )
+                  ) {
+                    db.vocabulary.clearAll();
+                    toast.success('Đã xóa toàn bộ bộ thẻ từ vựng!');
+                  }
+                }}
+                className="tap px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 border border-rose-300 dark:border-rose-900 text-xs font-mono font-medium rounded-sm shadow-sm inline-flex items-center gap-1.5"
+                title="Xóa toàn bộ thẻ từ vựng (Quyền Admin)"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa tất cả ({cards.length})</span>
+              </button>
+            )}
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="tap px-3.5 py-2 bg-card hover:bg-muted text-foreground text-xs font-mono font-medium rounded-sm border border-border shadow-sm inline-flex items-center gap-1.5"

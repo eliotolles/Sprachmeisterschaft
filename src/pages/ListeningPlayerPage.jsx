@@ -28,11 +28,17 @@ import {
   SkipForward,
   Square,
   Flame,
+  Edit3,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = 'nw-a1-ep1' }) {
   const { navigate } = useRouter();
+  const isAdmin = db.auth.isAdmin();
+  const currentUser = db.auth.getUser();
+  const [editingEpisode, setEditingEpisode] = useState(null);
 
   const collection = db.listening.getCollectionById(collectionId) || {
     id: collectionId,
@@ -312,6 +318,30 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     toast.success('Đã lưu câu này vào Thẻ từ vựng cá nhân!');
   };
 
+  const canManage = isAdmin || currentEpisode.created_by === currentUser?.id;
+
+  const handleDeleteEpisode = () => {
+    if (window.confirm(`Bạn có chắc muốn xóa video "${currentEpisode.title}" này không?`)) {
+      db.listening.deleteEpisode(currentEpisode.id);
+      toast.success('Đã xóa video thành công!');
+      navigate('/skills/listening');
+    }
+  };
+
+  const handleSaveEpisode = (e) => {
+    e.preventDefault();
+    if (!editingEpisode) return;
+    db.listening.updateEpisode(editingEpisode.id, {
+      title: editingEpisode.title,
+      deTitle: editingEpisode.deTitle,
+      youtubeId: editingEpisode.youtubeId,
+      level: editingEpisode.level,
+      duration: editingEpisode.duration,
+    });
+    setEditingEpisode(null);
+    toast.success('Đã lưu thông tin video!');
+  };
+
   return (
     <div className="space-y-4 animate-rise max-w-7xl mx-auto">
       {/* Top Breadcrumb Navigation */}
@@ -330,13 +360,34 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           <span className="text-accent truncate max-w-xs">{currentEpisode.title}</span>
         </div>
 
-        <Link
-          to="/skills/listening"
-          className="tap inline-flex items-center gap-1 text-xs font-mono text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Về danh sách tập</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setEditingEpisode({ ...currentEpisode })}
+                className="tap px-2.5 py-1 text-xs font-mono rounded border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1 shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                <span>Sửa video</span>
+              </button>
+              <button
+                onClick={handleDeleteEpisode}
+                className="tap px-2.5 py-1 text-xs font-mono rounded border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 flex items-center gap-1 shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa video</span>
+              </button>
+            </div>
+          )}
+
+          <Link
+            to="/skills/listening"
+            className="tap inline-flex items-center gap-1 text-xs font-mono text-muted-foreground hover:text-foreground ml-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Về danh sách tập</span>
+          </Link>
+        </div>
       </div>
 
       {/* Mode Tabs */}
@@ -686,6 +737,114 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           </div>
         </div>
       </div>
+
+      {/* Edit Episode Modal */}
+      {editingEpisode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="surface p-6 max-w-md w-full space-y-4 rounded-sm border border-border shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-display text-lg font-bold text-foreground">
+                Chỉnh sửa tập video
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingEpisode(null)}
+                className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEpisode} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                  Tên tập (Tiếng Việt) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingEpisode.title || ''}
+                  onChange={(e) => setEditingEpisode({ ...editingEpisode, title: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                  Tên tập (Tiếng Đức)
+                </label>
+                <input
+                  type="text"
+                  value={editingEpisode.deTitle || ''}
+                  onChange={(e) => setEditingEpisode({ ...editingEpisode, deTitle: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                  YouTube Video ID hoặc URL *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingEpisode.youtubeId || ''}
+                  onChange={(e) => setEditingEpisode({ ...editingEpisode, youtubeId: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    Cấp độ (CEFR)
+                  </label>
+                  <select
+                    value={editingEpisode.level || 'B1'}
+                    onChange={(e) => setEditingEpisode({ ...editingEpisode, level: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                  >
+                    {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    Thời lượng (phút:giây)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingEpisode.duration || '03:00'}
+                    onChange={(e) => setEditingEpisode({ ...editingEpisode, duration: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setEditingEpisode(null)}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted font-mono"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="tap px-4 py-1.5 rounded-sm bg-accent text-accent-foreground font-mono font-semibold flex items-center gap-1.5 shadow-sm"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu thay đổi</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
