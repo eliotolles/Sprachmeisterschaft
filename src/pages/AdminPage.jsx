@@ -264,10 +264,14 @@ export function AdminPage() {
             </div>
 
             {/* Add new AI config form */}
-            <form onSubmit={handleAddAIConfig} className="p-4 rounded-sm bg-muted/20 border border-border space-y-4">
+            <form
+              onSubmit={handleAddAIConfig}
+              autoComplete="off"
+              className="p-4 rounded-sm bg-muted/20 border border-border space-y-4"
+            >
               <div className="font-mono text-xs font-bold text-foreground flex items-center gap-2">
                 <Plus className="w-4 h-4 text-accent" />
-                <span>+ Thêm cấu hình AI</span>
+                <span>+ Thêm cấu hình API AI</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -277,6 +281,8 @@ export function AdminPage() {
                   </label>
                   <input
                     type="text"
+                    name="elio_custom_ai_alias"
+                    autoComplete="off"
                     value={providerName}
                     onChange={(e) => setProviderName(e.target.value)}
                     placeholder="Ví dụ: Gemini 2.0 Flash Đọc Ảnh"
@@ -289,12 +295,16 @@ export function AdminPage() {
                     Nhà cung cấp *
                   </label>
                   <select
+                    name="elio_ai_provider_select"
                     value={providerType}
                     onChange={(e) => {
                       const p = e.target.value;
                       setProviderType(p);
                       const def = FREE_AI_MODELS.find((m) => m.provider === p);
-                      if (def) setSelectedModel(def.id);
+                      if (def) {
+                        setSelectedModel(def.id);
+                        setHasVision(def.hasVision);
+                      }
                     }}
                     className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono font-bold"
                   >
@@ -311,6 +321,7 @@ export function AdminPage() {
                     Model chỉ định *
                   </label>
                   <select
+                    name="elio_ai_model_select"
                     value={selectedModel}
                     onChange={(e) => {
                       const mId = e.target.value;
@@ -322,7 +333,7 @@ export function AdminPage() {
                   >
                     {availableModelsForProvider.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name} {m.hasVision ? '📷 (Đọc ảnh/PDF)' : '⚡ (Siêu tốc)'}
+                        {m.name} ({m.id}) {m.hasVision ? '📷 Đọc ảnh' : '⚡ Tốc độ'}
                       </option>
                     ))}
                   </select>
@@ -387,6 +398,8 @@ export function AdminPage() {
                   </label>
                   <input
                     type="password"
+                    name="elio_custom_ai_secret_key"
+                    autoComplete="new-password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder={`Dán mã key ${providerType.toUpperCase()} của bạn...`}

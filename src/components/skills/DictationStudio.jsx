@@ -3,8 +3,17 @@ import { db } from '@/lib/db';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { StudioResult } from '@/components/ui/StudioResult';
 import { speechMatchScore } from '@/lib/algorithms';
+import { auditDictationSentence } from '@/lib/ai-evaluator';
 import { SKILL_POOLS } from '@/data/skills';
-import { Volume2, CheckCircle2, RotateCcw } from 'lucide-react';
+import {
+  Volume2,
+  CheckCircle2,
+  RotateCcw,
+  AlertCircle,
+  HelpCircle,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 export function DictationStudio({ onBack }) {
@@ -13,6 +22,7 @@ export function DictationStudio({ onBack }) {
   const [userInput, setUserInput] = useState('');
   const [checked, setChecked] = useState(false);
   const [resultScore, setResultScore] = useState(0);
+  const [auditInfo, setAuditInfo] = useState(null);
   const [sessionScores, setSessionScores] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
 
@@ -23,7 +33,13 @@ export function DictationStudio({ onBack }) {
     if (!userInput.trim()) return;
 
     const score = speechMatchScore(currentItem.de, userInput.trim());
+    const audit = auditDictationSentence({
+      target: currentItem.de,
+      user: userInput.trim(),
+    });
+
     setResultScore(score);
+    setAuditInfo(audit);
     setChecked(true);
     setSessionScores((prev) => [...prev, score]);
 
@@ -33,6 +49,7 @@ export function DictationStudio({ onBack }) {
 
   const handleNext = () => {
     setUserInput('');
+    setAuditInfo(null);
     setChecked(false);
     if (currentIndex + 1 < pool.length) {
       setCurrentIndex(currentIndex + 1);
@@ -44,7 +61,7 @@ export function DictationStudio({ onBack }) {
       db.skillSessions.create({
         skill: 'listening',
         score: avg,
-        title: 'Luyện nghe chính tả (Dictation)',
+        title: 'Luyện nghe chính tả (Diktat)',
         details: `Đã hoàn thành ${pool.length} câu nghe chính tả với độ chính xác ${avg}%.`,
         duration_seconds: pool.length * 60,
       });
@@ -57,14 +74,15 @@ export function DictationStudio({ onBack }) {
     const avg = Math.round(sessionScores.reduce((a, b) => a + b, 0) / sessionScores.length);
     return (
       <StudioResult
-        title="Kết quả Xưởng Nghe chính tả"
+        title="Kết quả Xưởng Nghe chính tả (Diktat)"
         score={avg}
         passed={avg >= 60}
-        badgeText="Hören / Dictation"
+        badgeText="Hören / Diktat"
         summary={`Bạn đã hoàn thành ${pool.length} câu chính tả với độ chuẩn xác trung bình ${avg}%.`}
         onRetry={() => {
           setCurrentIndex(0);
           setUserInput('');
+          setAuditInfo(null);
           setChecked(false);
           setSessionScores([]);
           setIsFinished(false);
@@ -78,15 +96,15 @@ export function DictationStudio({ onBack }) {
   return (
     <div className="surface p-6 md:p-8 max-w-2xl mx-auto space-y-6 animate-rise">
       <div className="flex items-center justify-between border-b border-border pb-3">
-        <div className="eyebrow">Hören • Câu {currentIndex + 1} / {pool.length}</div>
+        <div className="eyebrow">Hören • Diktat câu {currentIndex + 1} / {pool.length}</div>
         <span className="text-xs font-mono px-2 py-0.5 rounded-sm bg-accent/10 text-accent font-semibold">
           Trình độ {currentItem.level}
         </span>
       </div>
 
-      <div className="text-center py-6 space-y-3">
+      <div className="text-center py-5 space-y-3">
         <p className="font-body text-xs text-muted-foreground">
-          Nhấn nút để nghe câu tiếng Đức, sau đó gõ lại chính xác từng từ:
+          Bấm nút phát âm để nghe câu chuẩn tiếng Đức (de-DE), sau đó gõ lại chính xác từng từ:
         </p>
         <div className="flex justify-center">
           <SpeakButton text={currentItem.de} size="lg" />
@@ -112,40 +130,107 @@ export function DictationStudio({ onBack }) {
             type="submit"
             className="tap w-full py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm"
           >
-            Kiểm tra đáp án
+            Kiểm tra & Đối chiếu chi tiết
           </button>
         </form>
       ) : (
         <div className="space-y-4 animate-rise">
-          <div className="p-4 rounded-sm border border-border bg-card/60 space-y-2">
+          {/* Detailed Audit Container */}
+          <div className="p-4 rounded-sm border border-border bg-card/60 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono text-muted-foreground">Độ chính xác:</span>
-              <span className="font-display font-bold text-xl text-accent">{resultScore}%</span>
+              <div>
+                <span className="text-xs font-mono text-muted-foreground">Độ chính xác âm học:</span>
+                <div className="font-display font-bold text-2xl text-accent">{resultScore}%</div>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-sm text-xs font-mono font-bold ${
+                  resultScore >= 80
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                }`}
+              >
+                {resultScore >= 80 ? 'Sehr gut' : 'Cần rèn thêm'}
+              </span>
             </div>
 
-            <div className="text-xs space-y-1 pt-2 border-t border-border">
-              <div>
-                <strong className="text-muted-foreground font-mono">Bạn đã gõ: </strong>
-                <span className="font-heading">{userInput}</span>
+            {/* Sentence comparison */}
+            <div className="space-y-2 pt-2 border-t border-border text-xs">
+              <div className="p-2.5 rounded bg-card border border-border">
+                <span className="font-mono text-[10px] text-muted-foreground block">Bạn đã gõ:</span>
+                <span className="font-heading text-sm text-foreground">{userInput}</span>
               </div>
-              <div>
-                <strong className="text-accent font-mono">Đáp án đúng: </strong>
-                <span className="font-heading font-semibold text-foreground">{currentItem.de}</span>
+              <div className="p-2.5 rounded bg-card border border-border">
+                <span className="font-mono text-[10px] text-accent font-bold block">Đáp án nguồn chính thức:</span>
+                <span className="font-heading text-sm font-semibold text-foreground">{currentItem.de}</span>
               </div>
-              <div className="text-muted-foreground font-body italic pt-1">
-                → Dịch nghĩa: {currentItem.vi}
+              <div className="text-muted-foreground font-body italic text-xs pt-0.5">
+                → Nghĩa tiếng Việt: {currentItem.vi}
               </div>
             </div>
+
+            {/* Word-by-word Breakdown (Principle 7) */}
+            {auditInfo && (
+              <div className="space-y-2 pt-2 border-t border-border text-xs">
+                <div className="font-mono text-[11px] font-bold text-foreground">
+                  Phân tích đối chiếu từng từ:
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                  <div className="p-2 rounded bg-muted/30 border border-border">
+                    <span className="text-muted-foreground block">Từ nghe nhầm / viết sai:</span>
+                    <strong className="text-rose-600">
+                      {auditInfo.stats.misheardCount} từ
+                    </strong>
+                    {auditInfo.misheardWords.length > 0 && (
+                      <div className="text-[10px] mt-1 space-y-0.5">
+                        {auditInfo.misheardWords.map((w, i) => (
+                          <div key={i}>
+                            <span className="line-through text-rose-500">"{w.actual}"</span> →{' '}
+                            <span className="text-emerald-600 font-bold">"{w.expected}"</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-2 rounded bg-muted/30 border border-border">
+                    <span className="text-muted-foreground block">Lỗi viết hoa danh từ:</span>
+                    <strong className="text-amber-600">
+                      {auditInfo.stats.capitalizationCount} từ
+                    </strong>
+                    {auditInfo.capitalizationErrors.length > 0 && (
+                      <div className="text-[10px] mt-1 space-y-0.5">
+                        {auditInfo.capitalizationErrors.map((c, i) => (
+                          <div key={i}>
+                            <span className="text-amber-600 font-bold">"{c.actual}"</span> → Viết đúng:{' '}
+                            <span className="text-emerald-600 font-bold">"{c.expected}"</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Acoustic tip */}
+                <div className="p-2.5 rounded bg-accent/5 border border-accent/20 text-xs font-body text-accent">
+                  <strong>💡 Mẹo âm thanh & Nhận dạng: </strong>
+                  <span>{auditInfo.acousticTip}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <button
             onClick={handleNext}
-            className="tap w-full py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm"
+            className="tap w-full py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm flex items-center justify-center gap-2"
           >
-            {currentIndex + 1 < pool.length ? 'Tiếp tục câu sau →' : 'Xem tổng kết kết quả'}
+            <span>{currentIndex + 1 < pool.length ? 'Tiếp tục câu sau' : 'Xem tổng kết kết quả'}</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
     </div>
   );
 }
+
+export default DictationStudio;

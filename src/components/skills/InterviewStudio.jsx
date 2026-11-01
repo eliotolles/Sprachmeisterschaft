@@ -3,7 +3,18 @@ import { db } from '@/lib/db';
 import { interviewTurn, interviewFeedback } from '@/lib/elio-ai';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { StudioResult } from '@/components/ui/StudioResult';
-import { Bot, User, Send, Mic, Sparkles, CheckCircle2 } from 'lucide-react';
+import {
+  Bot,
+  User,
+  Send,
+  Mic,
+  Sparkles,
+  CheckCircle2,
+  ShieldAlert,
+  HelpCircle,
+  ArrowRight,
+  RotateCcw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 export function InterviewStudio({ onBack }) {
@@ -19,7 +30,11 @@ export function InterviewStudio({ onBack }) {
     // Initial examiner turn
     const startPart = async () => {
       setLoading(true);
-      const firstTurn = await interviewTurn({ part, messages: [], level: profile.target_level || 'B1' });
+      const firstTurn = await interviewTurn({
+        part,
+        messages: [],
+        level: profile.target_level || 'B1',
+      });
       setMessages([{ role: 'assistant', content: firstTurn }]);
       setLoading(false);
     };
@@ -100,54 +115,67 @@ export function InterviewStudio({ onBack }) {
           {[1, 2, 3].map((p) => (
             <button
               key={p}
+              type="button"
               onClick={() => {
                 setPart(p);
                 setFeedback(null);
+                setMessages([]);
               }}
-              className={`tap px-2.5 py-1 text-xs font-mono rounded-sm border ${
+              className={`tap px-3 py-1 rounded-sm text-xs font-mono font-bold border transition-all ${
                 part === p
-                  ? 'bg-accent text-accent-foreground border-accent font-semibold'
+                  ? 'bg-accent text-accent-foreground border-accent'
                   : 'bg-card border-border text-muted-foreground hover:text-foreground'
               }`}
             >
-              Phần {p}
+              Teil {p}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Principle 9 Transparency Alert */}
+      <div className="p-3 rounded-sm bg-muted/20 border border-border text-[11px] font-body text-muted-foreground flex items-start gap-2">
+        <ShieldAlert className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+        <div>
+          <strong>Quy chuẩn thẩm định thi nói (Mục 9):</strong> Hệ thống đánh giá dựa trên mức độ đáp ứng yêu cầu, khả năng đối thoại và tính chính xác của từ vựng / ngữ pháp. <em>Chưa thể đánh giá phát âm trực tiếp qua văn bản nếu không xử lý audio thực tế.</em>
+        </div>
+      </div>
+
       {!feedback ? (
         <div className="space-y-4">
-          <div className="p-3 rounded-sm bg-muted/20 border border-border text-xs font-body text-muted-foreground flex items-center justify-between">
-            <span>Giám khảo AI đóng vai người bản xứ Đức, đặt câu hỏi đúng trình độ {profile.target_level || 'B1'}.</span>
-            <button
-              onClick={handleEndInterview}
-              disabled={messages.length < 3 || loading}
-              className="tap px-3 py-1 bg-accent hover:bg-accent/90 disabled:opacity-50 text-accent-foreground font-mono text-[11px] rounded-sm shrink-0"
-            >
-              Kết thúc & Chấm điểm
-            </button>
+          <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+            <span>Giám khảo AI ELIO (CEFR {profile.target_level || 'B1'})</span>
+            {messages.filter((m) => m.role === 'user').length >= 2 && (
+              <button
+                type="button"
+                onClick={handleEndInterview}
+                disabled={loading}
+                className="tap px-2.5 py-1 rounded-sm bg-accent/10 border border-accent/30 text-accent font-semibold hover:bg-accent/20"
+              >
+                Kết thúc & Nhận thẩm định
+              </button>
+            )}
           </div>
 
-          {/* Dialogue turns */}
-          <div className="h-[360px] overflow-y-auto space-y-3 p-4 rounded-sm border border-border bg-card/60">
+          {/* Dialogue Area */}
+          <div className="p-4 rounded-sm border border-border bg-card/60 min-h-[340px] max-h-[500px] overflow-y-auto space-y-3">
             {messages.map((m, idx) => {
               const isAssistant = m.role === 'assistant';
               return (
                 <div
                   key={idx}
-                  className={`flex gap-3 text-xs leading-relaxed ${
+                  className={`flex gap-3 text-xs ${
                     isAssistant ? 'justify-start' : 'justify-end'
                   }`}
                 >
                   {isAssistant && (
-                    <div className="w-7 h-7 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0 mt-0.5">
+                    <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0 mt-0.5">
                       <Bot className="w-4 h-4" />
                     </div>
                   )}
 
                   <div
-                    className={`p-3 rounded-sm max-w-[80%] font-heading ${
+                    className={`p-3 rounded-sm max-w-[80%] font-heading leading-relaxed ${
                       isAssistant
                         ? 'bg-muted/40 border border-border text-foreground'
                         : 'bg-accent text-accent-foreground font-medium'
@@ -171,7 +199,7 @@ export function InterviewStudio({ onBack }) {
             {loading && (
               <div className="flex gap-2 items-center text-xs font-mono text-muted-foreground">
                 <Bot className="w-4 h-4 animate-spin text-accent" />
-                <span>Giám khảo đang lắng nghe và suy nghĩ...</span>
+                <span>Giám khảo đang lắng nghe và phản hồi...</span>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -203,7 +231,7 @@ export function InterviewStudio({ onBack }) {
           <div className="surface p-6 border-accent/30 bg-accent/5 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <div className="eyebrow">Đánh giá phần thi nói</div>
+                <div className="eyebrow">Đánh giá phần thi nói mô phỏng</div>
                 <h3 className="font-display text-3xl font-bold text-accent">
                   {feedback.score} / 100 điểm
                 </h3>
@@ -248,12 +276,17 @@ export function InterviewStudio({ onBack }) {
           {/* Model Phrases */}
           <div className="surface p-4 space-y-2 bg-muted/10">
             <h4 className="font-display text-lg font-bold text-foreground">
-              3 Mẫu câu ăn điểm cao nên nhớ:
+              Mẫu câu Redemittel ăn điểm nên dùng:
             </h4>
             <div className="space-y-1.5">
               {feedback.phrases.map((phrase, i) => (
-                <div key={i} className="p-2.5 rounded-sm bg-card border border-border text-xs flex items-center justify-between gap-2">
-                  <span className="font-heading italic text-foreground font-medium">"{phrase}"</span>
+                <div
+                  key={i}
+                  className="p-2.5 rounded-sm bg-card border border-border text-xs flex items-center justify-between gap-2"
+                >
+                  <span className="font-heading italic text-foreground font-medium">
+                    "{phrase}"
+                  </span>
                   <SpeakButton text={phrase} size="sm" />
                 </div>
               ))}
@@ -282,3 +315,5 @@ export function InterviewStudio({ onBack }) {
     </div>
   );
 }
+
+export default InterviewStudio;
