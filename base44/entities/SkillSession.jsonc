@@ -1,0 +1,25 @@
+{
+  "name": "SkillSession",
+  "type": "object",
+  "properties": {
+    "skill": {
+      "type": "string",
+      "enum": [
+        "listening",
+        "speaking",
+        "reading",
+        "writing",
+        "pronunciation",
+        "grammar",
+        "interview",
+        "game"
+      ]
+    },
+    "score": { "type": "number" },
+    "title": { "type": "string" },
+    "details": { "type": "string" },
+    "duration_seconds": { "type": "number", "default": 0 },
+    "date": { "type": "string", "format": "date" }
+  },
+  "required": ["skill", "score", "date"]
+}

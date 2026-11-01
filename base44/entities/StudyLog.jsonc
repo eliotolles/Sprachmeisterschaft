@@ -1,0 +1,12 @@
+{
+  "name": "StudyLog",
+  "type": "object",
+  "properties": {
+    "date": { "type": "string", "format": "date" },
+    "cards_reviewed": { "type": "number", "default": 0 },
+    "new_words": { "type": "number", "default": 0 },
+    "xp": { "type": "number", "default": 0 },
+    "minutes": { "type": "number", "default": 0 }
+  },
+  "required": ["date"]
+}

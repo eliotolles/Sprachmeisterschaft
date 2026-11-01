@@ -1,0 +1,11 @@
+{
+  "name": "LearnerProfile",
+  "type": "object",
+  "properties": {
+    "display_name": { "type": "string" },
+    "exam_date": { "type": "string", "format": "date" },
+    "daily_goal": { "type": "number", "default": 20 },
+    "target_level": { "type": "string", "default": "B1" }
+  },
+  "required": []
+}

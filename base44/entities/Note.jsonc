@@ -1,0 +1,10 @@
+{
+  "name": "Note",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "content": { "type": "string" },
+    "type": { "type": "string", "enum": ["note", "draft", "document"], "default": "note" }
+  },
+  "required": ["title"]
+}

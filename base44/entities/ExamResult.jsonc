@@ -1,0 +1,19 @@
+{
+  "name": "ExamResult",
+  "type": "object",
+  "properties": {
+    "exam_id": { "type": "string" },
+    "provider": { "type": "string" },
+    "title": { "type": "string" },
+    "level": { "type": "string" },
+    "mc_score": { "type": "number", "default": 0 },
+    "mc_total": { "type": "number", "default": 0 },
+    "writing_score": { "type": "number", "default": 0 },
+    "total": { "type": "number", "default": 0 },
+    "passed": { "type": "boolean", "default": false },
+    "duration_seconds": { "type": "number", "default": 0 },
+    "feedback": { "type": "string" },
+    "date": { "type": "string", "format": "date" }
+  },
+  "required": ["title", "total", "date"]
+}

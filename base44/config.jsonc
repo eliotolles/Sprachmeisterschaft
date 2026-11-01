@@ -1,0 +1,11 @@
+{
+  "name": "Sprachmeisterschaft",
+  "description": "Nền tảng tự học tiếng Đức A1–C2 cho người Việt",
+  "visibility": "public",
+  "site": {
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "serveCommand": "npm run dev",
+    "outputDirectory": "./dist"
+  }
+}

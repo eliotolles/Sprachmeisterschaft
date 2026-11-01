@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-display: 'Cormorant Garamond', Georgia, serif;
+    --font-heading: 'Lora', Georgia, serif;
+    --font-body: 'Lora', Georgia, serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Light Theme (ấn phẩm Đức cổ điển) */
+    --background: 41 36% 94%;
+    --foreground: 27 17% 14%;
+
+    --card: 43 44% 97%;
+    --card-foreground: 27 17% 14%;
+
+    --primary: 27 17% 14%;
+    --primary-foreground: 41 36% 94%;
+
+    --secondary: 38 27% 89%;
+    --secondary-foreground: 27 17% 14%;
+
+    --muted: 38 25% 90%;
+    --muted-foreground: 30 11% 39%;
+
+    --accent: 6 52% 32%; /* Rượu vang đỏ / Burgundy */
+    --accent-foreground: 41 36% 94%;
+
+    --border: 35 22% 81%;
+    --input: 35 22% 81%;
+    --ring: 6 52% 32%;
+    --radius: 0.25rem;
+
+    --paper-light: #fcf9f2;
+    --paper-deep: #f1ebd9;
+
+    --chart-1: 6 52% 32%;
+    --chart-2: 205 30% 30%;
+    --chart-3: 41 62% 44%;
+    --chart-4: 152 25% 30%;
+    --chart-5: 275 20% 40%;
+    --chart-6: 30 18% 38%;
+    --chart-7: 190 22% 42%;
+  }
+
+  .dark {
+    --background: 27 12% 10%;
+    --foreground: 40 28% 89%;
+
+    --card: 27 11% 13%;
+    --card-foreground: 40 28% 89%;
+
+    --primary: 40 28% 89%;
+    --primary-foreground: 27 12% 10%;
+
+    --secondary: 27 10% 18%;
+    --secondary-foreground: 40 28% 89%;
+
+    --muted: 27 10% 18%;
+    --muted-foreground: 35 12% 60%;
+
+    --accent: 8 55% 52%;
+    --accent-foreground: 27 12% 10%;
+
+    --border: 30 9% 23%;
+    --input: 30 9% 23%;
+    --ring: 8 55% 52%;
+
+    --paper-light: #1c1a17;
+    --paper-deep: #141311;
+
+    --chart-1: 8 60% 62%;
+    --chart-2: 205 45% 58%;
+    --chart-3: 41 65% 58%;
+    --chart-4: 152 40% 55%;
+    --chart-5: 275 35% 65%;
+    --chart-6: 30 30% 58%;
+    --chart-7: 190 35% 60%;
+  }
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  background-image: 
+    radial-gradient(circle at 50% 0%, var(--paper-light) 0%, transparent 75%),
+    linear-gradient(to bottom, hsl(var(--background)), hsl(var(--background)));
+  background-attachment: fixed;
+}
+
+/* Old-style figures for display numbers */
+.font-display {
+  font-family: var(--font-display);
+  font-variant-numeric: oldstyle-nums;
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Paper card surface */
+.surface {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 2px 8px -2px rgba(45, 30, 20, 0.04);
+  border-radius: calc(var(--radius) - 1px);
+}
+
+/* Double rule classical German publication */
+.rule-double {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.rule-double::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: hsl(var(--border));
+}
+.rule-double::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: hsl(var(--border));
+}
+
+/* Eyebrow classical typesetting */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: hsl(var(--accent));
+  font-weight: 600;
+}
+
+/* Wordmark styling */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Tactile feedback */
+.tap {
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+.tap:active {
+  transform: scale(0.985);
+}
+
+/* Subtle grain overlay */
+.grain {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Custom scrollbars matching classical paper style */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}

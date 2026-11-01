@@ -1,0 +1,22 @@
+{
+  "name": "VocabularyCard",
+  "type": "object",
+  "properties": {
+    "german": { "type": "string" },
+    "article": { "type": "string", "enum": ["der", "die", "das", ""] },
+    "word_type": { "type": "string" },
+    "vietnamese": { "type": "string" },
+    "example_de": { "type": "string" },
+    "example_vi": { "type": "string" },
+    "topic": { "type": "string" },
+    "level": { "type": "string" },
+    "status": { "type": "string", "enum": ["new", "learning", "review", "mastered"], "default": "new" },
+    "ease_factor": { "type": "number", "default": 2.5 },
+    "interval_days": { "type": "number", "default": 0 },
+    "repetitions": { "type": "number", "default": 0 },
+    "lapses": { "type": "number", "default": 0 },
+    "due_date": { "type": "string", "format": "date" },
+    "last_reviewed": { "type": "string", "format": "date" }
+  },
+  "required": ["german", "vietnamese"]
+}
