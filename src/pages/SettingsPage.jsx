@@ -4,7 +4,25 @@ import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LEVEL_IDS, LEVELS } from '@/data/levels';
 import { getStoredAiKey, setStoredAiKey } from '@/lib/elio-ai';
-import { Save, RotateCcw, Key, Sparkles, AlertCircle } from 'lucide-react';
+import {
+  getTursoConfig,
+  saveTursoConfig,
+  testTursoConnection,
+  migrateTursoSchema,
+  syncLocalToTurso,
+} from '@/lib/turso';
+import {
+  Save,
+  RotateCcw,
+  Key,
+  Sparkles,
+  AlertCircle,
+  Database,
+  CheckCircle2,
+  Cloud,
+  CloudUpload,
+  RefreshCw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -16,6 +34,59 @@ export function SettingsPage() {
   const [examDate, setExamDate] = useState(profile.exam_date || '');
   const [dailyGoal, setDailyGoal] = useState(profile.daily_goal || 20);
   const [aiKey, setAiKey] = useState(getStoredAiKey());
+
+  // Turso state
+  const [tursoConfig, setTursoConfigState] = useState(getTursoConfig);
+  const [tursoStatus, setTursoStatus] = useState(null);
+  const [isTestingTurso, setIsTestingTurso] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleTestTurso = async () => {
+    setIsTestingTurso(true);
+    setTursoStatus(null);
+    saveTursoConfig(tursoConfig);
+    const res = await testTursoConnection();
+    setIsTestingTurso(false);
+    setTursoStatus(res);
+    if (res.ok) {
+      toast.success(`Kết nối Turso thành công (${res.latencyMs}ms)! Tìm thấy ${res.tablesCount} bảng.`);
+    } else {
+      toast.error(`Kết nối thất bại: ${res.error}`);
+    }
+  };
+
+  const handleMigrateTurso = async () => {
+    setIsMigrating(true);
+    try {
+      saveTursoConfig(tursoConfig);
+      await migrateTursoSchema();
+      toast.success('Đã khởi tạo thành công 7 bảng dữ liệu trên Turso!');
+      handleTestTurso();
+    } catch (e) {
+      toast.error('Lỗi khởi tạo bảng: ' + e.message);
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
+  const handleSyncToTurso = async () => {
+    setIsSyncing(true);
+    try {
+      saveTursoConfig(tursoConfig);
+      const state = {
+        vocabularyCards: db.vocabulary.findMany(),
+        studyLogs: db.studyLogs.findMany(),
+        learnerProfile: profile,
+      };
+      const res = await syncLocalToTurso(state);
+      toast.success(`Đồng bộ thành công! ${res.cards} thẻ từ vựng & ${res.logs} nhật ký đã đẩy lên Turso.`);
+    } catch (e) {
+      toast.error('Lỗi đồng bộ: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -153,6 +224,98 @@ export function SettingsPage() {
           <p className="text-[11px] font-body text-muted-foreground mt-1">
             Nếu để trống, ELIO sẽ vận hành hoàn toàn độc lập bằng engine mô phỏng chuyên sâu chuẩn xác.
           </p>
+        </div>
+
+        {/* TURSO EDGE DATABASE CONNECTION */}
+        <div className="pt-4 border-t border-border space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-accent" />
+              <span className="font-display text-sm font-bold text-foreground">
+                Cơ sở dữ liệu đám mây Turso (libSQL Edge)
+              </span>
+            </div>
+
+            <span
+              className={`text-[10px] font-mono px-2 py-0.5 rounded-sm border ${
+                tursoStatus?.ok
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'
+                  : 'bg-muted text-muted-foreground border-border'
+              }`}
+            >
+              {tursoStatus?.ok ? `Đã kết nối (${tursoStatus.latencyMs}ms)` : 'Chưa kết nối Cloud'}
+            </span>
+          </div>
+
+          <p className="text-xs font-body text-muted-foreground">
+            Kết nối Turso để lưu trữ 7 bảng dữ liệu (thẻ từ vựng SRS, nhật ký học, kết quả 9 đề thi, ghi chú)
+            đồng bộ tức thì trên toàn cầu khi xuất bản lên Cloudflare Pages.
+          </p>
+
+          <div className="space-y-3 p-4 rounded-sm bg-muted/30 border border-border">
+            <div>
+              <label className="block text-[11px] font-mono text-foreground mb-1">
+                Turso Database URL (Ví dụ: <code>libsql://db-name-org.turso.io</code>)
+              </label>
+              <input
+                type="text"
+                value={tursoConfig.url}
+                onChange={(e) =>
+                  setTursoConfigState({ ...tursoConfig, url: e.target.value.trim() })
+                }
+                placeholder="libsql://sprachmeisterschaft-yourname.turso.io"
+                className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-mono text-foreground mb-1">
+                Turso Auth Token
+              </label>
+              <input
+                type="password"
+                value={tursoConfig.authToken}
+                onChange={(e) =>
+                  setTursoConfigState({ ...tursoConfig, authToken: e.target.value.trim() })
+                }
+                placeholder="eyJh..."
+                className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+              />
+            </div>
+
+            {/* Turso Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleTestTurso}
+                disabled={isTestingTurso || !tursoConfig.url}
+                className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-xs font-mono font-medium flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isTestingTurso ? 'animate-spin' : ''}`} />
+                <span>{isTestingTurso ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMigrateTurso}
+                disabled={isMigrating || !tursoConfig.url}
+                className="tap px-3 py-1.5 rounded-sm border border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent text-xs font-mono font-medium flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>{isMigrating ? 'Đang tạo bảng...' : 'Khởi tạo 7 bảng (Migrate)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSyncToTurso}
+                disabled={isSyncing || !tursoConfig.url}
+                className="tap px-3 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CloudUpload className="w-3.5 h-3.5" />
+                <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ thẻ lên Turso'}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Submit */}
