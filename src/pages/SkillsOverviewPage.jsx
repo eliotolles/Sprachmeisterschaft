@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { SKILLS } from '@/data/skills';
 import {
   Headphones,
@@ -16,6 +17,7 @@ import {
   Sparkles,
   Clock,
   Award,
+  Plus,
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -32,6 +34,7 @@ const ICON_MAP = {
 export function SkillsOverviewPage() {
   const { navigate } = useRouter();
   const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   useEffect(() => {
     const handleDbChange = () => {
@@ -56,6 +59,15 @@ export function SkillsOverviewPage() {
         title="7 Xưởng kỹ năng ngôn ngữ"
         deTitle="Fertigkeiten"
         subtitle="Rèn giũa phản xạ từ nghe, nói, đọc, viết đến phát âm và phỏng vấn mô phỏng."
+        actions={
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Import bài luyện mới</span>
+          </button>
+        }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -63,7 +75,11 @@ export function SkillsOverviewPage() {
           const Icon = ICON_MAP[skill.icon] || Sparkles;
           const lastSession = latestBySkill[skill.id];
           const isGame = skill.id === 'game';
-          const linkPath = isGame ? '/game' : `/skills/${skill.id}`;
+          const linkPath = isGame
+            ? '/game'
+            : skill.id === 'listening'
+            ? '/skills/listening'
+            : `/skills/${skill.id}`;
 
           return (
             <div
@@ -117,6 +133,12 @@ export function SkillsOverviewPage() {
           );
         })}
       </div>
+
+      <UniversalImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultType="listening"
+      />
     </div>
   );
 }

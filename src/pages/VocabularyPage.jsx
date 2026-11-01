@@ -3,11 +3,12 @@ import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { VocabTabs } from '@/components/vocabulary/VocabTabs';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { GenderText } from '@/components/ui/GenderText';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate } from '@/lib/algorithms';
-import { Search, Plus, Trash2, RotateCw, Filter, BookOpen } from 'lucide-react';
+import { Search, Plus, Trash2, RotateCw, Filter, BookOpen, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function VocabularyPage() {
@@ -16,6 +17,7 @@ export function VocabularyPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
 
   // New word form state
@@ -108,13 +110,22 @@ export function VocabularyPage() {
         deTitle="Wortschatz"
         subtitle="Quản lý và ôn luyện các từ vựng tiếng Đức đã lưu theo thuật toán SRS."
         actions={
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="tap px-3.5 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 shadow-sm inline-flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm từ mới</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="tap px-3.5 py-2 bg-card hover:bg-muted text-foreground text-xs font-mono font-medium rounded-sm border border-border shadow-sm inline-flex items-center gap-1.5"
+            >
+              <UploadCloud className="w-4 h-4 text-accent" />
+              <span>Import bộ từ</span>
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="tap px-3.5 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 shadow-sm inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Thêm từ mới</span>
+            </button>
+          </div>
         }
       />
 
@@ -390,6 +401,16 @@ export function VocabularyPage() {
           </div>
         </div>
       )}
+
+      {/* Universal Import Modal */}
+      <UniversalImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        defaultType="vocabulary"
+        onSuccess={() => {
+          setCards(db.vocabulary.findMany());
+        }}
+      />
     </div>
   );
 }

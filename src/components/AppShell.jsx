@@ -19,6 +19,8 @@ import {
   X,
   Compass,
   BookOpen,
+  Headphones,
+  ShieldCheck,
 } from 'lucide-react';
 
 export function AppShell({ children }) {
@@ -55,6 +57,7 @@ export function AppShell({ children }) {
       group: 'Luyện / Trainieren',
       items: [
         { path: '/skills', label: 'Kỹ năng', de: 'Fertigkeiten', icon: Sparkles },
+        { path: '/skills/listening', label: 'Luyện nghe', de: 'Hörverstehen', icon: Headphones },
         { path: '/game', label: 'Trò chơi', de: 'Der/Die/Das', icon: Gamepad2 },
         { path: '/exams', label: 'Luyện thi', de: 'Prüfung', icon: FileCheck2 },
         { path: '/readiness', label: 'Sẵn sàng thi', de: 'Prüfungsreife', icon: Gauge },
@@ -66,6 +69,7 @@ export function AppShell({ children }) {
       items: [
         { path: '/progress', label: 'Tiến độ', de: 'Fortschritt', icon: TrendingUp },
         { path: '/me', label: 'Meine Seiten', de: 'Mein Bereich', icon: UserCheck },
+        { path: '/admin', label: 'Quản trị viên', de: 'Admin Panel', icon: ShieldCheck },
       ],
     },
   ];

@@ -1,4 +1,5 @@
 import { formatDate, addDays, calculateStreak } from './algorithms';
+import { LISTENING_COLLECTIONS, LISTENING_EPISODES } from '@/data/listening-collections';
 
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
 const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
@@ -6,13 +7,92 @@ const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
 function loadDatabase() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Ensure new schemas exist
+      if (!parsed.users) parsed.users = [];
+      if (!parsed.aiConfigs) parsed.aiConfigs = [];
+      if (!parsed.aiTaskAssignments) parsed.aiTaskAssignments = {};
+      if (!parsed.uiVoiceConfig) parsed.uiVoiceConfig = { fontFamily: 'serif', speechVoice: '', rate: 0.9, pitch: 1.0 };
+      if (!parsed.listeningCollections || parsed.listeningCollections.length === 0) parsed.listeningCollections = LISTENING_COLLECTIONS;
+      if (!parsed.listeningEpisodes || parsed.listeningEpisodes.length === 0) parsed.listeningEpisodes = LISTENING_EPISODES;
+      if (!parsed.universalImports) parsed.universalImports = [];
+      return parsed;
+    }
   } catch (e) {
     console.error('Failed to load database:', e);
   }
 
-  // Initial clean database
+  // Initial clean database with Admin & Student
   return {
+    users: [
+      {
+        id: 'usr_admin',
+        name: 'Quản trị viên Hệ thống (Master Admin)',
+        email: 'admin@sprachmeisterschaft.de',
+        role: 'admin',
+        is_blocked: false,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'usr_student',
+        name: 'Nguyễn Văn Đạt (Học viên)',
+        email: 'hocvien@sprachmeisterschaft.de',
+        role: 'user',
+        is_blocked: false,
+        created_at: new Date().toISOString(),
+      },
+    ],
+    aiConfigs: [
+      {
+        id: 'ai-cfg-gemini',
+        name: 'Gemini 2.0 Flash (Chính)',
+        provider: 'gemini',
+        model: 'gemini-2.0-flash',
+        apiKey: '',
+        hasVision: true,
+        priority: 1,
+        enabled: true,
+      },
+      {
+        id: 'ai-cfg-groq',
+        name: 'Groq Llama 3.3 70B (Siêu tốc)',
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile',
+        apiKey: '',
+        hasVision: false,
+        priority: 2,
+        enabled: true,
+      },
+      {
+        id: 'ai-cfg-openrouter',
+        name: 'OpenRouter Qwen 2.5 (Ngữ pháp)',
+        provider: 'openrouter',
+        model: 'qwen/qwen-2.5-72b-instruct:free',
+        apiKey: '',
+        hasVision: false,
+        priority: 3,
+        enabled: true,
+      },
+    ],
+    aiTaskAssignments: {
+      ocr_image: { provider: 'gemini', model: 'gemini-2.0-flash' },
+      writing_grading: { provider: 'gemini', model: 'gemini-2.0-flash' },
+      elio_chat: { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      interview: { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      grammar_deep: { provider: 'openrouter', model: 'qwen/qwen-2.5-72b-instruct:free' },
+      audio_subtitles: { provider: 'groq', model: 'whisper-large-v3' },
+      speaking_eval: { provider: 'gemini', model: 'gemini-2.0-flash' },
+    },
+    uiVoiceConfig: {
+      fontFamily: 'serif',
+      speechVoice: '',
+      rate: 0.9,
+      pitch: 1.0,
+    },
+    listeningCollections: LISTENING_COLLECTIONS,
+    listeningEpisodes: LISTENING_EPISODES,
+    universalImports: [],
     vocabularyCards: [],
     studyLogs: [
       {
@@ -420,6 +500,242 @@ export const db = {
     logout: () => {
       localStorage.removeItem(AUTH_KEY);
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+    },
+
+    isAdmin: () => {
+      const u = db.auth.getUser();
+      if (!u) return false;
+      return u.role === 'admin' || (u.email && u.email.toLowerCase().includes('admin'));
+    },
+
+    setRole: (role) => {
+      const u = db.auth.getUser();
+      if (u) {
+        u.role = role;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+        window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      }
+    },
+  },
+
+  // User Management for Admin
+  users: {
+    findAll: () => [...(state.users || [])],
+    findById: (id) => (state.users || []).find((u) => u.id === id),
+    create: (userData) => {
+      const newUser = {
+        id: `usr_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        name: userData.name || 'Người dùng mới',
+        email: userData.email,
+        role: userData.role || 'user',
+        is_blocked: false,
+        created_at: new Date().toISOString(),
+      };
+      state.users.unshift(newUser);
+      saveDatabase(state);
+      return newUser;
+    },
+    update: (id, updates) => {
+      state.users = (state.users || []).map((u) =>
+        u.id === id ? { ...u, ...updates } : u
+      );
+      saveDatabase(state);
+      return state.users.find((u) => u.id === id);
+    },
+    toggleBlock: (id) => {
+      state.users = (state.users || []).map((u) =>
+        u.id === id ? { ...u, is_blocked: !u.is_blocked } : u
+      );
+      saveDatabase(state);
+    },
+    toggleRole: (id) => {
+      state.users = (state.users || []).map((u) =>
+        u.id === id ? { ...u, role: u.role === 'admin' ? 'user' : 'admin' } : u
+      );
+      saveDatabase(state);
+    },
+    delete: (id) => {
+      state.users = (state.users || []).filter((u) => u.id !== id);
+      saveDatabase(state);
+      return true;
+    },
+  },
+
+  // AI Providers & Tasks Assignment
+  aiConfig: {
+    getConfigs: () => [...(state.aiConfigs || [])],
+    saveConfig: (config) => {
+      const idx = (state.aiConfigs || []).findIndex((c) => c.id === config.id);
+      if (idx >= 0) {
+        state.aiConfigs[idx] = { ...state.aiConfigs[idx], ...config };
+      } else {
+        state.aiConfigs.push({
+          id: config.id || `ai-cfg-${Date.now()}`,
+          ...config,
+        });
+      }
+      saveDatabase(state);
+    },
+    deleteConfig: (id) => {
+      state.aiConfigs = (state.aiConfigs || []).filter((c) => c.id !== id);
+      saveDatabase(state);
+    },
+    getAssignments: () => ({ ...(state.aiTaskAssignments || {}) }),
+    setAssignment: (taskId, providerId, model) => {
+      if (!state.aiTaskAssignments) state.aiTaskAssignments = {};
+      state.aiTaskAssignments[taskId] = { provider: providerId, model };
+      saveDatabase(state);
+    },
+  },
+
+  // UI & Voice Customization
+  uiVoiceConfig: {
+    get: () => ({
+      fontFamily: state.uiVoiceConfig?.fontFamily || 'serif',
+      speechVoice: state.uiVoiceConfig?.speechVoice || '',
+      rate: state.uiVoiceConfig?.rate || 0.9,
+      pitch: state.uiVoiceConfig?.pitch || 1.0,
+    }),
+    update: (updates) => {
+      state.uiVoiceConfig = { ...state.uiVoiceConfig, ...updates };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_ui_config_change', { detail: state.uiVoiceConfig }));
+      return state.uiVoiceConfig;
+    },
+  },
+
+  // Listening Collections & Episodes Studio
+  listening: {
+    getCollections: (filter = {}) => {
+      let cols = [...(state.listeningCollections || [])];
+      if (filter.level && filter.level !== 'ALL') {
+        cols = cols.filter((c) => c.level === filter.level);
+      }
+      // Permission check: if not admin, hide admin_only
+      if (!db.auth.isAdmin()) {
+        cols = cols.filter((c) => c.scope !== 'admin_only');
+      }
+      return cols;
+    },
+    getCollectionById: (id) => (state.listeningCollections || []).find((c) => c.id === id),
+    createCollection: (col) => {
+      const newCol = {
+        id: col.id || `col_${Date.now()}`,
+        title: col.title,
+        deTitle: col.deTitle || col.title,
+        provider: col.provider || 'Cộng đồng học tập',
+        level: col.level || 'B1',
+        thumbnail: col.thumbnail || 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=600&auto=format&fit=crop&q=80',
+        description: col.description || '',
+        episodesCount: 1,
+        scope: col.scope || 'public',
+        created_by: db.auth.getUser()?.id || 'usr_anon',
+      };
+      state.listeningCollections.unshift(newCol);
+      saveDatabase(state);
+      return newCol;
+    },
+    getEpisodes: (collectionId, filter = {}) => {
+      let eps = (state.listeningEpisodes || []).filter((e) => e.collectionId === collectionId);
+      if (filter.level && filter.level !== 'ALL') {
+        eps = eps.filter((e) => e.level === filter.level);
+      }
+      if (!db.auth.isAdmin()) {
+        eps = eps.filter((e) => e.scope !== 'admin_only');
+      }
+      return eps;
+    },
+    getEpisodeById: (id) => (state.listeningEpisodes || []).find((e) => e.id === id),
+    createEpisode: (ep) => {
+      const newEp = {
+        id: ep.id || `ep_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        collectionId: ep.collectionId,
+        title: ep.title,
+        deTitle: ep.deTitle || ep.title,
+        level: ep.level || 'B1',
+        youtubeId: ep.youtubeId || '',
+        duration: ep.duration || '03:00',
+        subtitles: ep.subtitles || [],
+        quiz: ep.quiz || [],
+        scope: ep.scope || 'public',
+        created_by: db.auth.getUser()?.id || 'usr_anon',
+        created_at: new Date().toISOString(),
+      };
+      state.listeningEpisodes.push(newEp);
+      saveDatabase(state);
+      return newEp;
+    },
+    updateEpisode: (id, updates) => {
+      state.listeningEpisodes = (state.listeningEpisodes || []).map((e) =>
+        e.id === id ? { ...e, ...updates } : e
+      );
+      saveDatabase(state);
+      return state.listeningEpisodes.find((e) => e.id === id);
+    },
+    deleteEpisode: (id) => {
+      state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.id !== id);
+      saveDatabase(state);
+      return true;
+    },
+  },
+
+  // Universal Content Store with Role-Based Scope
+  universal: {
+    create: (item) => {
+      const currentUser = db.auth.getUser();
+      const isAdmin = db.auth.isAdmin();
+
+      // Force private if not admin
+      let scope = item.scope || 'public';
+      if (!isAdmin && scope !== 'private') {
+        scope = 'private';
+      }
+
+      const record = {
+        id: item.id || `univ_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        type: item.type, // 'vocabulary' | 'listening' | 'reading' | 'writing' | 'speaking' | 'grammar' | 'interview' | 'exam'
+        title: item.title,
+        level: item.level || 'B1',
+        data: item.data,
+        scope, // 'public' | 'admin_only' | 'private'
+        created_by: currentUser?.id || 'usr_anon',
+        created_by_name: currentUser?.name || 'Học viên',
+        created_at: new Date().toISOString(),
+      };
+
+      state.universalImports.unshift(record);
+      saveDatabase(state);
+      return record;
+    },
+    findMany: (filter = {}) => {
+      const currentUser = db.auth.getUser();
+      const isAdmin = db.auth.isAdmin();
+
+      let items = [...(state.universalImports || [])];
+      if (filter.type) items = items.filter((i) => i.type === filter.type);
+      if (filter.level && filter.level !== 'ALL') items = items.filter((i) => i.level === filter.level);
+
+      // Visibility permission filter:
+      if (!isAdmin) {
+        items = items.filter((i) => i.scope === 'public' || i.created_by === currentUser?.id);
+      }
+
+      return items;
+    },
+    delete: (id) => {
+      const currentUser = db.auth.getUser();
+      const isAdmin = db.auth.isAdmin();
+      const item = (state.universalImports || []).find((i) => i.id === id);
+      if (!item) return false;
+
+      // Only admin or owner can delete
+      if (!isAdmin && item.created_by !== currentUser?.id) {
+        return false;
+      }
+
+      state.universalImports = (state.universalImports || []).filter((i) => i.id !== id);
+      saveDatabase(state);
+      return true;
     },
   },
 };

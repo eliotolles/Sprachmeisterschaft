@@ -1,12 +1,13 @@
 import React from 'react';
 import { useRouter, Link } from '@/lib/router';
-import { BookMarked, Library, Search, MessageSquare } from 'lucide-react';
+import { BookMarked, Layers, Library, Search, MessageSquare } from 'lucide-react';
 
 export function VocabTabs() {
   const { currentPath } = useRouter();
 
   const tabs = [
     { path: '/vocabulary', label: 'Bộ thẻ của tôi', icon: BookMarked },
+    { path: '/vocabulary/levels', label: 'Bộ từ theo cấp độ', icon: Layers },
     { path: '/vocabulary/library', label: 'Thư viện 950 từ', icon: Library },
     { path: '/vocabulary/dictionary', label: 'Từ điển tra cứu', icon: Search },
     { path: '/vocabulary/situations', label: 'Tình huống giao tiếp', icon: MessageSquare },

@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { LevelFilter } from '@/components/ui/LevelFilter';
 import { ALL_EXAMS } from '@/data/all-exams';
-import { FileCheck2, Clock, Award, ArrowRight, ShieldCheck } from 'lucide-react';
+import { FileCheck2, Clock, Award, ArrowRight, ShieldCheck, Plus } from 'lucide-react';
 
 export function ExamsListPage() {
   const { navigate } = useRouter();
   const [profile] = useState(() => db.learnerProfile.get());
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [examResults, setExamResults] = useState(() => db.examResults.findMany());
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   useEffect(() => {
     const handleDbChange = () => {
@@ -55,6 +57,15 @@ export function ExamsListPage() {
         title="Luyện 9 đề thi mô phỏng"
         deTitle="Prüfungssimulation"
         subtitle="Bộ đề chuẩn hóa quốc tế Goethe A1–C2, telc B1, ÖSD B1 và kỳ thi hội nhập DTZ B1."
+        actions={
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Import đề thi mới</span>
+          </button>
+        }
       />
 
       {/* Filter by Level */}
@@ -123,6 +134,12 @@ export function ExamsListPage() {
           );
         })}
       </div>
+
+      <UniversalImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultType="exam"
+      />
     </div>
   );
 }
