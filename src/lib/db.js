@@ -342,14 +342,7 @@ export const db = {
         const raw = localStorage.getItem(AUTH_KEY);
         if (raw) return JSON.parse(raw);
       } catch (e) {}
-      // Default signed-in user for smooth UX
-      return {
-        id: 'usr_default',
-        email: 'hocvien@sprachmeisterschaft.de',
-        name: state.learnerProfile.display_name || 'Nguyễn Văn Đạt',
-        role: 'user',
-        is_verified: true,
-      };
+      return null;
     },
 
     login: (email, password) => {
@@ -357,6 +350,40 @@ export const db = {
         id: 'usr_' + Date.now(),
         email: email || 'hocvien@sprachmeisterschaft.de',
         name: email.split('@')[0] || 'Học viên',
+        provider: 'email',
+        role: 'user',
+        is_verified: true,
+      };
+      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      return user;
+    },
+
+    loginWithGoogle: (profile = {}) => {
+      const user = {
+        id: 'usr_gg_' + Date.now(),
+        email: profile.email || 'dat.nguyenviet.1999@gmail.com',
+        name: profile.name || 'Nguyễn Văn Đạt',
+        picture: profile.picture || null,
+        provider: 'google',
+        role: 'user',
+        is_verified: true,
+      };
+      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      if (profile.name) {
+        state.learnerProfile.display_name = profile.name;
+        saveDatabase(state);
+      }
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      return user;
+    },
+
+    loginAsDemo: () => {
+      const user = {
+        id: 'usr_demo',
+        email: 'hocvien@sprachmeisterschaft.de',
+        name: 'Nguyễn Văn Đạt (Demo)',
+        provider: 'demo',
         role: 'user',
         is_verified: true,
       };
@@ -370,8 +397,9 @@ export const db = {
         id: 'usr_' + Date.now(),
         email: data.email,
         name: data.name || data.email.split('@')[0],
+        provider: 'email',
         role: 'user',
-        is_verified: false, // Needs OTP
+        is_verified: false, // Needs OTP verification
       };
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));

@@ -20,8 +20,9 @@ export function AuthGate({ children }) {
     };
   }, []);
 
-  // Allow auth pages without gate
+  // Allow auth and public pages without gate
   if (
+    currentPath === '/landing' ||
     currentPath === '/login' ||
     currentPath === '/register' ||
     currentPath === '/forgot-password' ||
@@ -30,8 +31,12 @@ export function AuthGate({ children }) {
     return children;
   }
 
-  // If not logged in, redirect to login
+  // If not logged in:
   if (!user) {
+    if (currentPath === '/' || currentPath === '') {
+      navigate('/landing');
+      return null;
+    }
     navigate('/login');
     return null;
   }

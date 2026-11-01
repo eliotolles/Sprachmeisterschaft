@@ -165,10 +165,75 @@ body {
 
 /* Tactile feedback */
 .tap {
-  transition: transform 0.1s ease, background-color 0.15s ease;
+  transition: transform 0.12s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .tap:active {
   transform: scale(0.985);
+}
+
+/* Animations for Landing and Auth */
+@keyframes rise {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(127, 29, 29, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(127, 29, 29, 0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-rise {
+  animation: rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-float {
+  animation: floatGentle 4s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Staggered delay utilities */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+
+/* Wax seal badge aesthetic */
+.wax-seal {
+  background: radial-gradient(circle at 35% 35%, #991b1b, #7f1d1d 70%, #450a0a);
+  box-shadow: 0 4px 12px rgba(127, 29, 29, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(185, 28, 28, 0.6);
 }
 
 /* Subtle grain overlay */

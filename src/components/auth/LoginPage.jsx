@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { LogIn, ArrowRight } from 'lucide-react';
+import { LogIn, ArrowLeft, Sparkles, ShieldCheck } from 'lucide-react';
+import { GoogleButton } from './GoogleButton';
 
 export function LoginPage() {
   const { navigate } = useRouter();
@@ -18,20 +19,76 @@ export function LoginPage() {
     }, 400);
   };
 
+  const handleDemoLogin = () => {
+    setLoading(true);
+    setTimeout(() => {
+      db.auth.loginAsDemo();
+      navigate('/');
+    }, 300);
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <div className="surface max-w-md w-full p-6 md:p-8 animate-rise">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background relative overflow-hidden grain">
+      {/* Background classical ornament circles */}
+      <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-accent/5 pointer-events-none blur-3xl animate-float" />
+      <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-accent/5 pointer-events-none blur-3xl animate-float" style={{ animationDelay: '2s' }} />
+
+      <div className="surface max-w-md w-full p-6 sm:p-8 animate-rise relative z-10 border border-border shadow-xl">
+        {/* Top return link */}
+        <div className="flex items-center justify-between mb-4">
+          <Link
+            to="/landing"
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-accent transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Trang bìa giới thiệu</span>
+          </Link>
+
+          <span className="eyebrow">ẤN BẢN 2026</span>
+        </div>
+
+        {/* Brand header */}
         <div className="text-center mb-6">
-          <div className="eyebrow mb-1">Cổng đăng nhập</div>
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full wax-seal text-white font-display text-xl font-bold mb-3 shadow-md animate-float">
+            S
+          </div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
             Sprachmeisterschaft
           </h1>
           <p className="font-heading italic text-xs text-muted-foreground mt-1">
-            DeutschMaster — Nền tảng tự học tiếng Đức A1–C2
+            DeutschMaster — Cổng đăng nhập hệ thống học thuật A1–C2
           </p>
           <div className="rule-double mt-3" />
         </div>
 
+        {/* 1. Google Authentication (Primary Highlight) */}
+        <div className="space-y-3 mb-5">
+          <GoogleButton
+            label="Đăng nhập bằng Google"
+            className="animate-rise delay-100"
+          />
+
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            className="tap w-full py-2.5 px-3 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent text-xs font-mono font-medium flex items-center justify-center gap-2 transition-colors animate-rise delay-200"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Dùng thử tức thì với Tài khoản Khách (Demo)</span>
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="relative my-5 text-center">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-border" />
+          </div>
+          <span className="relative bg-card px-3 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+            hoặc đăng nhập bằng Email
+          </span>
+        </div>
+
+        {/* Email & Password Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-xs font-mono font-medium text-foreground mb-1">
@@ -43,7 +100,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="hocvien@sprachmeisterschaft.de"
-              className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-accent transition-all duration-200"
             />
           </div>
 
@@ -62,27 +119,36 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-accent transition-all duration-200"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="tap w-full py-2.5 px-4 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm flex items-center justify-center gap-2 mt-2"
+            className="tap w-full py-2.5 px-4 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm flex items-center justify-center gap-2 transition-all duration-200 hover:shadow-md"
           >
             <LogIn className="w-4 h-4" />
-            <span>{loading ? 'Đang xác thực...' : 'Đăng nhập vào hệ thống'}</span>
+            <span>{loading ? 'Đang xác thực thông tin...' : 'Đăng nhập vào hệ thống'}</span>
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-border text-center text-xs font-body text-muted-foreground">
-          <span>Chưa có tài khoản học tập? </span>
-          <Link to="/register" className="text-accent font-semibold hover:underline">
-            Đăng ký ngay
-          </Link>
+        {/* Trust badge & Switch to Register */}
+        <div className="mt-6 pt-4 border-t border-border flex flex-col items-center gap-2 text-xs font-body text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80 font-mono">
+            <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+            <span>Bảo mật dữ liệu học tập cá nhân</span>
+          </div>
+
+          <p>
+            Chưa có hồ sơ học tập?{' '}
+            <Link to="/register" className="text-accent font-semibold hover:underline">
+              Tạo tài khoản mới
+            </Link>
+          </p>
         </div>
       </div>
     </div>
   );
 }
+export default LoginPage;

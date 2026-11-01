@@ -4,6 +4,7 @@ import { AuthGate } from '@/components/auth/AuthGate';
 import { AppShell } from '@/components/AppShell';
 
 // Pages
+import { LandingPage } from '@/pages/LandingPage';
 import { HomePage } from '@/pages/HomePage';
 import { ReviewPage } from '@/pages/ReviewPage';
 import { VocabularyPage } from '@/pages/VocabularyPage';
@@ -32,6 +33,7 @@ export function App() {
   const { currentPath } = useRouter();
 
   // Public unauthenticated routes
+  if (currentPath === '/landing') return <LandingPage />;
   if (currentPath === '/login') return <LoginPage />;
   if (currentPath === '/register') return <RegisterPage />;
   if (currentPath === '/forgot-password') return <ForgotPasswordPage />;

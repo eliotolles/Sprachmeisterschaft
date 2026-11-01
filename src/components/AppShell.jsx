@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Compass,
+  BookOpen,
 } from 'lucide-react';
 
 export function AppShell({ children }) {
@@ -172,6 +173,14 @@ export function AppShell({ children }) {
           </div>
 
           <div className="flex items-center justify-between pt-1 text-xs font-mono text-muted-foreground">
+            <Link
+              to="/landing"
+              className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors"
+              title="Xem Trang bìa giới thiệu"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Trang bìa</span>
+            </Link>
             <Link
               to="/me/settings"
               className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm"
