@@ -24,12 +24,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
+import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 
 export function AppShell({ children }) {
   const { currentPath, navigate } = useRouter();
   const [user, setUser] = useState(() => db.auth.getUser());
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => db.studyPlan?.shouldShowOnboarding() || false);
 
   // Auto-collapse / Expand State
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -63,9 +65,11 @@ export function AppShell({ children }) {
   useEffect(() => {
     const handleDbChange = () => {
       setProfile(db.learnerProfile.get());
+      setShowOnboarding(db.studyPlan?.shouldShowOnboarding() || false);
     };
     const handleAuthChange = () => {
       setUser(db.auth.getUser());
+      setShowOnboarding(db.studyPlan?.shouldShowOnboarding() || false);
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     window.addEventListener('sprach_auth_change', handleAuthChange);
@@ -404,6 +408,12 @@ export function AppShell({ children }) {
           );
         })}
       </nav>
+
+      {/* Personalized Onboarding Popup for First-Time Successful Login */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
     </div>
   );
 }

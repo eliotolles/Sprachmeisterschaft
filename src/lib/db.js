@@ -1,5 +1,6 @@
 import { formatDate, addDays, calculateStreak } from './algorithms';
 import { LISTENING_COLLECTIONS, LISTENING_EPISODES } from '@/data/listening-collections';
+import { rescheduleMissedTasks } from './study-plan-generator.js';
 
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
 const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
@@ -17,6 +18,7 @@ function loadDatabase() {
       if (!parsed.listeningCollections || parsed.listeningCollections.length === 0) parsed.listeningCollections = LISTENING_COLLECTIONS;
       if (!parsed.listeningEpisodes || parsed.listeningEpisodes.length === 0) parsed.listeningEpisodes = LISTENING_EPISODES;
       if (!parsed.universalImports) parsed.universalImports = [];
+      if (!parsed.studyPlans) parsed.studyPlans = {};
       return parsed;
     }
   } catch (e) {
@@ -32,6 +34,8 @@ function loadDatabase() {
         email: 'admin@sprachmeisterschaft.de',
         role: 'admin',
         is_blocked: false,
+        onboarding_completed: true,
+        study_plan: null,
         created_at: new Date().toISOString(),
       },
       {
@@ -40,6 +44,8 @@ function loadDatabase() {
         email: 'hocvien@sprachmeisterschaft.de',
         role: 'user',
         is_blocked: false,
+        onboarding_completed: false,
+        study_plan: null,
         created_at: new Date().toISOString(),
       },
     ],
@@ -426,29 +432,52 @@ export const db = {
     },
 
     login: (email, password) => {
-      const user = {
-        id: 'usr_' + Date.now(),
-        email: email || 'hocvien@sprachmeisterschaft.de',
-        name: email.split('@')[0] || 'Học viên',
-        provider: 'email',
-        role: 'user',
-        is_verified: true,
-      };
+      const cleanEmail = (email || 'hocvien@sprachmeisterschaft.de').trim().toLowerCase();
+      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (!user) {
+        user = {
+          id: 'usr_' + Date.now(),
+          email: cleanEmail,
+          name: cleanEmail.split('@')[0] || 'Học viên',
+          provider: 'email',
+          role: cleanEmail.includes('admin') ? 'admin' : 'user',
+          is_verified: true,
+          onboarding_completed: false,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
+        saveDatabase(state);
+      }
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       return user;
     },
 
     loginWithGoogle: (profile = {}) => {
-      const user = {
-        id: 'usr_gg_' + Date.now(),
-        email: profile.email || 'dat.nguyenviet.1999@gmail.com',
-        name: profile.name || 'Nguyễn Văn Đạt',
-        picture: profile.picture || null,
-        provider: 'google',
-        role: 'user',
-        is_verified: true,
-      };
+      const cleanEmail = (profile.email || 'dat.nguyenviet.1999@gmail.com').trim().toLowerCase();
+      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (!user) {
+        user = {
+          id: 'usr_gg_' + Date.now(),
+          email: cleanEmail,
+          name: profile.name || 'Nguyễn Văn Đạt',
+          picture: profile.picture || null,
+          provider: 'google',
+          role: cleanEmail.includes('admin') ? 'admin' : 'user',
+          is_verified: true,
+          onboarding_completed: false,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
+        saveDatabase(state);
+      } else {
+        if (profile.picture) user.picture = profile.picture;
+        saveDatabase(state);
+      }
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
       if (profile.name) {
         state.learnerProfile.display_name = profile.name;
@@ -459,28 +488,48 @@ export const db = {
     },
 
     loginAsDemo: () => {
-      const user = {
-        id: 'usr_demo',
-        email: 'hocvien@sprachmeisterschaft.de',
-        name: 'Nguyễn Văn Đạt (Demo)',
-        provider: 'demo',
-        role: 'user',
-        is_verified: true,
-      };
+      const cleanEmail = 'hocvien@sprachmeisterschaft.de';
+      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (!user) {
+        user = {
+          id: 'usr_demo',
+          email: cleanEmail,
+          name: 'Nguyễn Văn Đạt (Demo)',
+          provider: 'demo',
+          role: 'user',
+          is_verified: true,
+          onboarding_completed: false,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
+        saveDatabase(state);
+      }
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       return user;
     },
 
     register: (data) => {
-      const user = {
-        id: 'usr_' + Date.now(),
-        email: data.email,
-        name: data.name || data.email.split('@')[0],
-        provider: 'email',
-        role: 'user',
-        is_verified: false, // Needs OTP verification
-      };
+      const cleanEmail = data.email.trim().toLowerCase();
+      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (!user) {
+        user = {
+          id: 'usr_' + Date.now(),
+          email: cleanEmail,
+          name: data.name || cleanEmail.split('@')[0],
+          provider: 'email',
+          role: 'user',
+          is_verified: false, // Needs OTP verification
+          onboarding_completed: false,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
+        saveDatabase(state);
+      }
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       return user;
@@ -491,6 +540,13 @@ export const db = {
       if (user) {
         user.is_verified = true;
         localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+        const idx = (state.users || []).findIndex(
+          (u) => u.id === user.id || u.email?.toLowerCase() === user.email?.toLowerCase()
+        );
+        if (idx !== -1) {
+          state.users[idx].is_verified = true;
+          saveDatabase(state);
+        }
         window.dispatchEvent(new CustomEvent('sprach_auth_change'));
         return true;
       }
@@ -568,6 +624,128 @@ export const db = {
       state.users = (state.users || []).filter((u) => u.id !== id);
       saveDatabase(state);
       return true;
+    },
+  },
+
+  // Personalized Study Plan & Onboarding Management
+  studyPlan: {
+    get: (userId) => {
+      const u = userId ? (state.users || []).find((usr) => usr.id === userId) : db.auth.getUser();
+      if (!u) return null;
+      const fullUser = (state.users || []).find(
+        (usr) => usr.id === u.id || usr.email?.toLowerCase() === u.email?.toLowerCase()
+      );
+      return fullUser?.study_plan || u.study_plan || (state.studyPlans ? state.studyPlans[u.id] : null) || null;
+    },
+
+    save: (userId, answers, roadmap) => {
+      const curUser = db.auth.getUser();
+      const targetId = userId || curUser?.id;
+      if (!targetId) return null;
+
+      // 1. Update in state.users
+      const idx = (state.users || []).findIndex(
+        (u) => u.id === targetId || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
+      );
+      if (idx !== -1) {
+        state.users[idx].onboarding_completed = true;
+        state.users[idx].onboarding_answers = answers;
+        state.users[idx].study_plan = roadmap;
+      }
+
+      // 2. Also keep in state.studyPlans dictionary
+      if (!state.studyPlans) state.studyPlans = {};
+      state.studyPlans[targetId] = roadmap;
+
+      // 3. Update learnerProfile
+      if (answers.targetLevel) {
+        state.learnerProfile.target_level = answers.targetLevel;
+      }
+      if (roadmap.meta?.targetDate) {
+        state.learnerProfile.exam_date = roadmap.meta.targetDate;
+      }
+      if (answers.dailyMinutes) {
+        state.learnerProfile.daily_goal = Math.round(answers.dailyMinutes / 2);
+      }
+
+      saveDatabase(state);
+
+      // 4. Update session user in AUTH_KEY
+      if (curUser) {
+        curUser.onboarding_completed = true;
+        curUser.onboarding_answers = answers;
+        curUser.study_plan = roadmap;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+      }
+
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return roadmap;
+    },
+
+    toggleTask: (taskId) => {
+      const curUser = db.auth.getUser();
+      if (!curUser) return false;
+
+      const idx = (state.users || []).findIndex(
+        (u) => u.id === curUser.id || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
+      );
+      if (idx === -1 || !state.users[idx].study_plan) return false;
+
+      const plan = state.users[idx].study_plan;
+      const task = (plan.dailyTasks || []).find((t) => t.id === taskId);
+      if (task) {
+        task.completed = !task.completed;
+        saveDatabase(state);
+
+        curUser.study_plan = plan;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        return true;
+      }
+      return false;
+    },
+
+    reschedule: () => {
+      const curUser = db.auth.getUser();
+      if (!curUser) return null;
+      const idx = (state.users || []).findIndex(
+        (u) => u.id === curUser.id || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
+      );
+      if (idx === -1 || !state.users[idx].study_plan) return null;
+
+      const oldPlan = state.users[idx].study_plan;
+      const newPlan = rescheduleMissedTasks(oldPlan);
+      state.users[idx].study_plan = newPlan;
+      saveDatabase(state);
+
+      curUser.study_plan = newPlan;
+      localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return newPlan;
+    },
+
+    shouldShowOnboarding: () => {
+      if (typeof window === 'undefined') return false;
+      const user = db.auth.getUser();
+      if (!user) return false;
+
+      // If user dismissed in this browser session, don't show repeatedly
+      if (sessionStorage.getItem('sprach_onboarding_dismissed') === 'true') {
+        return false;
+      }
+
+      const fullUser = (state.users || []).find(
+        (u) => u.id === user.id || u.email?.toLowerCase() === user.email?.toLowerCase()
+      );
+      const isCompleted = fullUser?.onboarding_completed ?? user.onboarding_completed;
+      return !isCompleted;
+    },
+
+    dismissSession: () => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('sprach_onboarding_dismissed', 'true');
+      }
     },
   },
 

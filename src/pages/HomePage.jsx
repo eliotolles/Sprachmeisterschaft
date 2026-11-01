@@ -27,6 +27,7 @@ export function HomePage() {
   const [logs, setLogs] = useState(() => db.studyLogs.findMany());
   const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
   const [exams, setExams] = useState(() => db.examResults.findMany());
+  const [studyPlan, setStudyPlan] = useState(() => db.studyPlan?.get());
 
   useEffect(() => {
     const handleDbChange = () => {
@@ -35,6 +36,7 @@ export function HomePage() {
       setLogs(db.studyLogs.findMany());
       setSessions(db.skillSessions.findMany());
       setExams(db.examResults.findMany());
+      setStudyPlan(db.studyPlan?.get());
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
@@ -154,96 +156,213 @@ export function HomePage() {
 
         {/* 4 Daily Tasks */}
         <div className="surface p-6 lg:col-span-2 flex flex-col justify-between">
-          <div>
-            <div className="eyebrow mb-1">Kế hoạch hàng ngày</div>
-            <h2 className="font-display text-2xl font-bold text-foreground">
-              4 Nhiệm vụ học tập hôm nay
-            </h2>
-            <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
-              Hoàn thành các hoạt động để cộng điểm kinh nghiệm (XP) và duy trì chuỗi học.
-            </p>
-          </div>
+          {studyPlan && Array.isArray(studyPlan.dailyTasks) && studyPlan.dailyTasks.length > 0 ? (
+            (() => {
+              const todayStr = formatDate();
+              const planTasksForToday = studyPlan.dailyTasks.filter((t) => t.date === todayStr && !t.isRestDay);
+              const activeRoadmapTasks = planTasksForToday.length > 0
+                ? planTasksForToday
+                : studyPlan.dailyTasks.filter((t) => !t.completed && !t.isRestDay).slice(0, 4);
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
-            {/* Task 1 */}
-            <Link
-              to="/review"
-              className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-            >
-              <div className="w-8 h-8 rounded-sm bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                <RotateCw className="w-4 h-4" />
-              </div>
+              const missedCount = studyPlan.dailyTasks.filter(
+                (t) => !t.completed && !t.isRestDay && t.date < todayStr
+              ).length;
+
+              const handleTogglePlanTask = (taskId, e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                db.studyPlan.toggleTask(taskId);
+              };
+
+              const handleReschedulePlan = () => {
+                const updated = db.studyPlan.reschedule();
+                if (updated) {
+                  toast.success('Đã điều chỉnh dồn lịch học thông minh sang các ngày tiếp theo!');
+                }
+              };
+
+              return (
+                <>
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+                      <div className="eyebrow">
+                        Lộ trình {studyPlan.meta?.examName || 'Chứng chỉ'} ({studyPlan.meta?.targetLevel || profile.target_level})
+                      </div>
+                      {missedCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleReschedulePlan}
+                          className="tap text-[11px] font-mono text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded flex items-center gap-1.5"
+                        >
+                          <RotateCw className="w-3 h-3" />
+                          <span>Có {missedCount} bài lỡ hẹn • Điều chỉnh dồn lịch</span>
+                        </button>
+                      )}
+                    </div>
+                    <h2 className="font-display text-2xl font-bold text-foreground">
+                      Nhiệm vụ trọng tâm hôm nay
+                    </h2>
+                    <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
+                      Theo lộ trình cá nhân hóa ({studyPlan.meta?.dailyMinutes || 45} phút/ngày). Đánh dấu hoàn thành để cập nhật tiến độ.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
+                    {activeRoadmapTasks.map((t, idx) => (
+                      <div
+                        key={t.id || idx}
+                        className={`p-3.5 rounded-sm border transition-all flex items-start gap-3 justify-between ${
+                          t.completed
+                            ? 'border-emerald-500/40 bg-emerald-500/5'
+                            : 'border-border bg-card/60 hover:bg-muted/30'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleTogglePlanTask(t.id, e)}
+                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-emerald-600 transition-colors"
+                          title={t.completed ? 'Đánh dấu chưa xong' : 'Đánh dấu đã hoàn thành'}
+                        >
+                          {t.completed ? (
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/60 hover:border-accent" />
+                          )}
+                        </button>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono mb-0.5">
+                            <span className="px-1.5 py-0.2 rounded bg-accent/10 text-accent font-bold uppercase">
+                              {t.skill}
+                            </span>
+                            <span className="text-muted-foreground">{t.durationMinutes} phút</span>
+                          </div>
+                          <div
+                            className={`text-xs font-heading font-semibold line-clamp-2 ${
+                              t.completed ? 'line-through text-muted-foreground' : 'text-foreground'
+                            }`}
+                          >
+                            {t.title}
+                          </div>
+                        </div>
+
+                        <Link
+                          to={t.targetPath || '/skills'}
+                          className="shrink-0 p-1.5 text-xs font-mono text-accent hover:underline rounded hover:bg-accent/10 transition-colors"
+                          title="Vào xưởng luyện tập tương ứng"
+                        >
+                          <ArrowRight className="w-4 h-4" />
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-3 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
+                    <span>
+                      Đã hoàn thành {activeRoadmapTasks.filter((t) => t.completed).length}/
+                      {activeRoadmapTasks.length} nhiệm vụ
+                    </span>
+                    <Link to="/readiness" className="text-accent hover:underline">
+                      Đo lường độ sẵn sàng thi →
+                    </Link>
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            <>
               <div>
-                <div className="text-xs font-heading font-semibold text-foreground">
-                  1. Ôn thẻ từ vựng SRS
-                </div>
-                <div className="text-[11px] text-muted-foreground font-body">
-                  {dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
-                </div>
+                <div className="eyebrow mb-1">Kế hoạch hàng ngày</div>
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  4 Nhiệm vụ học tập hôm nay
+                </h2>
+                <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
+                  Hoàn thành các hoạt động để cộng điểm kinh nghiệm (XP) và duy trì chuỗi học.
+                </p>
               </div>
-            </Link>
 
-            {/* Task 2 */}
-            <Link
-              to="/skills"
-              className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-            >
-              <div className="w-8 h-8 rounded-sm bg-blue-100 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 flex items-center justify-center text-blue-700 dark:text-blue-300 shrink-0">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-heading font-semibold text-foreground">
-                  2. Luyện 1 kỹ năng ngôn ngữ
-                </div>
-                <div className="text-[11px] text-muted-foreground font-body">
-                  Nghe chính tả, nói đuổi, ngữ pháp...
-                </div>
-              </div>
-            </Link>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
+                {/* Task 1 */}
+                <Link
+                  to="/review"
+                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-sm bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                    <RotateCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-heading font-semibold text-foreground">
+                      1. Ôn thẻ từ vựng SRS
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-body">
+                      {dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
+                    </div>
+                  </div>
+                </Link>
 
-            {/* Task 3 */}
-            <Link
-              to="/game"
-              className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-            >
-              <div className="w-8 h-8 rounded-sm bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-amber-800 dark:text-amber-300 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-heading font-semibold text-foreground">
-                  3. Phản xạ mạo từ Der/Die/Das
-                </div>
-                <div className="text-[11px] text-muted-foreground font-body">
-                  Chơi 1 vòng 15 câu nhận ngay XP
-                </div>
-              </div>
-            </Link>
+                {/* Task 2 */}
+                <Link
+                  to="/skills"
+                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-sm bg-blue-100 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 flex items-center justify-center text-blue-700 dark:text-blue-300 shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-heading font-semibold text-foreground">
+                      2. Luyện 1 kỹ năng ngôn ngữ
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-body">
+                      Nghe chính tả, nói đuổi, ngữ pháp...
+                    </div>
+                  </div>
+                </Link>
 
-            {/* Task 4 */}
-            <Link
-              to="/elio"
-              className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-            >
-              <div className="w-8 h-8 rounded-sm bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-800 dark:text-rose-300 shrink-0">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-heading font-semibold text-foreground">
-                  4. Hỏi gia sư AI ELIO
-                </div>
-                <div className="text-[11px] text-muted-foreground font-body">
-                  Giải đáp thắc mắc ngữ pháp & bài thi
-                </div>
-              </div>
-            </Link>
-          </div>
+                {/* Task 3 */}
+                <Link
+                  to="/game"
+                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-sm bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-amber-800 dark:text-amber-300 shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-heading font-semibold text-foreground">
+                      3. Phản xạ mạo từ Der/Die/Das
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-body">
+                      Chơi 1 vòng 15 câu nhận ngay XP
+                    </div>
+                  </div>
+                </Link>
 
-          <div className="pt-3 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
-            <span>Mỗi nhiệm vụ cộng dồn vào StudyLog trong ngày</span>
-            <Link to="/progress" className="text-accent hover:underline">
-              Xem tiến độ tuần →
-            </Link>
-          </div>
+                {/* Task 4 */}
+                <Link
+                  to="/elio"
+                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
+                >
+                  <div className="w-8 h-8 rounded-sm bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-800 dark:text-rose-300 shrink-0">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-heading font-semibold text-foreground">
+                      4. Hỏi gia sư AI ELIO
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-body">
+                      Giải đáp thắc mắc ngữ pháp & bài thi
+                    </div>
+                  </div>
+                </Link>
+              </div>
+
+              <div className="pt-3 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
+                <span>Mỗi nhiệm vụ cộng dồn vào StudyLog trong ngày</span>
+                <Link to="/progress" className="text-accent hover:underline">
+                  Xem tiến độ tuần →
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
