@@ -8,6 +8,7 @@ import {
   FREE_AI_MODELS,
   APP_AI_TASKS,
 } from '@/data/ai-models-catalog';
+import { testAiConnection } from '@/lib/ai-evaluator';
 import {
   Bot,
   Layers,
@@ -52,9 +53,14 @@ export function AdminPage() {
   const [providerName, setProviderName] = useState('');
   const [providerType, setProviderType] = useState('gemini');
   const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
+  const [customModelInput, setCustomModelInput] = useState('');
+  const [isCustomModelMode, setIsCustomModelMode] = useState(false);
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [priority, setPriority] = useState(1);
   const [hasVision, setHasVision] = useState(true);
+  const [testingAi, setTestingAi] = useState(false);
+  const [testResults, setTestResults] = useState({});
 
   // Content State
   const [universalItems, setUniversalItems] = useState(() => db.universal.findMany());
@@ -92,24 +98,73 @@ export function AdminPage() {
 
   const handleSelectSuggestedModel = (model) => {
     setSelectedModel(model.id);
+    setIsCustomModelMode(false);
     setHasVision(model.hasVision);
     if (!providerName) {
       setProviderName(`${model.name}`);
     }
   };
 
+  const handleTestDraftConfig = async () => {
+    const finalModel = isCustomModelMode ? customModelInput.trim() : selectedModel;
+    if (!finalModel) {
+      toast.error('Vui lòng chọn hoặc điền mã Model trước khi kiểm tra!');
+      return;
+    }
+    if (!apiKey.trim()) {
+      toast.error('Vui lòng nhập API Key trước khi kiểm tra kết nối!');
+      return;
+    }
+
+    setTestingAi(true);
+    toast.info(`Đang gửi tín hiệu kiểm tra tới ${providerType.toUpperCase()}...`);
+    const res = await testAiConnection({
+      provider: providerType,
+      model: finalModel,
+      apiKey: apiKey.trim(),
+      baseUrl: customBaseUrl.trim(),
+    });
+
+    if (res.success) {
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+    setTestingAi(false);
+  };
+
+  const handleTestActiveConfig = async (cfg) => {
+    toast.info(`Đang kiểm tra API ${cfg.name}...`);
+    const res = await testAiConnection(cfg);
+    setTestResults((prev) => ({
+      ...prev,
+      [cfg.id]: res,
+    }));
+    if (res.success) {
+      toast.success(`[${cfg.name}]: ${res.message}`);
+    } else {
+      toast.error(`[${cfg.name}]: ${res.message}`);
+    }
+  };
+
   const handleAddAIConfig = (e) => {
     e.preventDefault();
-    if (!selectedModel) {
-      toast.error('Vui lòng chọn model AI!');
+    const finalModel = isCustomModelMode ? customModelInput.trim() : selectedModel;
+    if (!finalModel) {
+      toast.error('Vui lòng chọn hoặc điền mã model AI!');
+      return;
+    }
+    if (!apiKey.trim()) {
+      toast.error('Vui lòng dán mã API Key!');
       return;
     }
     const newConfig = {
       id: `ai-cfg-${Date.now()}`,
-      name: providerName || `${providerType.toUpperCase()} - ${selectedModel}`,
+      name: providerName || `${providerType.toUpperCase()} - ${finalModel}`,
       provider: providerType,
-      model: selectedModel,
+      model: finalModel,
       apiKey: apiKey.trim(),
+      baseUrl: providerType === 'custom' ? customBaseUrl.trim() : undefined,
       hasVision,
       priority: Number(priority) || 1,
       enabled: true,
@@ -118,6 +173,7 @@ export function AdminPage() {
     setAiConfigs(db.aiConfig.getConfigs());
     setProviderName('');
     setApiKey('');
+    setCustomModelInput('');
     toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
   };
 
@@ -317,39 +373,76 @@ export function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-mono text-foreground mb-1">
-                    Model chỉ định *
-                  </label>
-                  <select
-                    name="elio_ai_model_select"
-                    value={selectedModel}
-                    onChange={(e) => {
-                      const mId = e.target.value;
-                      setSelectedModel(mId);
-                      const m = FREE_AI_MODELS.find((x) => x.id === mId);
-                      if (m) setHasVision(m.hasVision);
-                    }}
-                    className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
-                  >
-                    {availableModelsForProvider.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.id}) {m.hasVision ? '📷 Đọc ảnh' : '⚡ Tốc độ'}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-mono text-foreground">
+                      Model chỉ định *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomModelMode(!isCustomModelMode)}
+                      className="text-[10px] font-mono text-accent hover:underline font-bold"
+                    >
+                      {isCustomModelMode ? '← Chọn từ danh mục' : '+ Tự gõ Model khác'}
+                    </button>
+                  </div>
+
+                  {isCustomModelMode ? (
+                    <input
+                      type="text"
+                      name="elio_custom_model_input"
+                      autoComplete="off"
+                      value={customModelInput}
+                      onChange={(e) => setCustomModelInput(e.target.value)}
+                      placeholder="Gõ mã model (vd: gemini-2.0-flash, deepseek-chat...)"
+                      className="w-full px-3 py-2 text-xs rounded-sm border border-accent bg-card text-accent font-mono font-bold"
+                    />
+                  ) : (
+                    <select
+                      name="elio_ai_model_select"
+                      value={selectedModel}
+                      onChange={(e) => {
+                        const mId = e.target.value;
+                        setSelectedModel(mId);
+                        const m = FREE_AI_MODELS.find((x) => x.id === mId);
+                        if (m) setHasVision(m.hasVision);
+                      }}
+                      className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
+                    >
+                      {availableModelsForProvider.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.id}) {m.hasVision ? '📷 Đọc ảnh' : '⚡ Tốc độ'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
+
+              {providerType === 'custom' && (
+                <div className="pt-1">
+                  <label className="block text-[11px] font-mono text-foreground mb-1">
+                    Base URL (OpenAI-compatible Endpoint) *
+                  </label>
+                  <input
+                    type="text"
+                    value={customBaseUrl}
+                    onChange={(e) => setCustomBaseUrl(e.target.value)}
+                    placeholder="Ví dụ: http://localhost:11434/v1 hoặc https://api.my-gateway.com/v1"
+                    className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                  />
+                </div>
+              )}
 
               {/* Model Suggestions Grid (Matching Image 2) */}
               <div className="pt-2">
                 <div className="text-[11px] font-mono text-muted-foreground mb-2 flex items-center justify-between">
-                  <span>Gợi ý đã tra cứu mới nhất 2026 · Bấm để điền model và khả năng ảnh:</span>
-                  <span className="text-accent text-[10px]">Free Tier Verified</span>
+                  <span>Gợi ý model thế hệ mới 2025/2026 · Bấm để điền model và khả năng ảnh:</span>
+                  <span className="text-accent text-[10px]">Verified Modern Models</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {availableModelsForProvider.map((m) => {
-                    const isSelected = selectedModel === m.id;
+                    const isSelected = selectedModel === m.id && !isCustomModelMode;
                     return (
                       <button
                         key={m.id}
@@ -362,15 +455,22 @@ export function AdminPage() {
                         }`}
                       >
                         <div>
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center justify-between mb-1 gap-1">
                             <span className="font-mono text-xs font-bold text-foreground truncate">
                               {m.name}
                             </span>
-                            {m.hasVision && (
-                              <span className="px-1.5 py-0.2 rounded-sm bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-[9px] font-mono font-bold">
-                                📷 Ảnh/PDF
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {m.isNew && (
+                                <span className="px-1 py-0.2 rounded-sm bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-mono font-bold">
+                                  MỚI
+                                </span>
+                              )}
+                              {m.hasVision && (
+                                <span className="px-1.5 py-0.2 rounded-sm bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-[9px] font-mono font-bold">
+                                  📷 Ảnh/PDF
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="text-[10px] font-mono text-accent truncate">
                             {m.alias || m.id}
@@ -430,16 +530,28 @@ export function AdminPage() {
                     onChange={(e) => setHasVision(e.target.checked)}
                     className="rounded-sm border-border text-accent focus:ring-accent"
                   />
-                  <span>Hỗ trợ đọc ảnh (Gemini / OpenRouter, PDF gồm cả Groq/Gemini)</span>
+                  <span>Hỗ trợ đọc ảnh (Gemini / Claude / GPT-4o / Groq Vision / OpenRouter)</span>
                 </label>
 
-                <button
-                  type="submit"
-                  className="tap px-4 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Thêm API</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={testingAi}
+                    onClick={handleTestDraftConfig}
+                    className="tap px-3.5 py-2 rounded-sm border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>{testingAi ? 'Đang kiểm tra...' : 'Kiểm tra kết nối (Test Key)'}</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="tap px-4 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm API</span>
+                  </button>
+                </div>
               </div>
             </form>
 
@@ -449,41 +561,75 @@ export function AdminPage() {
                 Danh sách API AI đang hoạt động ({aiConfigs.length}):
               </div>
               <div className="grid grid-cols-1 gap-2">
-                {aiConfigs.map((cfg) => (
-                  <div
-                    key={cfg.id}
-                    className="p-3 rounded-sm border border-border bg-card flex items-center justify-between gap-3 text-xs font-mono"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <div>
-                        <span className="font-bold text-foreground mr-2">{cfg.name}</span>
-                        <span className="px-1.5 py-0.5 rounded-sm bg-accent/10 text-accent font-bold text-[10px]">
-                          {cfg.provider.toUpperCase()}
+                {aiConfigs.map((cfg) => {
+                  const testRes = testResults[cfg.id];
+                  return (
+                    <div
+                      key={cfg.id}
+                      className="p-3 rounded-sm border border-border bg-card flex flex-wrap items-center justify-between gap-3 text-xs font-mono"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            testRes
+                              ? testRes.success
+                                ? 'bg-emerald-500 ring-2 ring-emerald-300'
+                                : 'bg-rose-500 ring-2 ring-rose-300'
+                              : 'bg-emerald-500'
+                          }`}
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground">{cfg.name}</span>
+                            <span className="px-1.5 py-0.5 rounded-sm bg-accent/10 text-accent font-bold text-[10px]">
+                              {cfg.provider.toUpperCase()}
+                            </span>
+                            <span className="text-accent font-semibold">({cfg.model})</span>
+                            {cfg.hasVision && (
+                              <span className="text-[10px] text-blue-600 font-bold">
+                                📷 Vision
+                              </span>
+                            )}
+                          </div>
+                          {testRes && (
+                            <div
+                              className={`text-[10px] mt-0.5 ${
+                                testRes.success ? 'text-emerald-600' : 'text-rose-600'
+                              }`}
+                            >
+                              {testRes.message}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-[11px] mr-1">
+                          Ưu tiên: #{cfg.priority}
                         </span>
-                        <span className="text-muted-foreground ml-2">({cfg.model})</span>
-                        {cfg.hasVision && (
-                          <span className="ml-2 text-[10px] text-blue-600 font-bold">
-                            📷 Có Vision
-                          </span>
-                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleTestActiveConfig(cfg)}
+                          className="tap px-2 py-1 rounded bg-muted/50 hover:bg-muted text-accent font-semibold text-[11px] flex items-center gap-1 border border-border"
+                          title="Kiểm tra tín hiệu kết nối tới model này"
+                        >
+                          <Zap className="w-3 h-3" />
+                          <span>Test Live</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAIConfig(cfg.id)}
+                          className="text-rose-600 hover:text-rose-700 p-1.5 rounded-sm hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          title="Xóa cấu hình này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <span className="text-muted-foreground text-[11px]">
-                        Ưu tiên: #{cfg.priority}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteAIConfig(cfg.id)}
-                        className="text-rose-600 hover:text-rose-700 p-1 rounded-sm hover:bg-muted"
-                        title="Xóa cấu hình này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

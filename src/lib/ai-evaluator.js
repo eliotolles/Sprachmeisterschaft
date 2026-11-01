@@ -8,9 +8,163 @@ import { db } from './db';
 import { FREE_AI_MODELS } from '@/data/ai-models-catalog';
 
 /**
- * 1. Gọi LLM an toàn với cơ chế Fallback (Gemini -> Groq -> OpenRouter)
+ * 1. Gọi LLM an toàn với cơ chế Fallback Đa Nhà Cung Cấp
+ * Hỗ trợ toàn bộ: Gemini, DeepSeek Official, Groq, OpenRouter, OpenAI, Claude, Custom API
  * Kèm chống Prompt Injection: dữ liệu người học được cô lập trong block riêng
  */
+export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt, jsonMode = true }) {
+  const { provider, model, apiKey, baseUrl } = config;
+
+  if (provider === 'gemini') {
+    const modelName = model || 'gemini-2.0-flash';
+    const cleanModel = modelName.startsWith('models/') ? modelName.replace('models/', '') : modelName;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${fullSystemPrompt}\n\n${userPrompt}` }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: jsonMode ? 'application/json' : 'text/plain',
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Gemini HTTP ${res.status}: ${errText.slice(0, 150)}`);
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Gemini trả về phản hồi rỗng');
+    return jsonMode ? JSON.parse(text) : text;
+  }
+
+  if (provider === 'anthropic') {
+    const endpoint = 'https://api.anthropic.com/v1/messages';
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'dangerously-allow-browser': 'true',
+      },
+      body: JSON.stringify({
+        model: model || 'claude-3-7-sonnet-20250219',
+        system: fullSystemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        max_tokens: 3000,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Claude HTTP ${res.status}: ${errText.slice(0, 150)}`);
+    }
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text;
+    if (!text) throw new Error('Claude trả về rỗng');
+    return jsonMode ? JSON.parse(text) : text;
+  }
+
+  // All OpenAI-compatible Providers: DeepSeek, Groq, OpenRouter, OpenAI, Custom
+  let endpoint = '';
+  if (provider === 'deepseek') {
+    endpoint = 'https://api.deepseek.com/chat/completions';
+  } else if (provider === 'groq') {
+    endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  } else if (provider === 'openrouter') {
+    endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+  } else if (provider === 'openai') {
+    endpoint = 'https://api.openai.com/v1/chat/completions';
+  } else if (provider === 'custom') {
+    endpoint = baseUrl?.trim() || 'http://localhost:11434/v1/chat/completions';
+    if (!endpoint.endsWith('/chat/completions') && !endpoint.includes('generate')) {
+      endpoint = `${endpoint.replace(/\/$/, '')}/chat/completions`;
+    }
+  } else {
+    endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model || 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: fullSystemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.1,
+      response_format: jsonMode && provider !== 'deepseek-reasoner' ? { type: 'json_object' } : undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`${provider.toUpperCase()} HTTP ${res.status}: ${errText.slice(0, 150)}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error(`${provider} không trả về nội dung`);
+  
+  if (jsonMode) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // If wrapped in markdown codeblock ```json ... ```
+      const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      return JSON.parse(cleaned);
+    }
+  }
+  return text;
+}
+
+/**
+ * Kiểm tra kết nối API Key trực tiếp (Test Key & Model Live)
+ */
+export async function testAiConnection(config) {
+  if (!config.apiKey?.trim()) {
+    return { success: false, message: 'Vui lòng điền API Key trước khi kiểm tra!' };
+  }
+
+  try {
+    const result = await executeSingleAiCall(config, {
+      fullSystemPrompt: 'You are an AI tester. Reply in JSON: {"status": "ok", "provider": "connected"}',
+      userPrompt: 'Test ping connection.',
+      jsonMode: true,
+    });
+
+    if (result) {
+      return {
+        success: true,
+        message: `Kết nối thành công tới ${config.provider.toUpperCase()} [${config.model}]! Phản hồi máy chủ tốt.`,
+      };
+    }
+    return { success: false, message: 'Máy chủ phản hồi nhưng không có dữ liệu trả về.' };
+  } catch (err) {
+    return {
+      success: false,
+      message: `Kết nối thất bại: ${err.message || 'Lỗi mạng hoặc sai Key/Model'}`,
+    };
+  }
+}
+
 export async function callAiWithFallback({ systemPrompt, userPrompt, jsonMode = true, taskType = 'general' }) {
   const configs = db.aiConfig.getConfigs().filter((c) => c.enabled);
   // Sort by priority (1 is highest)
@@ -33,72 +187,10 @@ Rules:
     if (!config.apiKey) continue;
 
     try {
-      if (config.provider === 'gemini') {
-        const modelName = config.model || 'gemini-2.0-flash';
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${config.apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${fullSystemPrompt}\n\n${userPrompt}` }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1, // Strict, deterministic
-              responseMimeType: jsonMode ? 'application/json' : 'text/plain',
-            },
-          }),
-        });
-
-        if (!res.ok) {
-          console.warn(`Gemini API call failed with status ${res.status}. Falling back...`);
-          continue;
-        }
-
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return jsonMode ? JSON.parse(text) : text;
-        }
-      } else if (config.provider === 'groq' || config.provider === 'openrouter') {
-        const endpoint =
-          config.provider === 'groq'
-            ? 'https://api.groq.com/openai/v1/chat/completions'
-            : 'https://openrouter.ai/api/v1/chat/completions';
-
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: config.model,
-            messages: [
-              { role: 'system', content: fullSystemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.1,
-            response_format: jsonMode ? { type: 'json_object' } : undefined,
-          }),
-        });
-
-        if (!res.ok) {
-          console.warn(`${config.provider} API call failed with status ${res.status}. Falling back...`);
-          continue;
-        }
-
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) {
-          return jsonMode ? JSON.parse(text) : text;
-        }
-      }
+      const result = await executeSingleAiCall(config, { fullSystemPrompt, userPrompt, jsonMode });
+      if (result) return result;
     } catch (err) {
-      console.warn(`Provider ${config.provider} failed: ${err.message}. Trying next fallback...`);
+      console.warn(`Provider ${config.provider} (${config.model}) failed: ${err.message}. Trying next fallback...`);
     }
   }
 
