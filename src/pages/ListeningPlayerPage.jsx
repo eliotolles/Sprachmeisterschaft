@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
 import { SpeakButton } from '@/components/ui/SpeakButton';
+import { auditDictationSentence } from '@/lib/ai-evaluator';
 import {
   Play,
   Pause,
@@ -21,7 +22,12 @@ import {
   ChevronUp,
   Sparkles,
   ArrowLeft,
+  ArrowRight,
   Check,
+  SkipBack,
+  SkipForward,
+  Square,
+  Flame,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,54 +46,258 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     subtitles: [],
   };
 
-  // State
+  const subtitles = currentEpisode.subtitles || [];
+
+  // Studio Mode State
   const [activeTab, setActiveTab] = useState('video'); // 'video' | 'dictation' | 'shadowing' | 'quiz'
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showGerman, setShowGerman] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(true);
   const [activeSubIndex, setActiveSubIndex] = useState(0);
-  const [isLoopingLine, setIsLoopingLine] = useState(false);
-  const [pauseWhileTyping, setPauseWhileTyping] = useState(true);
-  const [showManualSubEditor, setShowManualSubEditor] = useState(false);
-  const [manualSubText, setManualSubText] = useState('');
+
+  // Auto-pause each sentence mode (Requirement 2)
+  const [isPauseAfterSentence, setIsPauseAfterSentence] = useState(true);
+  const [isSentencePaused, setIsSentencePaused] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Dictation state
+  const [typedInput, setTypedInput] = useState('');
+  const [dictationAudit, setDictationAudit] = useState(null);
+  const [dictationChecked, setDictationChecked] = useState(false);
   const [learnedSubs, setLearnedSubs] = useState(new Set());
 
-  // Dictation mode state
-  const [typedInput, setTypedInput] = useState('');
-  const [dictationChecked, setDictationChecked] = useState(false);
+  // Refs
+  const playerRef = useRef(null);
+  const timeTrackerRef = useRef(null);
+  const subItemsRef = useRef({});
+  const activeSubIndexRef = useRef(0);
+  const isPauseAfterSentenceRef = useRef(true);
+  const isPlayingRef = useRef(false);
+  const lastTargetEndRef = useRef(null);
 
-  // Quiz mode state
-  const [quizAnswers, setQuizAnswers] = useState({});
+  activeSubIndexRef.current = activeSubIndex;
+  isPauseAfterSentenceRef.current = isPauseAfterSentence;
+  isPlayingRef.current = isPlaying;
 
-  const currentSub = currentEpisode.subtitles?.[activeSubIndex] || {
+  const currentSub = subtitles[activeSubIndex] || {
     start: 0,
     end: 5,
     de: 'Chưa có phụ đề.',
     vi: '',
   };
 
-  const iframeRef = useRef(null);
+  // 1. Initialize YouTube IFrame API
+  useEffect(() => {
+    let isMounted = true;
 
-  // Jump to timestamp
-  const handleSeekTo = (seconds, index) => {
+    const initYouTubePlayer = () => {
+      if (!window.YT || !window.YT.Player) {
+        setTimeout(initYouTubePlayer, 200);
+        return;
+      }
+
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch {}
+      }
+
+      const playerContainer = document.getElementById('youtube-player-iframe');
+      if (!playerContainer) return;
+
+      playerRef.current = new window.YT.Player('youtube-player-iframe', {
+        videoId: currentEpisode.youtubeId || '4-eDoThe6qo',
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+          rel: 0,
+          modestbranding: 1,
+          enablejsapi: 1,
+          playsinline: 1,
+        },
+        events: {
+          onReady: (event) => {
+            if (isMounted) {
+              event.target.setPlaybackRate(playbackSpeed);
+            }
+          },
+          onStateChange: (event) => {
+            if (!isMounted) return;
+            // 1: PLAYING, 2: PAUSED, 0: ENDED
+            if (event.data === 1) {
+              setIsPlaying(true);
+              setIsSentencePaused(false);
+              startTimeTracking();
+            } else {
+              setIsPlaying(false);
+              stopTimeTracking();
+            }
+          },
+        },
+      });
+    };
+
+    // Load API script if not yet loaded
+    if (!window.YT) {
+      const scriptTag = document.createElement('script');
+      scriptTag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(scriptTag);
+      window.onYouTubeIframeAPIReady = initYouTubePlayer;
+    } else {
+      initYouTubePlayer();
+    }
+
+    return () => {
+      isMounted = false;
+      stopTimeTracking();
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch {}
+      }
+    };
+  }, [currentEpisode.youtubeId]);
+
+  // 2. Real-Time Playhead Tracking (Subtitles follow spoken words & Auto-pause)
+  const startTimeTracking = () => {
+    stopTimeTracking();
+    timeTrackerRef.current = setInterval(() => {
+      if (!playerRef.current || typeof playerRef.current.getCurrentTime !== 'function') return;
+
+      const currentTime = playerRef.current.getCurrentTime();
+      if (currentTime === undefined || currentTime === null) return;
+
+      // A. Match current subtitle by timestamp
+      let foundIndex = -1;
+      for (let i = 0; i < subtitles.length; i++) {
+        const s = subtitles[i];
+        const sEnd = s.end || s.start + 4.5;
+        if (currentTime >= s.start && currentTime < sEnd) {
+          foundIndex = i;
+          break;
+        }
+      }
+
+      // If between subtitles, find nearest or current
+      if (foundIndex === -1 && subtitles.length > 0) {
+        for (let i = 0; i < subtitles.length; i++) {
+          if (currentTime >= subtitles[i].start) {
+            foundIndex = i;
+          }
+        }
+      }
+
+      if (foundIndex !== -1 && foundIndex !== activeSubIndexRef.current) {
+        setActiveSubIndex(foundIndex);
+        // Scroll transcript line into view smoothly
+        const el = subItemsRef.current[foundIndex];
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+
+      // B. Requirement 2: Auto-Pause at end of current sentence
+      if (isPauseAfterSentenceRef.current && isPlayingRef.current) {
+        const activeSub = subtitles[activeSubIndexRef.current];
+        if (activeSub) {
+          const targetEnd = activeSub.end || activeSub.start + 4.5;
+          // When playhead reaches or passes sentence end
+          if (currentTime >= targetEnd - 0.25) {
+            playerRef.current.pauseVideo();
+            setIsPlaying(false);
+            setIsSentencePaused(true);
+            lastTargetEndRef.current = targetEnd;
+          }
+        }
+      }
+    }, 150);
+  };
+
+  const stopTimeTracking = () => {
+    if (timeTrackerRef.current) {
+      clearInterval(timeTrackerRef.current);
+      timeTrackerRef.current = null;
+    }
+  };
+
+  // 3. Playback Controls & Navigation (Requirement 2)
+  const handleSeekAndPlay = (seconds, index) => {
     setActiveSubIndex(index);
-    if (iframeRef.current) {
-      // Post message to YouTube iframe API
-      iframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }),
-        '*'
-      );
-      iframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
-        '*'
-      );
+    setTypedInput('');
+    setDictationChecked(false);
+    setDictationAudit(null);
+    setIsSentencePaused(false);
+
+    if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+      playerRef.current.seekTo(Math.max(0, seconds), true);
+      playerRef.current.playVideo();
+      setIsPlaying(true);
+    }
+
+    // Scroll to item
+    const el = subItemsRef.current[index];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  const handleReplayCurrentSentence = () => {
+    handleSeekAndPlay(currentSub.start, activeSubIndex);
+  };
+
+  const handlePreviousSentence = () => {
+    const prevIdx = Math.max(0, activeSubIndex - 1);
+    const targetSub = subtitles[prevIdx];
+    if (targetSub) {
+      handleSeekAndPlay(targetSub.start, prevIdx);
+    }
+  };
+
+  const handleNextSentence = () => {
+    const nextIdx = Math.min(subtitles.length - 1, activeSubIndex + 1);
+    const targetSub = subtitles[nextIdx];
+    if (targetSub) {
+      handleSeekAndPlay(targetSub.start, nextIdx);
+    }
+  };
+
+  const handleTogglePlayPause = () => {
+    if (!playerRef.current) return;
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+  };
+
+  // Speed control
+  const handleSpeedChange = (speed) => {
+    setPlaybackSpeed(speed);
+    if (playerRef.current && typeof playerRef.current.setPlaybackRate === 'function') {
+      playerRef.current.setPlaybackRate(speed);
+    }
+  };
+
+  // Dictation check
+  const handleCheckDictation = (e) => {
+    e.preventDefault();
+    if (!typedInput.trim()) return;
+
+    const audit = auditDictationSentence({
+      target: currentSub.de,
+      user: typedInput.trim(),
+    });
+    setDictationAudit(audit);
+    setDictationChecked(true);
+
+    if (audit.isExact) {
+      toast.success('Chính xác 100%! Rất xuất sắc!');
+      setLearnedSubs((prev) => new Set(prev).add(currentSub.id || activeSubIndex));
+    } else {
+      toast.info('Đã đối chiếu câu của bạn!');
     }
   };
 
   const handleCopyTranscript = () => {
-    const text = (currentEpisode.subtitles || [])
-      .map((s) => `${s.de} (${s.vi})`)
-      .join('\n');
+    const text = subtitles.map((s) => `${s.de} (${s.vi})`).join('\n');
     navigator.clipboard.writeText(text);
     toast.success('Đã sao chép toàn bộ lời thoại vào clipboard!');
   };
@@ -100,34 +310,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       topic: collection.title,
     });
     toast.success('Đã lưu câu này vào Thẻ từ vựng cá nhân!');
-  };
-
-  const handleToggleLearned = (subId) => {
-    setLearnedSubs((prev) => {
-      const next = new Set(prev);
-      if (next.has(subId)) next.delete(subId);
-      else next.add(subId);
-      return next;
-    });
-  };
-
-  // Export Subtitles
-  const handleDownloadSRT = () => {
-    let srt = '';
-    (currentEpisode.subtitles || []).forEach((s, idx) => {
-      const startMin = String(Math.floor(s.start / 60)).padStart(2, '0');
-      const startSec = String(s.start % 60).padStart(2, '0');
-      const endMin = String(Math.floor(s.end / 60)).padStart(2, '0');
-      const endSec = String(s.end % 60).padStart(2, '0');
-      srt += `${idx + 1}\n00:${startMin}:${startSec},000 --> 00:${endMin}:${endSec},000\n${s.de}\n${s.vi}\n\n`;
-    });
-    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentEpisode.title}.srt`;
-    a.click();
-    toast.success('Đã tải xuống file phụ đề .SRT!');
   };
 
   return (
@@ -157,404 +339,355 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         </Link>
       </div>
 
-      {/* 4 Mode Tabs (Matching Image 4) */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
-        {[
-          { id: 'video', label: 'Xem video', icon: Play },
-          { id: 'dictation', label: 'Chép chính tả', icon: FileText },
-          { id: 'shadowing', label: 'Shadowing', icon: Repeat },
-          { id: 'quiz', label: 'Quiz', icon: HelpCircle },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`tap px-3.5 py-1.5 rounded-sm text-xs font-mono font-medium flex items-center gap-2 transition-all ${
-                isActive
-                  ? 'bg-accent text-accent-foreground font-semibold shadow-sm'
-                  : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* Mode Tabs */}
+      <div className="flex items-center justify-between border-b border-border pb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          {[
+            { id: 'video', label: 'Xem & Luyện nghe theo câu', icon: Play },
+            { id: 'dictation', label: 'Chép chính tả (Diktat)', icon: FileText },
+            { id: 'shadowing', label: 'Shadowing (Nhại giọng)', icon: Repeat },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`tap px-3.5 py-1.5 rounded-sm text-xs font-mono font-medium flex items-center gap-2 transition-all ${
+                  isActive
+                    ? 'bg-accent text-accent-foreground font-semibold shadow-sm'
+                    : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Satz-für-Satz Auto-Pause Toggle (Requirement 2) */}
+        <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-foreground bg-accent/5 px-3 py-1 rounded-sm border border-accent/20">
+          <input
+            type="checkbox"
+            checked={isPauseAfterSentence}
+            onChange={(e) => setIsPauseAfterSentence(e.target.checked)}
+            className="rounded-sm text-accent focus:ring-accent"
+          />
+          <span className="font-semibold text-accent flex items-center gap-1">
+            <Flame className="w-3.5 h-3.5" />
+            <span>Tự dừng sau mỗi câu (Dừng để học)</span>
+          </span>
+        </label>
       </div>
 
-      {/* MAIN STUDIO GRID (2 Columns matching Image 4) */}
+      {/* MAIN STUDIO GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Video Player & Controls (7 cols) */}
+        {/* LEFT COLUMN: Video Player & Sentence Control Bar (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {/* YouTube Embed Player */}
-          <div className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black">
-            <iframe
-              ref={iframeRef}
-              src={`https://www.youtube.com/embed/${currentEpisode.youtubeId}?enablejsapi=1&rel=0&modestbranding=1`}
-              title={currentEpisode.title}
-              className="w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+          {/* YouTube Embed Player with Floating Subtitles Overlay */}
+          <div className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm">
+            <div id="youtube-player-iframe" className="w-full h-full" />
+
+            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Requirement 1) */}
+            {currentSub && (showGerman || showVietnamese) && (
+              <div className="absolute bottom-4 left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center">
+                <div className="bg-black/85 backdrop-blur-sm px-4 py-2.5 rounded-md max-w-xl shadow-2xl border border-white/10 space-y-1">
+                  {showGerman && currentSub.de && (
+                    <div className="text-white font-heading font-bold text-base md:text-lg tracking-wide leading-snug drop-shadow">
+                      {currentSub.de}
+                    </div>
+                  )}
+                  {showVietnamese && currentSub.vi && (
+                    <div className="text-amber-300 font-body text-xs md:text-sm drop-shadow">
+                      {currentSub.vi}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Under-video Controls Bar (Matching Image 4) */}
+          {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
           <div className="surface p-4 border border-border space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              {/* Playback speed buttons */}
-              <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Previous / Replay / Next Sentence Navigation */}
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleSeekTo(Math.max(0, currentSub.start - 5), activeSubIndex)}
-                  className="tap px-2 py-1 rounded-sm border border-border bg-card text-[11px] font-mono hover:bg-muted"
-                  title="Tua lùi 5 giây"
+                  onClick={handlePreviousSentence}
+                  disabled={activeSubIndex <= 0}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted disabled:opacity-40 flex items-center gap-1.5"
+                  title="Lùi về câu thoại trước"
                 >
-                  - Tua 5s
+                  <SkipBack className="w-3.5 h-3.5" />
+                  <span>Câu trước</span>
                 </button>
+
                 <button
-                  onClick={() => handleSeekTo(currentSub.start, activeSubIndex)}
-                  className="tap px-2 py-1 rounded-sm border border-border bg-card text-[11px] font-mono hover:bg-muted flex items-center gap-1"
-                  title="Lặp lại câu này"
+                  onClick={handleReplayCurrentSentence}
+                  className="tap px-3 py-1.5 rounded-sm bg-accent/10 border border-accent/30 text-accent text-xs font-mono hover:bg-accent/20 font-bold flex items-center gap-1.5"
+                  title="Nghe lại câu thoại hiện tại"
                 >
-                  <Repeat className="w-3 h-3 text-accent" />
-                  <span>Lặp đoạn</span>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Nghe lại câu này</span>
                 </button>
+
                 <button
-                  onClick={() => {
-                    const nextIdx = Math.min(
-                      (currentEpisode.subtitles || []).length - 1,
-                      activeSubIndex + 1
-                    );
-                    const nextSub = currentEpisode.subtitles[nextIdx];
-                    if (nextSub) handleSeekTo(nextSub.start, nextIdx);
-                  }}
-                  className="tap px-2 py-1 rounded-sm bg-accent/10 border border-accent/20 text-accent text-[11px] font-mono hover:bg-accent/20 font-semibold"
+                  onClick={handleNextSentence}
+                  disabled={activeSubIndex >= subtitles.length - 1}
+                  className="tap px-3 py-1.5 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold hover:bg-accent/90 shadow-sm flex items-center gap-1.5 disabled:opacity-40"
+                  title="Chuyển sang câu tiếp theo"
                 >
-                  Phát tiếp →
+                  <span>Câu sau →</span>
+                  <SkipForward className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               {/* Speed selector */}
-              <div className="flex items-center gap-1 text-[11px] font-mono">
-                <span className="text-muted-foreground">Tốc độ:</span>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className="text-muted-foreground">Tốc độ đọc:</span>
                 <select
                   value={playbackSpeed}
-                  onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                  className="px-2 py-0.5 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
+                  onChange={(e) => handleSpeedChange(Number(e.target.value))}
+                  className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
                 >
-                  <option value={0.5}>0.5x (Rất chậm)</option>
                   <option value={0.75}>0.75x (Chậm)</option>
+                  <option value={0.9}>0.9x (Hơi chậm)</option>
                   <option value={1}>1.0x (Chuẩn)</option>
                   <option value={1.25}>1.25x (Nhanh)</option>
-                  <option value={1.5}>1.5x (Rất nhanh)</option>
                 </select>
               </div>
             </div>
 
-            {/* Subtitle helper actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border text-[11px] font-mono text-muted-foreground">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={pauseWhileTyping}
-                  onChange={(e) => setPauseWhileTyping(e.target.checked)}
-                  className="rounded-sm border-border text-accent focus:ring-accent"
-                />
-                <span>Tự động tạm dừng khi gõ</span>
-              </label>
-
-              <div className="flex items-center gap-2">
+            {/* Status Indicator */}
+            {isSentencePaused && (
+              <div className="p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs font-mono text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                <span>⏸️ Đã dừng ở cuối câu #{activeSubIndex + 1}. Bạn có thể nghe lại hoặc làm bài tập bên dưới!</span>
                 <button
-                  onClick={handleDownloadSRT}
-                  className="hover:text-accent flex items-center gap-1 p-1 hover:bg-muted rounded-sm"
-                  title="Tải phụ đề định dạng .SRT"
+                  onClick={handleNextSentence}
+                  className="text-accent underline font-bold"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Tải SRT</span>
-                </button>
-
-                <button
-                  onClick={() => setShowManualSubEditor(!showManualSubEditor)}
-                  className="hover:text-accent flex items-center gap-1 p-1 hover:bg-muted rounded-sm text-accent"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Nhập phụ đề thủ công</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Collapsible Manual Subtitle Editor */}
-            {showManualSubEditor && (
-              <div className="pt-3 border-t border-border animate-fade-in space-y-2">
-                <div className="text-xs font-mono font-medium text-foreground">
-                  Dán phụ đề SRT / VTT hoặc văn bản thô (Mỗi dòng một câu):
-                </div>
-                <textarea
-                  rows={4}
-                  value={manualSubText}
-                  onChange={(e) => setManualSubText(e.target.value)}
-                  placeholder={`0:05 - Wie lange lernen Sie schon Deutsch?\n0:08 - Ich lerne seit einem Jahr Deutsch.\n0:14 - Richtig, ich weiß, dass man das so sagt...`}
-                  className="w-full px-3 py-2 text-xs font-mono rounded-sm border border-border bg-card text-foreground"
-                />
-                <button
-                  onClick={() => {
-                    toast.success('Đã lưu phụ đề bổ sung!');
-                    setShowManualSubEditor(false);
-                  }}
-                  className="tap px-3 py-1 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-semibold"
-                >
-                  Áp dụng phụ đề
+                  Phát tiếp câu sau →
                 </button>
               </div>
             )}
           </div>
 
-          {/* Mode 2: Dictation / Chép chính tả box */}
+          {/* TAB CONTENT: DICTATION OR SHADOWING PRACTICE */}
           {activeTab === 'dictation' && (
-            <div className="surface p-5 border border-accent/40 shadow-md space-y-3 animate-fade-in">
-              <div className="flex items-center justify-between">
-                <div className="eyebrow">CHẾ ĐỘ CHÉP CHÍNH TẢ (DIKTAT)</div>
-                <span className="text-xs font-mono text-muted-foreground">
-                  Câu #{activeSubIndex + 1}
-                </span>
-              </div>
-              <p className="font-heading italic text-xs text-muted-foreground">
-                Hãy nghe kỹ câu thoại vừa rồi và gõ lại chính xác từng từ tiếng Đức:
-              </p>
-              <textarea
-                rows={2}
-                value={typedInput}
-                onChange={(e) => {
-                  setTypedInput(e.target.value);
-                  setDictationChecked(false);
-                }}
-                placeholder="Gõ lại câu tiếng Đức bạn vừa nghe thấy..."
-                className="w-full px-3 py-2 text-sm font-mono rounded-sm border border-border bg-card text-foreground focus:ring-1 focus:ring-accent"
-              />
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  onClick={() => handleSeekTo(currentSub.start, activeSubIndex)}
-                  className="tap px-3 py-1.5 rounded-sm border border-border text-xs font-mono flex items-center gap-1"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Nghe lại câu</span>
-                </button>
-                <button
-                  onClick={() => setDictationChecked(true)}
-                  className="tap px-4 py-1.5 rounded-sm bg-accent text-accent-foreground font-mono text-xs font-semibold"
-                >
-                  Kiểm tra đáp án
-                </button>
-              </div>
-
-              {dictationChecked && (
-                <div className="mt-3 p-3 rounded-sm bg-muted/50 border border-border text-xs font-mono animate-fade-in">
-                  <div className="font-bold text-foreground mb-1">Đáp án chuẩn:</div>
-                  <div className="text-accent font-semibold">{currentSub.de}</div>
-                  <div className="text-muted-foreground italic mt-0.5">{currentSub.vi}</div>
+            <div className="surface p-5 border border-border space-y-4 animate-rise">
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <div>
+                  <div className="eyebrow">CHẾ ĐỘ CHÉP CHÍNH TẢ (DIKTAT)</div>
+                  <h4 className="font-display font-bold text-lg text-foreground">
+                    Câu #{activeSubIndex + 1} / {subtitles.length}
+                  </h4>
                 </div>
-              )}
-            </div>
-          )}
+                <button
+                  onClick={handleReplayCurrentSentence}
+                  className="tap px-2.5 py-1 rounded-sm bg-accent/10 text-accent font-mono text-xs flex items-center gap-1 font-semibold"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>Nghe lại</span>
+                </button>
+              </div>
 
-          {/* Mode 3: Quiz trắc nghiệm */}
-          {activeTab === 'quiz' && (
-            <div className="surface p-5 border border-border shadow-md space-y-4 animate-fade-in">
-              <div className="eyebrow">TRẮC NGHIỆM ĐỌC HIỂU NỘI DUNG BÀI NGHE</div>
-              {(currentEpisode.quiz || []).length > 0 ? (
-                currentEpisode.quiz.map((q, qIdx) => (
-                  <div key={qIdx} className="space-y-2 pb-3 border-b border-border last:border-0">
-                    <div className="font-heading font-semibold text-sm text-foreground">
-                      {qIdx + 1}. {q.question}
-                    </div>
-                    <div className="space-y-1.5">
-                      {q.options.map((opt, optIdx) => {
-                        const isChosen = quizAnswers[qIdx] === optIdx;
-                        const isCorrect = q.correctIndex === optIdx;
-                        return (
-                          <button
-                            key={optIdx}
-                            onClick={() => setQuizAnswers({ ...quizAnswers, [qIdx]: optIdx })}
-                            className={`tap w-full text-left p-2.5 rounded-sm text-xs font-mono border transition-all ${
-                              isChosen
-                                ? isCorrect
-                                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
-                                  : 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200'
-                                : 'border-border bg-card hover:bg-muted text-foreground'
-                            }`}
-                          >
-                            <span>{String.fromCharCode(65 + optIdx)}. </span>
-                            <span>{opt}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {quizAnswers[qIdx] !== undefined && (
-                      <p className="text-[11px] font-body text-muted-foreground italic pt-1">
-                        Giải thích: {q.explanation}
-                      </p>
-                    )}
+              <form onSubmit={handleCheckDictation} className="space-y-3">
+                <label className="block text-xs font-mono text-muted-foreground">
+                  Gõ lại câu thoại tiếng Đức bạn vừa nghe được:
+                </label>
+                <textarea
+                  rows={3}
+                  value={typedInput}
+                  onChange={(e) => setTypedInput(e.target.value)}
+                  placeholder="Gõ tiếng Đức vào đây (chú ý viết hoa danh từ)..."
+                  className="w-full p-3 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="submit"
+                    className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold shadow-sm"
+                  >
+                    Kiểm tra đáp án
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextSentence}
+                    className="tap px-4 py-2 rounded-sm border border-border bg-card text-xs font-mono font-semibold hover:bg-muted flex items-center gap-1.5"
+                  >
+                    <span>Sang câu kế tiếp →</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Dictation Result Breakdown */}
+              {dictationChecked && dictationAudit && (
+                <div className="p-4 rounded-sm border border-border bg-card space-y-2 text-xs animate-rise">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-muted-foreground">Kết quả đối chiếu:</span>
+                    <span
+                      className={`font-mono font-bold ${
+                        dictationAudit.isExact ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                    >
+                      {dictationAudit.isExact ? '✓ Đúng 100%' : 'Cần chú ý một số từ'}
+                    </span>
                   </div>
-                ))
-              ) : (
-                <p className="text-xs font-body text-muted-foreground">
-                  Tập phim này chưa có câu hỏi Quiz. Bạn có thể tự do luyện nghe và chép chính tả!
-                </p>
+
+                  <div className="p-2.5 rounded bg-muted/20 font-heading text-sm text-foreground">
+                    <strong className="text-accent font-mono text-xs block mb-0.5">Đáp án chuẩn:</strong>
+                    {currentSub.de}
+                  </div>
+                  {currentSub.vi && (
+                    <div className="text-muted-foreground italic text-xs">
+                      → Nghĩa Việt: {currentSub.vi}
+                    </div>
+                  )}
+
+                  {/* Errors breakdown */}
+                  {dictationAudit.misheardWords?.length > 0 && (
+                    <div className="text-[11px] font-mono text-rose-600 pt-1">
+                      Từ nghe nhầm / viết sai: {dictationAudit.misheardWords.map((w) => `"${w.actual}" → "${w.expected}"`).join(', ')}
+                    </div>
+                  )}
+                  {dictationAudit.capitalizationErrors?.length > 0 && (
+                    <div className="text-[11px] font-mono text-amber-600">
+                      Lỗi viết hoa danh từ: {dictationAudit.capitalizationErrors.map((c) => `"${c.actual}" (chuẩn: ${c.expected})`).join(', ')}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
 
-        {/* RIGHT COLUMN: Interactive Subtitle Transcript (5 cols matching Image 4) */}
+        {/* RIGHT COLUMN: Interactive Real-Time Transcript (5 cols) */}
         <div className="lg:col-span-5 space-y-3">
-          <div className="surface p-4 border border-border shadow-md flex flex-col h-[640px]">
-            {/* Header with collection & episode name */}
-            <div className="pb-3 border-b border-border mb-3">
-              <div className="eyebrow mb-0.5">BỘ VIDEO: {collection.title}</div>
-              <h3 className="font-display text-lg font-bold text-foreground leading-snug">
-                {currentEpisode.title}
-              </h3>
+          {/* Transcript Top Bar */}
+          <div className="surface p-3.5 border border-border flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowGerman(!showGerman)}
+                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
+                  showGerman
+                    ? 'bg-accent/10 border-accent/30 text-accent'
+                    : 'bg-card border-border text-muted-foreground'
+                }`}
+              >
+                {showGerman ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>Tiếng Đức</span>
+              </button>
 
-              {/* Subtitle toggle switches */}
-              <div className="flex items-center justify-between pt-3 text-xs font-mono">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowGerman(!showGerman)}
-                    className={`tap px-2 py-1 rounded-sm border text-[11px] flex items-center gap-1 ${
-                      showGerman
-                        ? 'bg-accent/10 border-accent/30 text-accent font-semibold'
-                        : 'border-border bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {showGerman ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    <span>{showGerman ? 'Hiện tiếng Đức' : 'Ẩn tiếng Đức'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowVietnamese(!showVietnamese)}
-                    className={`tap px-2 py-1 rounded-sm border text-[11px] flex items-center gap-1 ${
-                      showVietnamese
-                        ? 'bg-accent/10 border-accent/30 text-accent font-semibold'
-                        : 'border-border bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {showVietnamese ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    <span>{showVietnamese ? 'Hiện tiếng Việt' : 'Ẩn tiếng Việt'}</span>
-                  </button>
-                </div>
-
-                <button
-                  onClick={handleCopyTranscript}
-                  className="tap text-muted-foreground hover:text-accent p-1"
-                  title="Sao chép toàn bộ lời thoại"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowVietnamese(!showVietnamese)}
+                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
+                  showVietnamese
+                    ? 'bg-accent/10 border-accent/30 text-accent'
+                    : 'bg-card border-border text-muted-foreground'
+                }`}
+              >
+                {showVietnamese ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>Dịch Việt</span>
+              </button>
             </div>
 
-            {/* Interactive Timeline List (Matching Image 4 styling) */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {(currentEpisode.subtitles || []).map((sub, idx) => {
+            <button
+              onClick={handleCopyTranscript}
+              className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="Sao chép toàn bộ phụ đề"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Transcript Scroll Container (Auto-highlight & auto-scroll) */}
+          <div className="surface p-2 border border-border max-h-[600px] overflow-y-auto space-y-2">
+            {subtitles.length === 0 ? (
+              <div className="p-8 text-center text-xs font-mono text-muted-foreground">
+                Chưa có phụ đề cho video này.
+              </div>
+            ) : (
+              subtitles.map((sub, idx) => {
                 const isActive = activeSubIndex === idx;
-                const isLearned = learnedSubs.has(sub.id);
-                const minutes = Math.floor(sub.start / 60);
-                const seconds = String(sub.start % 60).padStart(2, '0');
-                const timeLabel = `${minutes}:${seconds}`;
+                const isLearned = learnedSubs.has(sub.id || idx);
+
+                const min = String(Math.floor(sub.start / 60)).padStart(2, '0');
+                const sec = String(sub.start % 60).padStart(2, '0');
 
                 return (
                   <div
-                    key={sub.id}
-                    onClick={() => handleSeekTo(sub.start, idx)}
-                    className={`tap p-3 rounded-sm border transition-all cursor-pointer group flex items-start justify-between gap-2 ${
+                    key={sub.id || idx}
+                    ref={(el) => (subItemsRef.current[idx] = el)}
+                    onClick={() => handleSeekAndPlay(sub.start, idx)}
+                    className={`tap p-3 rounded-sm border text-left transition-all cursor-pointer ${
                       isActive
-                        ? 'border-accent bg-accent/10 ring-1 ring-accent'
-                        : 'border-border bg-card/60 hover:bg-muted/50 hover:border-accent/40'
+                        ? 'border-accent bg-accent/10 ring-2 ring-accent shadow-sm'
+                        : 'border-border bg-card hover:bg-muted/50'
                     }`}
                   >
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      {/* Timestamp Badge */}
-                      <span className="font-mono text-xs font-bold text-accent shrink-0 mt-0.5">
-                        {timeLabel}
-                      </span>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded ${
+                            isActive
+                              ? 'bg-accent text-accent-foreground'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {min}:{sec}
+                        </span>
+                        {isActive && (
+                          <span className="text-[10px] font-mono text-accent font-bold uppercase animate-pulse">
+                            ▶ Đang nói
+                          </span>
+                        )}
+                      </div>
 
-                      {/* Subtitle Content */}
-                      <div className="min-w-0">
-                        {showGerman && (
-                          <div
-                            className={`font-heading text-xs font-medium text-foreground leading-relaxed ${
-                              isActive ? 'font-bold text-accent' : ''
-                            }`}
-                          >
-                            {sub.de}
-                          </div>
-                        )}
-                        {showVietnamese && sub.vi && (
-                          <div className="font-body text-[11px] text-muted-foreground italic mt-0.5">
-                            {sub.vi}
-                          </div>
-                        )}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSaveSentenceAsCard(sub);
+                          }}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent"
+                          title="Lưu câu vào Thẻ từ vựng"
+                        >
+                          <BookmarkPlus className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Quick Action Icons */}
-                    <div className="flex items-center gap-1 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleLearned(sub.id);
-                        }}
-                        className={`p-1 rounded-sm hover:bg-muted ${
-                          isLearned ? 'text-emerald-600 font-bold' : 'text-muted-foreground'
+                    {/* German Sentence */}
+                    {showGerman && (
+                      <div
+                        className={`font-heading text-sm leading-relaxed ${
+                          isActive ? 'font-bold text-foreground' : 'text-foreground/90'
                         }`}
-                        title="Đánh dấu đã hiểu câu này"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
+                        {sub.de}
+                      </div>
+                    )}
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSaveSentenceAsCard(sub);
-                        }}
-                        className="p-1 rounded-sm hover:bg-muted text-muted-foreground hover:text-accent"
-                        title="Lưu câu này vào Thẻ từ vựng để ôn tập"
-                      >
-                        <BookmarkPlus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {/* Vietnamese Translation */}
+                    {showVietnamese && sub.vi && (
+                      <div className="font-body text-xs text-muted-foreground mt-0.5 italic">
+                        {sub.vi}
+                      </div>
+                    )}
                   </div>
                 );
-              })}
-            </div>
-
-            {/* Bottom episode switchers */}
-            <div className="pt-3 border-t border-border mt-2 flex items-center justify-between text-xs font-mono">
-              <span className="text-muted-foreground">
-                Tổng cộng: {(currentEpisode.subtitles || []).length} câu thoại
-              </span>
-
-              <div className="flex items-center gap-1.5">
-                {episodes.map((ep, i) => (
-                  <button
-                    key={ep.id}
-                    onClick={() => navigate(`/skills/listening/${collectionId}/${ep.id}`)}
-                    className={`px-2 py-0.5 rounded-sm border text-[11px] font-mono ${
-                      ep.id === videoId
-                        ? 'bg-accent text-accent-foreground font-bold'
-                        : 'bg-card text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Tập {i + 1}
-                  </button>
-                ))}
-              </div>
-            </div>
+              })
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 export default ListeningPlayerPage;

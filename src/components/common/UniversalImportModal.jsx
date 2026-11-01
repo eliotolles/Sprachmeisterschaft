@@ -90,19 +90,60 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
       if (contentType === 'listening') {
         const ytId = extractYouTubeId(youtubeUrl);
         const parsedSubs = parseSubtitles(rawSubtitles);
+        const effectiveScope = scope; // Allow user choice
+
+        let targetCollectionId = 'nicos-weg-a1';
+
+        if (effectiveScope === 'private') {
+          // Put in user's personal collection
+          let myCol = db.listening.getCollections({ scope: 'private' }).find((c) => c.id === 'my-personal-videos');
+          if (!myCol) {
+            myCol = db.listening.createCollection({
+              id: 'my-personal-videos',
+              title: 'Kho Video Cá Nhân Của Tôi',
+              deTitle: 'Meine persönliche Videosammlung',
+              provider: 'Video của tôi',
+              level,
+              thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+              description: 'Các video YouTube do bạn tự nhập để luyện nghe và chép chính tả riêng.',
+              scope: 'private',
+            });
+          }
+          targetCollectionId = myCol.id;
+        } else {
+          // Public or Admin Only: Create a new visible collection for the app
+          const newCol = db.listening.createCollection({
+            title,
+            deTitle: title,
+            provider: 'Elio Einfach Official',
+            level,
+            thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+            description: `Bộ luyện nghe video cấp độ ${level}: ${title}`,
+            scope: effectiveScope,
+          });
+          targetCollectionId = newCol.id;
+        }
 
         const newEpisode = db.listening.createEpisode({
-          collectionId: 'nicos-weg-a1', // default collection or create one
+          collectionId: targetCollectionId,
           title,
           level,
           youtubeId: ytId || '4-eDoThe6qo',
           subtitles: parsedSubs.length > 0 ? parsedSubs : [
             { id: 'sub-1', start: 0, end: 5, de: title, vi: 'Nội dung video' },
           ],
-          scope: isAdmin ? scope : 'private',
+          scope: effectiveScope,
         });
 
-        toast.success(`Đã import thành công video luyện nghe: "${title}" (${level})!`);
+        toast.success(
+          `Đã import thành công video luyện nghe: "${title}" vào ${
+            effectiveScope === 'public'
+              ? 'Kho chung toàn hệ thống'
+              : effectiveScope === 'private'
+              ? 'Kho cá nhân của bạn'
+              : 'Nội bộ Admin'
+          }!`
+        );
       }
       // 2. IMPORT VOCABULARY
       else if (contentType === 'vocabulary') {
@@ -252,67 +293,66 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             />
           </div>
 
-          {/* 3. Scope Permissions Selector (Admin vs User) */}
-          <div className="p-3 bg-muted/30 rounded-sm border border-border">
-            <label className="block text-xs font-mono font-medium text-foreground mb-1">
-              Quyền phân phối & Hiển thị (Scope)
-            </label>
-            {isAdmin ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setScope('public')}
-                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                    scope === 'public'
-                      ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                  <div>
-                    <div className="font-bold">Toàn hệ thống</div>
-                    <div className="text-[10px] text-muted-foreground">Tất cả học viên đều học được</div>
-                  </div>
-                </button>
+          {/* 3. Scope Permissions Selector */}
+          <div className="p-3.5 bg-muted/30 rounded-sm border border-border space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-mono font-medium text-foreground">
+                Quyền phân phối & Hiển thị (Scope) *
+              </label>
+              <span className="text-[10px] font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10">
+                Lựa chọn phạm vi xuất bản
+              </span>
+            </div>
 
-                <button
-                  type="button"
-                  onClick={() => setScope('admin_only')}
-                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                    scope === 'admin_only'
-                      ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                  <div>
-                    <div className="font-bold">Nội bộ Admin</div>
-                    <div className="text-[10px] text-muted-foreground">Chỉ ban quản trị xem trước</div>
-                  </div>
-                </button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setScope('public')}
+                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                  scope === 'public'
+                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-bold">🌍 Toàn hệ thống</div>
+                  <div className="text-[10px] text-muted-foreground">Xuất bản kho chung cho mọi học viên</div>
+                </div>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => setScope('private')}
-                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                    scope === 'private'
-                      ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                  <div>
-                    <div className="font-bold">Cá nhân Admin</div>
-                    <div className="text-[10px] text-muted-foreground">Lưu riêng cho tài khoản này</div>
-                  </div>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 p-2 bg-card rounded-sm text-xs font-mono text-muted-foreground border border-border">
-                <User className="w-4 h-4 text-accent" />
-                <span>Bạn đang nhập nội dung vào <strong>Kho học tập cá nhân của riêng bạn</strong> (Chỉ bạn xem được).</span>
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setScope('private')}
+                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                  scope === 'private'
+                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-bold">👤 Video cá nhân</div>
+                  <div className="text-[10px] text-muted-foreground">Lưu riêng vào kho cá nhân của bạn</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setScope('admin_only')}
+                className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
+                  scope === 'admin_only'
+                    ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-bold">🔒 Nội bộ Admin</div>
+                  <div className="text-[10px] text-muted-foreground">Chỉ ban quản trị kiểm duyệt</div>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* 4. CONTENT SPECIFIC INPUTS */}
