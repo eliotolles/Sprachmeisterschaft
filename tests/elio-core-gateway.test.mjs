@@ -119,3 +119,21 @@ test('review API requires auth, computes server schedule and cannot be bypassed 
     assert.equal(state.body.records.sprach_vocabulary_reviews.value.history.length,1);
   }finally{db.close();}
 });
+test('grammar gateway authenticates imports, returns source lessons and protects server-graded progress',async()=>{
+  const {db,call,login}=fixture();try{
+    db.exec('ALTER TABLE ee_records ADD COLUMN updated_at TEXT');
+    assert.equal((await call('/grammar')).status,401);
+    const alice=await login('alice@example.invalid'),owner=await login('owner@example.invalid');
+    const catalog=await call('/grammar?level=B1','GET',undefined,alice);assert.equal(catalog.status,200);assert.equal(catalog.body.total,17);
+    const first=catalog.body.lessons[0];const lesson=await call('/grammar/lesson?'+new URLSearchParams({collection:first.collectionId,id:first.id}),'GET',undefined,alice);
+    assert.equal(lesson.status,200);assert.equal(lesson.body.exercises[0].answers,undefined);
+    const exercise=lesson.body.exercises[0];
+    const submission={collectionId:first.collectionId,lessonId:first.id,exerciseId:exercise.id,revision:exercise.revision,answer:'definitely not the answer',version:0};
+    const result=await call('/grammar/submit','POST',submission,alice);assert.equal(result.status,200);assert.equal(result.body.feedback.correct,false);
+    assert.equal((await call('/grammar/submit','POST',submission,alice)).status,409);
+    assert.equal((await call('/state','PUT',{name:'sprach_grammar_attempts',value:{attempts:[]},version:1},alice)).status,400);
+    const collection={id:'gateway-grammar',name:'Import',items:[{id:'lesson',title:'Import',level:'A1',content:'A real rule.',exercises:[]}]};
+    assert.equal((await call('/grammar/import','POST',{collection,visibility:'public'},alice)).status,403);
+    const shared=await call('/grammar/import','POST',{collection},owner);assert.equal(shared.status,200);assert.equal(shared.body.visibility,'public');
+  }finally{db.close();}
+});

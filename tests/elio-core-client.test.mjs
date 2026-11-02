@@ -54,3 +54,16 @@ test('review client serializes grades and advances only confirmed server revisio
   await Promise.all([client.reviewVocabulary('source','good'),client.reviewVocabulary('source','easy')]);
   assert.deepEqual(grades,['good','easy']);assert.equal(revision,2);
 });
+test('grammar client sends source fingerprints and serializes confirmed attempt revisions',async()=>{
+  let revision=0;const answers=[];
+  const client=createElioClient({fetcher:async(url,options)=>{
+    if(url.endsWith('/auth/login'))return Response.json({user});
+    if(options.method==='GET')return Response.json({userId:'alice',records:{}});
+    const data=JSON.parse(options.body);assert.equal(data.version,revision);assert.equal(data.revision,'source-revision');revision++;answers.push(data.answer);
+    return Response.json({userId:'alice',lessonId:data.lessonId,version:revision,feedback:{correct:false}});
+  }});
+  await client.login(user.email,'fixture-password');
+  const common={collectionId:'collection',lessonId:'lesson',exerciseId:'exercise',revision:'source-revision'};
+  await Promise.all([client.submitGrammar({...common,answer:'first'}),client.submitGrammar({...common,answer:'second'})]);
+  assert.deepEqual(answers,['first','second']);assert.equal(revision,2);
+});

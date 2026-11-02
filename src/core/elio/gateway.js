@@ -1,6 +1,7 @@
 import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
+import { listGrammar, readGrammarLesson, importGrammar, submitGrammar, GRAMMAR_ATTEMPT_KEY } from './grammar.js';
 
 // Elio's per-account records and optimistic revisions, mapped to the existing ee_* schema.
 // No bootstrap account, schema initialization, password rewrite, or bulk migration runs here.
@@ -9,7 +10,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY]);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -105,7 +106,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || data.name === REVIEW_KEY || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -136,6 +137,18 @@ export async function handleElioCore(request, env) {
       return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
+    if (path === '/api/core/grammar' && request.method === 'GET') return json(await listGrammar(env, user, url));
+    if (path === '/api/core/grammar/lesson' && request.method === 'GET') {
+      return json(await readGrammarLesson(env, user, url.searchParams.get('collection'), url.searchParams.get('id')));
+    }
+    if (path === '/api/core/grammar/import' && request.method === 'POST') {
+      return json(await importGrammar(env, user, await body(request, 1500000)));
+    }
+    if (path === '/api/core/grammar/submit' && request.method === 'POST') {
+      const result = await submitGrammar(env, user, await body(request, 16000));
+      if (result.conflict) return json({ code: 'VERSION_CONFLICT', error: 'Có lịch sử mới hơn; chưa ghi lại lượt chấm cũ.', version: result.version }, 409);
+      return json(result);
+    }
     if (path === '/api/core/vocabulary' && request.method === 'GET') {
       return json(await readVocabulary(env, url));
     }

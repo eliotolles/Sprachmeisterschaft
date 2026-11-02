@@ -105,5 +105,33 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async records(kind) {
       requireUser(); return (await request('/records?kind=' + encodeURIComponent(kind))).items;
     },
+    async grammar({ level, q, limit = 100, offset = 0 } = {}) {
+      requireUser(); const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      for (const [key, value] of Object.entries({ level, q })) if (value !== undefined) params.set(key, value);
+      return request('/grammar?' + params);
+    },
+    async grammarLesson(collectionId, lessonId) {
+      requireUser(); return request('/grammar/lesson?' + new URLSearchParams({ collection: collectionId, id: lessonId }));
+    },
+    async importGrammar(collection, { visibility } = {}) {
+      requireUser(); return request('/grammar/import', { method: 'POST', data: { collection, ...(visibility ? { visibility } : {}) } });
+    },
+    submitGrammar({ collectionId, lessonId, exerciseId, revision, answer }) {
+      requireUser();
+      const name = 'sprach_grammar_attempts', current = epoch, user = identity, key = user.id + ':' + name;
+      const prior = writes.get(key) || Promise.resolve();
+      const next = prior.catch(() => {}).then(async () => {
+        if (current !== epoch) throw fail('ACCOUNT_CHANGED', 'Không ghi bài làm của tài khoản trước.');
+        if (!versions.has(name)) await loadState([name], current, user);
+        const payload = await request('/grammar/submit', { method: 'POST', data: {
+          collectionId, lessonId, exerciseId, revision, answer, version: versions.get(name),
+        }, expectedEpoch: current, user });
+        if (payload.userId !== user.id || payload.lessonId !== lessonId || !Number.isSafeInteger(payload.version)) throw fail('INVALID_RESPONSE', 'Xác nhận bài làm không hợp lệ.');
+        versions.set(name, payload.version); return payload;
+      });
+      writes.set(key, next);
+      next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
+      return next;
+    },
   };
 }
