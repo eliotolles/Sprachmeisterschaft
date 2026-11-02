@@ -1,0 +1,1962 @@
+{
+  "Goethe-A1": {
+    "exam": "Goethe",
+    "level": "A1",
+    "name": "Goethe-Zertifikat A1 · Start Deutsch 1",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 25,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Mitteilungen: richtig/falsch",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Anzeigen: passende Information wählen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Hinweise: richtig/falsch",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a1_sd1/lesen.php"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Gespräche: Auswahl",
+            "itemCount": 6,
+            "replays": 2
+          },
+          {
+            "teil": 2,
+            "name": "Durchsagen: richtig/falsch",
+            "itemCount": 4,
+            "replays": 1
+          },
+          {
+            "teil": 3,
+            "name": "Telefonische Nachrichten: Auswahl",
+            "itemCount": 5,
+            "replays": 2
+          }
+        ],
+        "source": "https://bfu.goethe.de/a1_sd1/hoeren.php"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Formular",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Kurze Nachricht",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a1_sd1/schreiben.php"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Sich vorstellen, buchstabieren, Zahlen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Informationen erfragen und geben",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Bitten formulieren und reagieren",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a1_sd1/sprechen.php"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Lesen + Schreiben",
+        "skills": [
+          "reading",
+          "writing"
+        ],
+        "minutes": 45
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://bfu.goethe.de/a1_sd1/lesen.php",
+    "note": "Lesen ca. 25 + Schreiben ca. 20 Minuten; zusammen 45. Hören ca. 20, Sprechen ca. 15. Keine Vorbereitungszeit für Sprechen.",
+    "preparationSource": null
+  },
+  "Goethe-A2": {
+    "exam": "Goethe",
+    "level": "A2",
+    "name": "Goethe-Zertifikat A2 · Erwachsene",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Zeitungsartikel: Auswahl",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Informationstafel: Auswahl",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "E-Mail: Auswahl",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 4,
+            "name": "Anzeigen zuordnen",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a2_mod_2MX5/lesen.php"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Texte: Auswahl",
+            "itemCount": 5,
+            "replays": 2
+          },
+          {
+            "teil": 2,
+            "name": "Gespräch: Bilder zuordnen",
+            "itemCount": 5,
+            "replays": 1
+          },
+          {
+            "teil": 3,
+            "name": "Kurze Gespräche: Auswahl",
+            "itemCount": 5,
+            "replays": 1
+          },
+          {
+            "teil": 4,
+            "name": "Interview: ja/nein",
+            "itemCount": 5,
+            "replays": 2
+          }
+        ],
+        "source": "https://bfu.goethe.de/a2_mod_2MX5/hoeren.php"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "SMS: 20–30 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "E-Mail: 30–40 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a2_mod_2MX5/schreiben.php"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Fragen zur Person",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Über sich und den Alltag sprechen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Gemeinsam etwas planen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/a2_mod_2MX5/sprechen.php"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://bfu.goethe.de/a2_mod_2MX5/lesen.php",
+    "note": "Nicht Fit in Deutsch (Jugendliche). Keine Vorbereitungszeit für Sprechen.",
+    "preparationSource": null
+  },
+  "Goethe-B1": {
+    "exam": "Goethe",
+    "level": "B1",
+    "name": "Goethe-Zertifikat B1 · Erwachsene",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 65,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Blog: richtig/falsch",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Zeitungsartikel: Auswahl",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Situationen und Anzeigen zuordnen",
+            "itemCount": 7,
+            "replays": null
+          },
+          {
+            "teil": 4,
+            "name": "Meinungen: ja/nein",
+            "itemCount": 7,
+            "replays": null
+          },
+          {
+            "teil": 5,
+            "name": "Regeln und Anweisungen: Auswahl",
+            "itemCount": 4,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b1_mod/lesen.php"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 40,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Texte: richtig/falsch + Auswahl",
+            "itemCount": 10,
+            "replays": 2
+          },
+          {
+            "teil": 2,
+            "name": "Vortrag: Auswahl",
+            "itemCount": 5,
+            "replays": 1
+          },
+          {
+            "teil": 3,
+            "name": "Gespräch: richtig/falsch",
+            "itemCount": 7,
+            "replays": 1
+          },
+          {
+            "teil": 4,
+            "name": "Diskussion: Aussagen zuordnen",
+            "itemCount": 8,
+            "replays": 2
+          }
+        ],
+        "source": "https://bfu.goethe.de/b1_mod/hoeren.php"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 60,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Informelle E-Mail: ca. 80 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Diskussionsbeitrag: ca. 80 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Formelle Entschuldigung: ca. 40 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b1_mod/schreiben.php"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 15,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Gemeinsam etwas planen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Ein Thema präsentieren",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Rückmeldung geben und Fragen stellen/beantworten",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b1_mod/sprechen.php"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 65
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 40
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 60
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://bfu.goethe.de/b1_mod/sprechen.php",
+    "note": "Vier eigenständig zertifizierbare Module; Schreiben: 20/25/15 Minuten. Vorbereitung Sprechen: 15 Minuten.",
+    "preparationSource": null
+  },
+  "Goethe-B2": {
+    "exam": "Goethe",
+    "level": "B2",
+    "name": "Goethe-Zertifikat B2 · modulares Format",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 65,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Aussagen vier Personen zuordnen",
+            "itemCount": 9,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Sätze in Textlücken einsetzen",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Artikel: Auswahl",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 4,
+            "name": "Meinungsäußerungen Überschriften zuordnen",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 5,
+            "name": "Studienordnung: Überschriften zuordnen",
+            "itemCount": 3,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b2_mod_2MX6/lesen.php"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 40,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Fünf Gespräche/Äußerungen: zwei Aufgaben je Text",
+            "itemCount": 10,
+            "replays": 1
+          },
+          {
+            "teil": 2,
+            "name": "Radiointerview: Auswahl",
+            "itemCount": 6,
+            "replays": 2
+          },
+          {
+            "teil": 3,
+            "name": "Gespräch: Sprecher zuordnen",
+            "itemCount": 6,
+            "replays": 1
+          },
+          {
+            "teil": 4,
+            "name": "Vortrag: Auswahl",
+            "itemCount": 8,
+            "replays": 2
+          }
+        ],
+        "source": "https://bfu.goethe.de/b2_mod_2MX6/hoeren.php"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 75,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Forumsbeitrag: mindestens 150 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Formelle Nachricht: mindestens 100 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b2_mod_2MX6/schreiben.php"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 15,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Vortrag mit Rückfragen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Diskussion führen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://bfu.goethe.de/b2_mod_2MX6/sprechen.php"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 65
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 40
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 75
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://bfu.goethe.de/b2_mod_2MX6/sprechen.php",
+    "note": "Aktuelles modulares Erwachsenenformat, nicht das ältere B2-Format. Vier Module. Vorbereitung Sprechen: 15 Minuten.",
+    "preparationSource": null
+  },
+  "Telc-A1": {
+    "exam": "Telc",
+    "level": "A1",
+    "name": "Start Deutsch 1 / telc Deutsch A1",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Gespräche",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Durchsagen / kurze Nachrichten",
+            "itemCount": 4,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Telefon-/Alltagsgespräche",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/start-deutsch-1-/-telc-deutsch-a1/"
+      },
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": null,
+        "shared": "Lesen + Schreiben",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze persönliche Texte",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Anzeigen und Informationen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Hinweise / Situationen",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/start-deutsch-1-/-telc-deutsch-a1/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": null,
+        "shared": "Lesen + Schreiben",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Formular",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Kurzer Brief / Nachricht",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/start-deutsch-1-/-telc-deutsch-a1/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Sich vorstellen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Informationen erfragen und geben",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Bitten formulieren und reagieren",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/start-deutsch-1-/-telc-deutsch-a1/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Lesen + Schreiben",
+        "skills": [
+          "reading",
+          "writing"
+        ],
+        "minutes": 45
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/start-deutsch-1-/-telc-deutsch-a1/",
+    "note": "Lesen und Schreiben nutzen gemeinsam 45 Minuten. Keine getrennte volle Zeit je Subtest. Keine Vorbereitung Sprechen. Nicht telc A2·B1 / DTZ / Schule.",
+    "preparationSource": null
+  },
+  "Telc-A2": {
+    "exam": "Telc",
+    "level": "A2",
+    "name": "Start Deutsch 2 / telc Deutsch A2",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Gespräche",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Durchsagen / kurze Nachrichten",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Telefon-/Alltagsgespräche",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/start-deutsch-2-telc-deutsch-a2/"
+      },
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": null,
+        "shared": "Lesen + Schreiben",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze persönliche Texte",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Anzeigen und Informationen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Hinweise / Situationen",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/start-deutsch-2-telc-deutsch-a2/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": null,
+        "shared": "Lesen + Schreiben",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Formular",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Kurzer Brief / Nachricht",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/start-deutsch-2-telc-deutsch-a2/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Sich vorstellen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Ein Alltagsgespräch führen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Etwas aushandeln",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/start-deutsch-2-telc-deutsch-a2/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Lesen + Schreiben",
+        "skills": [
+          "reading",
+          "writing"
+        ],
+        "minutes": 50
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://www.telc.net/sprachpruefungen/deutsch/start-deutsch-2-telc-deutsch-a2/",
+    "note": "Lesen und Schreiben nutzen gemeinsam 50 Minuten. Keine getrennte volle Zeit je Subtest. Keine Vorbereitung Sprechen. Nicht telc A2·B1 / DTZ / Schule.",
+    "preparationSource": null
+  },
+  "Telc-B1": {
+    "exam": "Telc",
+    "level": "B1",
+    "name": "Zertifikat Deutsch / telc Deutsch B1",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": null,
+        "shared": "Lesen + Sprachbausteine",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Überschriften zu Texten zuordnen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Längeren Text verstehen: Auswahl",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Situationen und Anzeigen zuordnen",
+            "itemCount": 10,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/"
+      },
+      {
+        "key": "grammar",
+        "name": "Sprachbausteine",
+        "minutes": null,
+        "shared": "Lesen + Sprachbausteine",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Lückentext: Auswahl",
+            "itemCount": 10,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Lückentext: Wortliste zuordnen",
+            "itemCount": 10,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Globalverstehen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Detailverstehen",
+            "itemCount": 10,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Selektives Verstehen",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Brief / E-Mail zu vier Leitpunkten",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 20,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Einander kennenlernen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Über ein Thema sprechen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Gemeinsam etwas planen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen + Sprachbausteine",
+        "skills": [
+          "reading",
+          "grammar"
+        ],
+        "minutes": 90
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://www.telc.net/sprachpruefungen/deutsch/zertifikat-deutsch-telc-deutsch-b1/",
+    "note": "Allgemeinsprachliche Erwachsenenprüfung. Nicht DTZ, A2·B1, Beruf, Pflege oder Schule. Lesen und Sprachbausteine: zusammen 90 Minuten. Vorbereitung Sprechen: 20 Minuten.",
+    "preparationSource": null
+  },
+  "Telc-B2": {
+    "exam": "Telc",
+    "level": "B2",
+    "name": "telc Deutsch B2 · Allgemein",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": null,
+        "shared": "Lesen + Sprachbausteine",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Überschriften zu Texten zuordnen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Längeren Text verstehen: Auswahl",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Situationen und Anzeigen zuordnen",
+            "itemCount": 10,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/"
+      },
+      {
+        "key": "grammar",
+        "name": "Sprachbausteine",
+        "minutes": null,
+        "shared": "Lesen + Sprachbausteine",
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Lückentext: Auswahl",
+            "itemCount": 10,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Lückentext: Wortliste zuordnen",
+            "itemCount": 10,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Globalverstehen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Detailverstehen",
+            "itemCount": 10,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Selektives Verstehen",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Halbformelle E-Mail: A oder B, mindestens 150 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 20,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Über Erfahrungen sprechen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Diskussion",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Gemeinsam etwas planen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen + Sprachbausteine",
+        "skills": [
+          "reading",
+          "grammar"
+        ],
+        "minutes": 90
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://www.telc.net/sprachpruefungen/zertifikatspruefung/deutsch/telc-deutsch-b2/",
+    "note": "Allgemeinsprachliche Erwachsenenprüfung. Nicht DTZ, A2·B1, Beruf, Pflege oder Schule. Lesen und Sprachbausteine: zusammen 90 Minuten. Vorbereitung Sprechen: 20 Minuten.",
+    "preparationSource": null
+  },
+  "ÖSD-A1": {
+    "exam": "ÖSD",
+    "level": "A1",
+    "name": "ÖSD Zertifikat A1 · ZA1",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 25,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Texte und Bilder/Informationen zuordnen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Einfache Texte verstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Informationen und Anzeigen verstehen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a1-za1/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 10,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Globalverstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Detailverstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Selektives Verstehen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a1-za1/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Formular ausfüllen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Persönliches E-Mail: ca. 30 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a1-za1/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 10,
+        "shared": null,
+        "preparation": 10,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Sich vorstellen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Eine Situation / ein Bild beschreiben",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "In einem Rollenspiel sprechen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a1-za1/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 25
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 10
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 20
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 10
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 10
+      }
+    ],
+    "source": "https://osd.at/portfolio-item/osd-zertifikat-a1-za1/",
+    "note": "Zwei Zertifikatsmodule: Schriftliche Prüfung (Lesen/Hören/Schreiben) und Mündliche Prüfung. Sprechen: ca. 10 Minuten; Vorbereitung 10 Minuten.",
+    "preparationSource": "https://www.osd.at/wp-content/uploads/2024/09/ZA1-Modellsatzbroschure_WEB.pdf"
+  },
+  "ÖSD-A2": {
+    "exam": "ÖSD",
+    "level": "A2",
+    "name": "ÖSD Zertifikat A2 · ZA2",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Überschriften fünf Texten zuordnen",
+            "itemCount": 5,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Text verstehen: Auswahl A/B/C",
+            "itemCount": 5,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a2-za2/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Globalverstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Detailverstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Selektives Verstehen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a2-za2/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Persönliches Antwort-E-Mail: ca. 50 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a2-za2/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 10,
+        "shared": null,
+        "preparation": 10,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Sich vorstellen anhand von fünf Themen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Gemeinsam eine Aufgabe lösen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-a2-za2/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 10
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 10
+      }
+    ],
+    "source": "https://osd.at/portfolio-item/osd-zertifikat-a2-za2/",
+    "note": "Zwei Zertifikatsmodule: schriftlich und mündlich. Nicht KID A2. Vorbereitung Sprechen: 10 Minuten.",
+    "preparationSource": null
+  },
+  "ÖSD-B1": {
+    "exam": "ÖSD",
+    "level": "B1",
+    "name": "ÖSD Zertifikat B1 · ZB1",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 65,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Blog: richtig/falsch",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Zeitungsartikel: Auswahl",
+            "itemCount": 6,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Situationen und Anzeigen zuordnen",
+            "itemCount": 7,
+            "replays": null
+          },
+          {
+            "teil": 4,
+            "name": "Meinungen: ja/nein",
+            "itemCount": 7,
+            "replays": null
+          },
+          {
+            "teil": 5,
+            "name": "Regeln und Anweisungen: Auswahl",
+            "itemCount": 4,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b1-zb1/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 40,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Kurze Texte: richtig/falsch + Auswahl",
+            "itemCount": 10,
+            "replays": 2
+          },
+          {
+            "teil": 2,
+            "name": "Vortrag: Auswahl",
+            "itemCount": 5,
+            "replays": 1
+          },
+          {
+            "teil": 3,
+            "name": "Gespräch: richtig/falsch",
+            "itemCount": 7,
+            "replays": 1
+          },
+          {
+            "teil": 4,
+            "name": "Diskussion: Aussagen zuordnen",
+            "itemCount": 8,
+            "replays": 2
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b1-zb1/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 60,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Informelle E-Mail: ca. 80 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Diskussionsbeitrag: ca. 80 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Formelle Entschuldigung: ca. 40 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b1-zb1/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 15,
+        "shared": null,
+        "preparation": 15,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Gemeinsam etwas planen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Ein Thema präsentieren",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Rückmeldung geben und Fragen stellen/beantworten",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b1-zb1/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 65
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 40
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 60
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 15
+      }
+    ],
+    "source": "https://osd.at/portfolio-item/osd-zertifikat-b1-zb1/",
+    "note": "Gemeinsames ZB1-Format von ÖSD/Goethe; vier einzeln zertifizierbare Module. NICHT Zertifikat Deutsch Österreich B1 (ZDÖ B1), das einen anderen Aufbau hat.",
+    "preparationSource": null
+  },
+  "ÖSD-B2": {
+    "exam": "ÖSD",
+    "level": "B2",
+    "name": "ÖSD Zertifikat B2 · ZB2",
+    "checkedAt": "2026-10-18",
+    "scope": "Erwachsene · Allgemeinsprache",
+    "modules": [
+      {
+        "key": "reading",
+        "name": "Lesen",
+        "minutes": 90,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Überschriften zu Texten zuordnen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Text verstehen: Auswahl",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Fehlende Wörter / Wortteile rekonstruieren",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 4,
+            "name": "Lückentext ergänzen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b2-zb2/"
+      },
+      {
+        "key": "listening",
+        "name": "Hören",
+        "minutes": 30,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Gesprochenen Text verstehen",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Informationen aus Hörtext entnehmen",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b2-zb2/"
+      },
+      {
+        "key": "writing",
+        "name": "Schreiben",
+        "minutes": 90,
+        "shared": null,
+        "preparation": 0,
+        "note": "",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Formelles Beschwerde-E-Mail: ca. 120 Wörter",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Argumentation / Meinung: A oder B, ca. 120 Wörter",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b2-zb2/"
+      },
+      {
+        "key": "speaking",
+        "name": "Sprechen",
+        "minutes": 20,
+        "shared": null,
+        "preparation": 15,
+        "note": "Paarprüfung ca. 20–25 Minuten; Einzelprüfung ca. 15–20 Minuten.",
+        "parts": [
+          {
+            "teil": 1,
+            "name": "Informationsgespräch / Kennenlernen und beraten",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 2,
+            "name": "Bild beschreiben und interpretieren",
+            "itemCount": null,
+            "replays": null
+          },
+          {
+            "teil": 3,
+            "name": "Meinungsaustausch / Diskussion",
+            "itemCount": null,
+            "replays": null
+          }
+        ],
+        "source": "https://osd.at/portfolio-item/osd-zertifikat-b2-zb2/"
+      }
+    ],
+    "blocks": [
+      {
+        "name": "Lesen",
+        "skills": [
+          "reading"
+        ],
+        "minutes": 90
+      },
+      {
+        "name": "Hören",
+        "skills": [
+          "listening"
+        ],
+        "minutes": 30
+      },
+      {
+        "name": "Pause nach Hören",
+        "skills": [
+          "break"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Schreiben",
+        "skills": [
+          "writing"
+        ],
+        "minutes": 90
+      },
+      {
+        "name": "Vorbereitung Sprechen",
+        "skills": [
+          "preparation"
+        ],
+        "minutes": 15
+      },
+      {
+        "name": "Sprechen",
+        "skills": [
+          "speaking"
+        ],
+        "minutes": 20
+      }
+    ],
+    "source": "https://osd.at/portfolio-item/osd-zertifikat-b2-zb2/",
+    "note": "Zwei Zertifikatsmodule: schriftlich und mündlich. Sprechen Paarprüfung 20–25, Einzelprüfung 15–20 Minuten. Vorbereitung 15 Minuten. Nicht ZB2 Pflege / medizinische Berufe. Nach Hören: mindestens 15 Minuten Pause (Durchführungsbestimmungen).",
+    "preparationSource": null,
+    "regulation": "https://www.osd.at/wp-content/uploads/2023/09/ZB2-Durchfuhrungsbestimmungen_10_2023.pdf"
+  }
+}

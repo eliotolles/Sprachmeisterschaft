@@ -1,3 +1,4 @@
+import {examFormats,startExam,answerExam,readExams,examCatalogData} from './examination.js';
 import {getTranscript,submitDictation,LISTENING_KEY} from './listening.js';
 import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
@@ -146,6 +147,11 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/listening/submit' && request.method === 'POST') {
       const result=await submitDictation(env,user,await body(request,15000));return json(result,result.conflict?409:200);
     }
+    if (path === '/api/core/exam/formats' && request.method === 'GET') return json(examFormats());
+    if (path === '/api/core/exam/attempts' && request.method === 'GET') return json(await readExams(env,user));
+    if (['/api/core/exam/start','/api/core/exam/answers','/api/core/exam/submit'].includes(path) && request.method === 'POST') {
+      const input=await body(request,100000);const result=path.endsWith('/start')?await startExam(env,user,input):await answerExam(env,user,input,path.endsWith('/submit'));return json(result,result.conflict?409:200);
+    }
     if (path === '/api/core/state') return await state(request, env, user, url);
     if (['/api/core/speaking/reply','/api/core/speaking/grade'].includes(path) && request.method === 'POST') {
       await throttle(env,'core-ai:'+user.id,20,60000);const data=await body(request,700000);
@@ -200,7 +206,10 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/records' && request.method === 'GET') {
       const kind = url.searchParams.get('kind');
       if (!['grammar', 'vocab', 'writing', 'speaking', 'listening', 'exam'].includes(kind)) throw coreError(400, 'RECORD_KIND', 'Loại tài liệu không hợp lệ.');
-      return json({ items: (await query(env, 'SELECT id,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1) ORDER BY id LIMIT 200', [kind, user.id])).rows });
+      const limit=Number(url.searchParams.get('limit')??100),offset=Number(url.searchParams.get('offset')??0);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0)throw coreError(400,'PAGINATION','Phân trang không hợp lệ.');
+      const rows=(await query(env, 'SELECT id,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1) ORDER BY id LIMIT ? OFFSET ?', [kind, user.id,limit,offset])).rows;
+      return json({items:rows.map(row=>kind==='exam'?{...row,data:examCatalogData(row.data)}:row),limit,offset});
     }
     if (path === '/api/core/admin/users' && request.method === 'GET') {
       if (publicUser(user).role !== 'admin') throw coreError(403, 'ADMIN_REQUIRED', 'Chỉ Admin được thực hiện.');
