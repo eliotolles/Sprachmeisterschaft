@@ -149,3 +149,24 @@ test('AI gateway limits key management to Admin and protects server writing hist
     assert.equal((await call('/state','PUT',{name:'sprach_writing_results',value:{results:[]},version:0},alice)).status,400);
   }finally{db.close();globalThis.fetch=original;}
 });
+test('new core routes retain authentication, private journals, protected results and paginated catalog boundaries',async()=>{
+ const {db,call,login}=fixture();try{
+  db.exec('ALTER TABLE ee_records ADD COLUMN updated_at TEXT;CREATE TABLE ee_config(key TEXT PRIMARY KEY,value TEXT)');
+  for(const path of ['/exam/formats','exam/attempts','/study/statistics','/vocabulary/deck?id=private'])assert.equal((await call(path.startsWith('/')?path:'/'+path)).status,401);
+  const alice=await login('alice@example.invalid'),bob=await login('bob@example.invalid');
+  assert.equal((await call('/exam/formats','GET',undefined,alice)).status,200);
+  const started=await call('/study/timer','POST',{action:'start',minutes:1,phase:'focus',soundEnabled:false,version:0},alice);assert.equal(started.status,200);
+  assert.equal((await call('/study/timer','POST',{action:'cancel',sessionId:started.body.active.id,version:0},bob)).status,404);
+  for(const key of ['sprach_listening_results','sprach_core_focus_sessions','sprach_core_tutor_sessions','sprach_core_exam_attempts'])assert.equal((await call('/state','PUT',{name:key,value:{forged:true},version:0},alice)).status,400);
+  assert.equal((await call('/state?keys=sprach_core_exam_attempts','GET',undefined,alice)).status,400);
+  const collection={id:'source-id',name:'Private Wörter',items:[{id:'word-id',level:'A1',de:'Haus',vi:'nhà'}]};
+  assert.equal((await call('/import/collection','POST',{kind:'vocab',collection,visibility:'public'},alice)).status,403);
+  const imported=await call('/import/collection','POST',{kind:'vocab',collection},alice);assert.equal(imported.status,200);
+  assert.equal((await call('/vocabulary/deck?id='+imported.body.recordId,'GET',undefined,bob)).status,404);
+  assert.equal((await call('/records?kind=vocab&limit=1&offset=0','GET',undefined,alice)).body.items.length,1);
+  assert.equal((await call('/records?kind=vocab&limit=1&offset=1','GET',undefined,alice)).body.items.length,0);
+  assert.equal((await call('/records?kind=vocab&offset=-1','GET',undefined,alice)).status,400);
+  assert.equal((await call('/listening/transcript','POST',{videoId:'abcdefghijk'},alice)).body.code,'CAPTIONS_NOT_CONFIGURED');
+  assert.equal((await call('/tutor/reply','POST',{text:'Hallo',level:'A1',language:'de',version:0},alice)).body.code,'AI_NOT_CONFIGURED');
+ }finally{db.close();}
+});
