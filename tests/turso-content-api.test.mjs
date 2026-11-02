@@ -37,8 +37,12 @@ test('uses read-only parameterized SQL and maps rows', async (t) => {
           type: 'ok',
           response: {
             result: {
-              cols: [{ name: 'source_id' }, { name: 'german' }],
-              rows: [[{ type: 'text', value: 'id1' }, { type: 'text', value: 'Haus' }]],
+              cols: ['source_id', 'german', 'article', 'word_type', 'vietnamese', 'example_de', 'example_vi', 'topic', 'level', 'source_deck_id', 'extra_json'].map(name => ({ name })),
+              rows: [[
+                { type: 'text', value: 'id1' },
+                { type: 'text', value: 'Haus' },
+                ...Array.from({ length: 9 }, () => ({ type: 'text', value: '' })),
+              ]],
             },
           },
         }],
@@ -46,7 +50,7 @@ test('uses read-only parameterized SQL and maps rows', async (t) => {
     };
   };
   assert.deepEqual(await listStagedElioVocabulary(env, { limit: 5, offset: 10 }),
-    [{ source_id: 'id1', german: 'Haus' }]);
+    [{ source_id: 'id1', german: 'Haus', article: '', word_type: '', vietnamese: '', example_de: '', example_vi: '', topic: '', level: '', source_deck_id: '', extra_json: '' }]);
 });
 
 test('fails closed on upstream HTTP and query errors', async (t) => {
