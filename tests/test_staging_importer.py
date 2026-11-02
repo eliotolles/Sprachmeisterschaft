@@ -65,4 +65,6 @@ class ImporterSafetyTests(unittest.TestCase):
         response = {"results": [{"response": {"result": {"rows": [[{"type": "integer", "value": "6718"}]]}}}]}
         with patch.object(module, "execute", return_value=response):
             self.assertEqual(module.remote_count("https://fake.turso.io/v2/pipeline", "fake"), 6718)
-\nif __name__ == "__main__":\n    unittest.main()\n
+
+if __name__ == "__main__":
+    unittest.main()
