@@ -135,6 +135,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
     async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    async importCollection(kind,collection,visibility='private'){requireUser();return request('/import/collection',{method:'POST',data:{kind,collection,visibility}});},
+    async extractDocument(data,options={}){requireUser();return continueJob('/import/extract',data,{...options,current:epoch,user:identity});},
     async examFormats(){requireUser();return request('/exam/formats');},
     async examAttempts(){requireUser();return request('/exam/attempts');},
     async startExam(data){requireUser();return request('/exam/start',{method:'POST',data});},
