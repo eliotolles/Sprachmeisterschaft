@@ -1,3 +1,5 @@
+import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
+import {tutorReply,TUTOR_KEY} from './tutor.js';
 import {importCollection,extractDocument} from './importer.js';
 import {examFormats,startExam,answerExam,readExams,examCatalogData} from './examination.js';
 import {getTranscript,submitDictation,LISTENING_KEY} from './listening.js';
@@ -16,7 +18,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY]);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY, STUDY_KEY, TUTOR_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -112,7 +114,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY, STUDY_KEY, TUTOR_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -156,6 +158,11 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/import/collection' && request.method === 'POST') return json(await importCollection(env,user,await body(request,1600000)));
     if (path === '/api/core/import/extract' && request.method === 'POST') {
       await throttle(env,'core-ocr:'+user.id,5,60000);const result=await extractDocument(env,user,await body(request,15000000));return json(result,result.partial?202:200);
+    }
+    if (path === '/api/core/study/statistics' && request.method === 'GET') return json(await studyStatistics(env,user));
+    if (path === '/api/core/study/timer' && request.method === 'POST') {const result=await focusTimer(env,user,await body(request,3000));return json(result,result.conflict?409:200);}
+    if (path === '/api/core/tutor/reply' && request.method === 'POST') {
+      await throttle(env,'core-ai:'+user.id,20,60000);const result=await tutorReply(env,user,await body(request,700000));return json(result,result.conflict?409:result.partial?202:200);
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
     if (['/api/core/speaking/reply','/api/core/speaking/grade'].includes(path) && request.method === 'POST') {
