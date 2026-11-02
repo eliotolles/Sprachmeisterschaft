@@ -1,3 +1,4 @@
+import {vocabularyDeck} from './personal-vocabulary.js';
 import { coreError, query } from './database.js';
 import { scheduleReview, RATINGS } from './srs.js';
 
@@ -25,11 +26,11 @@ export async function readVocabulary(env, url) {
   return { cards: rows };
 }
 export async function reviewVocabulary(env, user, data, now = Date.now()) {
-  if (!data || Object.keys(data).some(key => !['sourceId', 'rating', 'version', 'direction'].includes(key)) ||
+  if (!data || Object.keys(data).some(key => !['sourceId', 'rating', 'version', 'direction', 'deckId'].includes(key)) ||
       typeof data.sourceId !== 'string' || !data.sourceId || data.sourceId.length > 128 ||
       !RATINGS.includes(data.rating) || !Number.isSafeInteger(data.version) || data.version < 0 ||
       (data.direction !== undefined && !['de', 'vi'].includes(data.direction))) throw fail();
-  const word = (await query(env, 'SELECT source_id FROM elio_shared_vocabulary WHERE source_id=?', [data.sourceId])).rows[0];
+  const word = data.deckId===undefined?(await query(env, 'SELECT source_id FROM elio_shared_vocabulary WHERE source_id=?', [data.sourceId])).rows[0]:(await vocabularyDeck(env,user,data.deckId)).data.words.find(w=>w.id===data.sourceId||w.sourceId===data.sourceId);
   if (!word) throw coreError(404, 'WORD_NOT_FOUND', 'Không tìm thấy từ nguồn; chưa ghi tiến độ.');
   const stored = (await query(env, 'SELECT value,revision FROM ee_state WHERE owner=? AND key=?', [user.id, REVIEW_KEY])).rows[0];
   const version = stored?.revision ?? 0;
@@ -40,12 +41,12 @@ export async function reviewVocabulary(env, user, data, now = Date.now()) {
   if (!document || !document.cards || typeof document.cards !== 'object' || Array.isArray(document.cards) || !Array.isArray(document.history)) {
     throw coreError(409, 'REVIEW_DATA_INVALID', 'Tiến độ cũ chưa đọc được; dữ liệu được giữ nguyên.');
   }
-  const direction = data.direction || 'de', key = encodeURIComponent(data.sourceId + '|' + direction);
+  const direction = data.direction || 'de', key = encodeURIComponent((data.deckId?data.deckId+'|':'')+data.sourceId + '|' + direction);
   let review;
   try { review = scheduleReview(Object.hasOwn(document.cards, key) ? document.cards[key] : undefined, data.rating, now); }
   catch { throw coreError(409, 'REVIEW_DATA_INVALID', 'Lịch ôn cũ không hợp lệ; dữ liệu được giữ nguyên.'); }
   document.cards[key] = review;
-  document.history.push({ sourceId: data.sourceId, direction, rating: data.rating, time: now, nextReview: review.dueAt });
+  document.history.push({ ...(data.deckId?{deckId:data.deckId}:{}), sourceId: data.sourceId, direction, rating: data.rating, time: now, nextReview: review.dueAt });
   const value = JSON.stringify(document);
   // Do not silently discard history to make a write fit the storage limit.
   if (new TextEncoder().encode(value).byteLength > 1500000) throw coreError(413, 'REVIEW_HISTORY_LIMIT', 'Lịch sử cần lưu trữ bổ sung; chưa xóa hoặc ghi đè lịch sử cũ.');

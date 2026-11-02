@@ -107,7 +107,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       for (const [key, value] of Object.entries({ q, deck, level })) if (value !== undefined) params.set(key, value);
       return (await request('/vocabulary?' + params)).cards;
     },
-    reviewVocabulary(sourceId, rating, { direction = 'de' } = {}) {
+    reviewVocabulary(sourceId, rating, { direction = 'de', deckId } = {}) {
       requireUser();
       const name = 'sprach_vocabulary_reviews', current = epoch, user = identity, key = user.id + ':' + name;
       const prior = writes.get(key) || Promise.resolve();
@@ -115,7 +115,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
         if (current !== epoch) throw fail('ACCOUNT_CHANGED', 'Không ghi lần ôn của tài khoản trước.');
         if (!versions.has(name)) await loadState([name], current, user);
         const payload = await request('/vocabulary/review', { method: 'POST',
-          data: { sourceId, rating, direction, version: versions.get(name) }, expectedEpoch: current, user });
+          data: { sourceId, rating, direction, ...(deckId?{deckId}:{}), version: versions.get(name) }, expectedEpoch: current, user });
         if (payload.userId !== user.id || payload.sourceId !== sourceId || !Number.isSafeInteger(payload.version)) {
           throw fail('INVALID_RESPONSE', 'Xác nhận ôn từ không hợp lệ.');
         }
@@ -135,6 +135,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
     async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    async vocabularyDeck(id){requireUser();return request('/vocabulary/deck?'+new URLSearchParams({id}));},
+    async saveSharedWord(data){requireUser();return request('/vocabulary/save',{method:'POST',data});},
     async studyStatistics(){requireUser();return request('/study/statistics');},
     focusTimer(data,options){return journalJob('/study/timer','sprach_core_focus_sessions',data,options);},
     tutorReply(data,options){return journalJob('/tutor/reply','sprach_core_tutor_sessions',data,options);},

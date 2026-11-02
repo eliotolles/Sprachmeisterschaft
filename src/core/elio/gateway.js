@@ -1,3 +1,4 @@
+import {readVocabularyDeck,saveSharedWord} from './personal-vocabulary.js';
 import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
 import {tutorReply,TUTOR_KEY} from './tutor.js';
 import {importCollection,extractDocument} from './importer.js';
@@ -164,6 +165,8 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/tutor/reply' && request.method === 'POST') {
       await throttle(env,'core-ai:'+user.id,20,60000);const result=await tutorReply(env,user,await body(request,700000));return json(result,result.conflict?409:result.partial?202:200);
     }
+    if (path === '/api/core/vocabulary/deck' && request.method === 'GET') return json(await readVocabularyDeck(env,user,url.searchParams.get('id')));
+    if (path === '/api/core/vocabulary/save' && request.method === 'POST') {const result=await saveSharedWord(env,user,await body(request,3000));return json(result,result.conflict?409:200);}
     if (path === '/api/core/state') return await state(request, env, user, url);
     if (['/api/core/speaking/reply','/api/core/speaking/grade'].includes(path) && request.method === 'POST') {
       await throttle(env,'core-ai:'+user.id,20,60000);const data=await body(request,700000);
