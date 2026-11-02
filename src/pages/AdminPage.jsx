@@ -120,7 +120,7 @@ export function AdminPage() {
   // Form New AI
   const [providerName, setProviderName] = useState('');
   const [providerType, setProviderType] = useState('gemini');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [backupModel, setBackupModel] = useState('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [isCustomModelMode, setIsCustomModelMode] = useState(false);
@@ -217,14 +217,25 @@ export function AdminPage() {
   // Sync discovered catalog when provider type changes
   useEffect(() => {
     const cached = getCachedCatalog(providerType);
+    let currentModels = [];
     if (cached && cached.models?.length > 0) {
       setDiscoveredModels(cached.models);
       setSmartRecs(getSmartRecommendations(cached.models));
       setDiscoveryMeta({ totalCount: cached.count, freeCount: cached.freeCount, syncedAt: cached.lastSyncedAt });
+      currentModels = cached.models;
     } else {
       setDiscoveredModels([]);
       setSmartRecs([]);
       setDiscoveryMeta(null);
+      currentModels = FREE_AI_MODELS.filter((m) => m.provider === providerType);
+    }
+
+    // Auto-select the top newest model for this provider if current model doesn't belong to it
+    const exists = currentModels.some((m) => m.id === selectedModel);
+    if (!exists && currentModels.length > 0) {
+      const topModel = currentModels[0];
+      setSelectedModel(topModel.id);
+      setHasVision(Boolean(topModel.capabilities?.vision || topModel.hasVision));
     }
   }, [providerType]);
 

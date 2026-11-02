@@ -348,9 +348,9 @@ async function handleAiDiscover(request, env) {
           contextLimit: 131072,
           capabilities: {
             text: true,
-            vision: lower.includes('vision') || lower.includes('4o') || lower.includes('vl') || lower.includes('pixtral'),
+            vision: lower.includes('vision') || lower.includes('4o') || lower.includes('4.5') || lower.includes('vl') || lower.includes('pixtral'),
             audio: lower.includes('whisper') || lower.includes('audio'),
-            reasoning: lower.includes('o1') || lower.includes('o3') || lower.includes('r1') || lower.includes('reason'),
+            reasoning: lower.includes('o1') || lower.includes('o3') || lower.includes('r1') || lower.includes('reason') || lower.includes('3-7') || lower.includes('3.7'),
             json: true,
           },
           pricing: {

@@ -156,13 +156,13 @@ export function getSmartRecommendations(models = []) {
     // Boost for reasoning capability (essential for CEFR grading & grammar)
     if (m.capabilities?.reasoning) score += 150;
 
-    // Boost for modern models (2.0, 2.5, 3.3, 3.5, r1)
+    // Boost for modern frontier models (2.5, 3.7, r1, o3, 4.5, 3.3)
     const lower = (m.id || '').toLowerCase();
-    if (lower.includes('2.5') || lower.includes('3.7') || lower.includes('r1')) score += 180;
-    else if (lower.includes('2.0') || lower.includes('3.3') || lower.includes('3.5')) score += 120;
+    if (lower.includes('2.5') || lower.includes('3.7') || lower.includes('r1') || lower.includes('o3') || lower.includes('4.5')) score += 320;
+    else if (lower.includes('2.0') || lower.includes('3.3') || lower.includes('3.5')) score += 180;
 
     // Demote legacy / deprecated models
-    if (lower.includes('001') || lower.includes('vision-preview') || lower.includes('turbo')) score -= 100;
+    if (lower.includes('001') || lower.includes('vision-preview')) score -= 100;
 
     return { model: m, score };
   });
