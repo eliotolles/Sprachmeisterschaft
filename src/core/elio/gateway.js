@@ -2,6 +2,8 @@ import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
 import { listGrammar, readGrammarLesson, importGrammar, submitGrammar, GRAMMAR_ATTEMPT_KEY } from './grammar.js';
+import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI} from './ai.js';
+import {gradeWriting,translateWriting,WRITING_KEY} from './writing.js';
 
 // Elio's per-account records and optimistic revisions, mapped to the existing ee_* schema.
 // No bootstrap account, schema initialization, password rewrite, or bulk migration runs here.
@@ -10,7 +12,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY]);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -106,7 +108,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -137,6 +139,24 @@ export async function handleElioCore(request, env) {
       return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
+    if (['/api/core/writing/grade','/api/core/writing/translate'].includes(path) && request.method === 'POST') {
+      await throttle(env,'core-ai:'+user.id,20,60000);
+      const input=await body(request,700000),result=path.endsWith('/grade')?await gradeWriting(env,user,input):await translateWriting(env,user,input);
+      if(result.conflict)return json({code:'VERSION_CONFLICT',error:'Có lịch sử mới hơn; chưa ghi đè bài chữa.',version:result.version},409);
+      return json(result,result.partial?202:200);
+    }
+    if (path === '/api/core/admin/ai/configs' && request.method === 'GET') return json(await listAIConfigs(env,user));
+    if (path === '/api/core/admin/ai/configs' && request.method === 'POST') return json(await addAIConfig(env,user,await body(request,4000)));
+    if (path === '/api/core/admin/ai/configs' && request.method === 'PATCH') return json(await updateAIConfig(env,user,await body(request,1000)));
+    if (path === '/api/core/admin/ai/discover' && request.method === 'POST') return json(await discoverForAdmin(env,user,await body(request,4000)));
+    if (path === '/api/core/admin/ai/models' && request.method === 'POST') {
+      const data=await body(request,1000);return json(await modelsForConfig(env,user,data.id));
+    }
+    if (path === '/api/core/ai' && request.method === 'POST') {
+      await throttle(env,'core-ai:'+user.id,20,60000);
+      const result=await generateAI(env,user,await body(request,16000000));
+      return json(result,result.truncated?202:200);
+    }
     if (path === '/api/core/grammar' && request.method === 'GET') return json(await listGrammar(env, user, url));
     if (path === '/api/core/grammar/lesson' && request.method === 'GET') {
       return json(await readGrammarLesson(env, user, url.searchParams.get('collection'), url.searchParams.get('id')));

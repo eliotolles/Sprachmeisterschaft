@@ -67,3 +67,16 @@ test('grammar client sends source fingerprints and serializes confirmed attempt 
   await Promise.all([client.submitGrammar({...common,answer:'first'}),client.submitGrammar({...common,answer:'second'})]);
   assert.deepEqual(answers,['first','second']);assert.equal(revision,2);
 });
+test('writing client auto-continues after 30 countdown ticks and keeps the received prefix',async()=>{
+  let rounds=0,ticks=0;const partials=[];
+  const client=createElioClient({fetcher:async(url,options)=>{
+    if(url.endsWith('/auth/login'))return Response.json({user});
+    if(options.method==='GET')return Response.json({userId:'alice',records:{}});
+    rounds++;const body=JSON.parse(options.body);assert.equal(body.version,0);
+    if(rounds===1)return Response.json({partial:true,text:'prefix',continuation:{text:'prefix',token:'server-signed-fixture'}},{status:202});
+    assert.equal(body.continuation.text,'prefix');return Response.json({userId:'alice',version:1,result:{id:'result'}});
+  }});
+  await client.login(user.email,'fixture-password');
+  const result=await client.gradeWriting({task:'Fixture',text:'Text',level:'B1',examProvider:'telc'},{wait:async()=>{ticks++;},onPartial:p=>partials.push(p)});
+  assert.equal(result.result.id,'result');assert.equal(ticks,30);assert.equal(partials[0].text,'prefix');assert.equal(partials[29].remaining,1);assert.equal(rounds,2);
+});

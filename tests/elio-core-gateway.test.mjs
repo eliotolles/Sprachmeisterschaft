@@ -137,3 +137,15 @@ test('grammar gateway authenticates imports, returns source lessons and protects
     const shared=await call('/grammar/import','POST',{collection},owner);assert.equal(shared.status,200);assert.equal(shared.body.visibility,'public');
   }finally{db.close();}
 });
+test('AI gateway limits key management to Admin and protects server writing history',async()=>{
+  const {db,env,call,login}=fixture(),original=globalThis.fetch;try{
+    db.exec('CREATE TABLE ee_config(key TEXT PRIMARY KEY,value TEXT NOT NULL)');env.AI_ENCRYPTION_KEY='gateway-fixture-only-long-encryption-secret';
+    let calls=0;globalThis.fetch=async()=>{calls++;return Response.json({data:[{id:'gateway-model'}]});};
+    const alice=await login('alice@example.invalid'),owner=await login('owner@example.invalid');
+    assert.equal((await call('/admin/ai/discover','POST',{provider:'groq',key:'fixture-key'},alice)).status,403);assert.equal(calls,0);
+    const added=await call('/admin/ai/configs','POST',{provider:'groq',key:'fixture-key',model:'gateway-model'},owner);assert.equal(added.status,200);assert(!JSON.stringify(added.body).includes('fixture-key'));
+    assert.equal((await call('/admin/ai/configs','GET',undefined,alice)).status,403);
+    assert.equal((await call('/admin/ai/configs','GET',undefined,owner)).body.items.length,1);
+    assert.equal((await call('/state','PUT',{name:'sprach_writing_results',value:{results:[]},version:0},alice)).status,400);
+  }finally{db.close();globalThis.fetch=original;}
+});

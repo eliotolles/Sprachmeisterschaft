@@ -6,9 +6,9 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
   const versions = new Map();
   const writes = new Map();
   function fail(code, message, extra = {}) { return Object.assign(new Error(message), { code, ...extra }); }
-  async function request(path, { method = 'GET', data, expectedEpoch = epoch, user = identity } = {}) {
+  async function request(path, { method = 'GET', data, expectedEpoch = epoch, user = identity, deadlineMs = timeoutMs } = {}) {
     const response = await fetcher('/api/core' + path, {
-      method, credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+      method, credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(deadlineMs),
       headers: { Accept: 'application/json', ...(data !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(user ? { 'X-Elio-User': user.id } : {}) },
       body: data !== undefined ? JSON.stringify(data) : undefined,
@@ -36,6 +36,21 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     }
     if (keys) for (const name of keys) if (!Object.hasOwn(payload.records, name)) versions.set(name, 0);
     return payload.records;
+  }
+  async function continueJob(path,data,{current=epoch,user=identity,onPartial=()=>{},wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+    let result;
+    for(let round=0;round<10;round++){
+      if(current!==epoch)throw fail('ACCOUNT_CHANGED','Tài khoản đã thay đổi; phần đã nhận vẫn được giữ.',{partial:result?.text});
+      result=await request(path,{method:'POST',data,expectedEpoch:current,user,deadlineMs:180000});
+      if(!result.partial&&!result.truncated)return result;
+      if(!result.continuation)throw fail('AI_PARTIAL_ONLY','Phản hồi chưa đầy đủ; chưa tự tạo kết quả còn thiếu.',{partial:result.text});
+      for(let remaining=30;remaining>0;remaining--){
+        if(current!==epoch)throw fail('ACCOUNT_CHANGED','Tài khoản đã thay đổi; dừng tiếp tục tự động.',{partial:result.text});
+        onPartial({text:result.text,remaining,round:round+1});await wait(1000);
+      }
+      data={...data,continuation:result.continuation};
+    }
+    throw fail('AI_CONTINUATION_LIMIT','Chưa hoàn tất sau giới hạn tự động; phần đã nhận được giữ.',{partial:result?.text,continuation:result?.continuation});
   }
   return {
     getUser: () => identity,
@@ -104,6 +119,31 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     },
     async records(kind) {
       requireUser(); return (await request('/records?kind=' + encodeURIComponent(kind))).items;
+    },
+    async aiConfigs(){requireUser();return request('/admin/ai/configs');},
+    async addAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'POST',data:config,deadlineMs:60000});},
+    async discoverAIModels(data){requireUser();return request('/admin/ai/discover',{method:'POST',data,deadlineMs:60000});},
+    async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
+    async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
+    async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    gradeWriting(data,options={}){
+      requireUser();const name='sprach_writing_results',current=epoch,user=identity,key=user.id+':'+name;
+      const prior=writes.get(key)||Promise.resolve();const captured=structuredClone(data);
+      const next=prior.catch(()=>{}).then(async()=>{
+        if(current!==epoch)throw fail('ACCOUNT_CHANGED','Không gửi bài của tài khoản trước.');
+        if(!versions.has(name))await loadState([name],current,user);
+        const result=await continueJob('/writing/grade',{...captured,version:versions.get(name)},{...options,current,user});
+        if(result.userId!==user.id||!Number.isSafeInteger(result.version))throw fail('INVALID_RESPONSE','Xác nhận bài chữa không hợp lệ.');versions.set(name,result.version);return result;
+      });writes.set(key,next);next.then(()=>{if(writes.get(key)===next)writes.delete(key);},()=>{if(writes.get(key)===next)writes.delete(key);});return next;
+    },
+    translateWriting(resultId,language='vi',options={}){
+      requireUser();const name='sprach_writing_results',current=epoch,user=identity,key=user.id+':'+name;
+      const prior=writes.get(key)||Promise.resolve();const next=prior.catch(()=>{}).then(async()=>{
+        if(current!==epoch)throw fail('ACCOUNT_CHANGED','Không dịch bài của tài khoản trước.');
+        if(!versions.has(name))await loadState([name],current,user);
+        const result=await continueJob('/writing/translate',{resultId,language,version:versions.get(name)},{...options,current,user});
+        if(result.userId!==user.id||!Number.isSafeInteger(result.version))throw fail('INVALID_RESPONSE','Xác nhận bản dịch không hợp lệ.');versions.set(name,result.version);return result;
+      });writes.set(key,next);next.then(()=>{if(writes.get(key)===next)writes.delete(key);},()=>{if(writes.get(key)===next)writes.delete(key);});return next;
     },
     async grammar({ level, q, limit = 100, offset = 0 } = {}) {
       requireUser(); const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
