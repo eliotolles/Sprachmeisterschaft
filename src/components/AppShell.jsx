@@ -42,6 +42,7 @@ export function AppShell({ children }) {
     return false;
   });
   const [isHovered, setIsHovered] = useState(false);
+  const hoverTimeoutRef = useRef(null);
 
   // Auto-collapse when entering immersive pages (Listening Studio / Exam testing)
   useEffect(() => {
@@ -89,31 +90,31 @@ export function AppShell({ children }) {
     {
       group: 'Học / Lernen',
       items: [
-        { path: '/', label: 'Hôm nay', de: 'Heute', icon: Calendar },
-        { path: '/review', label: 'Ôn thẻ', de: 'Wiederholen', icon: RotateCw },
-        { path: '/vocabulary', label: 'Từ vựng', de: 'Wortschatz', icon: BookMarked },
+        { path: '/', label: 'Hôm nay', icon: Calendar },
+        { path: '/review', label: 'Ôn thẻ', icon: RotateCw },
+        { path: '/vocabulary', label: 'Từ vựng', icon: BookMarked },
       ],
     },
     {
       group: 'Luyện / Trainieren',
       items: [
-        { path: '/skills', label: 'Kỹ năng', de: 'Fertigkeiten', icon: Sparkles },
-        { path: '/skills/listening', label: 'Luyện nghe', de: 'Hörverstehen', icon: Headphones },
-        { path: '/skills/listening/personal', label: 'Video cá nhân', de: 'Eigene Videos', icon: Video },
-        { path: '/game', label: 'Trò chơi', de: 'Der/Die/Das', icon: Gamepad2 },
-        { path: '/exams', label: 'Luyện thi', de: 'Prüfung', icon: FileCheck2 },
-        { path: '/readiness', label: 'Sẵn sàng thi', de: 'Prüfungsreife', icon: Gauge },
-        { path: '/elio', label: 'AI ELIO', de: 'KI-Tutor', icon: Bot },
+        { path: '/skills', label: 'Kỹ năng', icon: Sparkles },
+        { path: '/skills/listening', label: 'Luyện nghe', icon: Headphones },
+        { path: '/skills/listening/personal', label: 'Video cá nhân', icon: Video },
+        { path: '/game', label: 'Trò chơi', icon: Gamepad2 },
+        { path: '/exams', label: 'Luyện thi', icon: FileCheck2 },
+        { path: '/readiness', label: 'Sẵn sàng thi', icon: Gauge },
+        { path: '/elio', label: 'AI ELIO', icon: Bot },
       ],
     },
     {
       group: 'Tôi / Persönlich',
       items: [
-        { path: '/progress', label: 'Tiến độ', de: 'Fortschritt', icon: TrendingUp },
-        { path: '/me', label: 'Meine Seiten', de: 'Mein Bereich', icon: UserCheck },
+        { path: '/progress', label: 'Tiến độ', icon: TrendingUp },
+        { path: '/me', label: 'Meine Seiten', icon: UserCheck },
         // Quản trị viên chỉ hiển thị duy nhất khi tài khoản có quyền Admin
         ...(userIsAdmin
-          ? [{ path: '/admin', label: 'Quản trị viên', de: 'Admin Panel', icon: ShieldCheck, adminOnly: true }]
+          ? [{ path: '/admin', label: 'Quản trị viên', icon: ShieldCheck, adminOnly: true }]
           : []),
       ],
     },
@@ -133,6 +134,21 @@ export function AppShell({ children }) {
     navigate('/login');
   };
 
+  const handleMouseEnter = () => {
+    if (!isCollapsed) return;
+    clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 100);
+  };
+
+  const handleMouseLeave = () => {
+    clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+    }, 140);
+  };
+
   // When collapsed, hovering smoothly expands the sidebar as an overlay without shifting layout
   const effectiveExpanded = !isCollapsed || isHovered;
 
@@ -147,9 +163,9 @@ export function AppShell({ children }) {
 
       {/* Desktop Sidebar with Auto-Hover Overlay & Clean Explicit Toggle */}
       <aside
-        onMouseEnter={() => isCollapsed && setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className={`hidden md:flex flex-col border-r border-border bg-card/95 backdrop-blur-md fixed top-0 left-0 h-screen overflow-y-auto shrink-0 select-none transition-all duration-200 ease-out ${
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className={`hidden md:flex flex-col border-r border-border bg-card/95 backdrop-blur-md fixed top-0 left-0 h-screen overflow-y-auto overflow-x-hidden shrink-0 select-none transition-[width,box-shadow] duration-200 ease-in-out ${
           isCollapsed && isHovered
             ? 'w-60 lg:w-64 shadow-2xl z-50 ring-1 ring-border/80'
             : isCollapsed
@@ -169,7 +185,7 @@ export function AppShell({ children }) {
                 <h1 className="font-display text-xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors leading-none truncate">
                   Sprachmeisterschaft
                 </h1>
-                <p className="font-heading italic text-xs text-muted-foreground mt-0.5">
+                <p className="font-heading text-xs text-muted-foreground mt-0.5">
                   DeutschMaster A1–C2
                 </p>
               </Link>
@@ -242,7 +258,7 @@ export function AppShell({ children }) {
                             }`}
                           />
                           {effectiveExpanded && (
-                            <span className="font-heading truncate">{item.label}</span>
+                            <span className="font-heading truncate whitespace-nowrap">{item.label}</span>
                           )}
                         </div>
                       </Link>
