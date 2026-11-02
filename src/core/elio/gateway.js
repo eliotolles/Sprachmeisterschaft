@@ -1,0 +1,157 @@
+import { coreError, query } from './database.js';
+import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
+
+// Elio's per-account records and optimistic revisions, mapped to the existing ee_* schema.
+// No bootstrap account, schema initialization, password rewrite, or bulk migration runs here.
+export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings', 'events', 'lessons',
+  'grammarAttempts', 'materials', 'conversations', 'srs', 'examAttempts', 'activeExam', 'writingFeedback',
+  'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
+  'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
+  'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan']);
+const COOKIE = '__Host-sprach_core';
+const SESSION_MS = 7 * 86400000;
+const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
+  status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff', ...headers },
+});
+const publicUser = row => ({ id: row.id, email: row.email, name: row.name,
+  role: ['super_admin', 'admin'].includes(row.role) ? 'admin' : 'user' });
+const cookieValue = request => (request.headers.get('Cookie') || '').match(/(?:^|;\s*)__Host-sprach_core=([a-f0-9]{64})(?:;|$)/)?.[1];
+const cookieHeader = (token, age = 604800) => `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${age}`;
+async function body(request, max = 10000) {
+  if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) {
+    throw coreError(415, 'CONTENT_TYPE', 'Yêu cầu cần JSON.');
+  }
+  const reader = request.body?.getReader();
+  if (!reader) throw coreError(400, 'INVALID_JSON', 'Thiếu dữ liệu JSON.');
+  const chunks = []; let size = 0;
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break;
+    size += value.byteLength;
+    if (size > max) { await reader.cancel(); throw coreError(413, 'TOO_LARGE', 'Dữ liệu quá lớn.'); }
+    chunks.push(value);
+  }
+  let data;
+  try {
+    const bytes = new Uint8Array(size); let at = 0;
+    for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
+    data = JSON.parse(new TextDecoder().decode(bytes));
+  } catch { throw coreError(400, 'INVALID_JSON', 'JSON không hợp lệ.'); }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw coreError(400, 'INVALID_JSON', 'Cần một đối tượng JSON.');
+  return data;
+}
+async function throttle(env, key, max, windowMs) {
+  const now = Date.now();
+  const result = await query(env, `INSERT INTO sprach_core_limits (name,count,until_at) VALUES (?,1,?)
+    ON CONFLICT(name) DO UPDATE SET count=CASE WHEN until_at<=? THEN 1 ELSE count+1 END,
+    until_at=CASE WHEN until_at<=? THEN excluded.until_at ELSE until_at END RETURNING count`,
+  [key, now + windowMs, now, now]);
+  if (Number(result.rows[0]?.count) > max) throw coreError(429, 'RATE_LIMIT', 'Thử quá nhiều lần; vui lòng chờ.');
+}
+async function authenticate(request, env) {
+  const token = cookieValue(request);
+  if (!token) throw coreError(401, 'AUTH_REQUIRED', 'Bạn cần đăng nhập.');
+  const row = (await query(env, `SELECT u.id,u.email,u.name,u.role,u.blocked FROM sprach_core_sessions s
+    JOIN ee_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>?`, [await digest(token), Date.now()])).rows[0];
+  if (!row) throw coreError(401, 'SESSION_EXPIRED', 'Phiên đăng nhập đã hết hạn.');
+  if (row.blocked) throw coreError(403, 'ACCOUNT_BLOCKED', 'Tài khoản đang bị khóa.');
+  const expected = request.headers.get('X-Elio-User');
+  if (expected && expected !== row.id) throw coreError(409, 'ACCOUNT_CHANGED', 'Tài khoản đã thay đổi; dữ liệu chưa được ghi.');
+  return row;
+}
+async function issueSession(env, user) {
+  const token = randomToken();
+  await query(env, 'INSERT INTO sprach_core_sessions(token_hash,user_id,expires,created_at) VALUES(?,?,?,?)',
+    [await digest(token), user.id, Date.now() + SESSION_MS, Date.now()]);
+  return json({ user: publicUser(user) }, 200, { 'Set-Cookie': cookieHeader(token) });
+}
+async function auth(request, env, path) {
+  if (request.method !== 'POST') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
+  const data = await body(request, 2000);
+  const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+  if (!/^\S+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
+      typeof data.password !== 'string' || !data.password || data.password.length > 128) {
+    throw coreError(400, 'AUTH_INPUT', 'Email hoặc mật khẩu không hợp lệ.');
+  }
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  await throttle(env, 'auth-ip:' + await digest(ip), 60, 15 * 60000);
+  await throttle(env, 'auth-user:' + await digest(ip + ':' + email), 10, 15 * 60000);
+  const existing = (await query(env, 'SELECT * FROM ee_users WHERE lower(email)=?', [email])).rows[0];
+  if (path.endsWith('/login')) {
+    if (!existing || !await passwordMatches(data.password, existing.password)) {
+      // Unknown legacy encodings and google$ credentials fail closed; existing rows remain intact.
+      throw coreError(401, 'INVALID_CREDENTIALS', 'Email hoặc mật khẩu không chính xác.');
+    }
+    if (existing.blocked) throw coreError(403, 'ACCOUNT_BLOCKED', 'Tài khoản đang bị khóa.');
+    return issueSession(env, existing);
+  }
+  if (data.password.length < 8) throw coreError(400, 'AUTH_INPUT', 'Mật khẩu mới cần ít nhất 8 ký tự.');
+  if (existing) throw coreError(409, 'ACCOUNT_EXISTS', 'Email đã có tài khoản; dữ liệu cũ được giữ nguyên.');
+  const user = { id: crypto.randomUUID(), email, name: typeof data.name === 'string' ? data.name.trim().slice(0, 100) : email.split('@')[0], role: 'user' };
+  await query(env, 'INSERT INTO ee_users(id,email,name,password,role,created_at) VALUES(?,?,?,?,?,?)',
+    [user.id, email, user.name, await passwordHash(data.password), user.role, new Date().toISOString()]);
+  return issueSession(env, user);
+}
+async function state(request, env, user, url) {
+  if (request.method === 'GET') {
+    const requested = url.searchParams.get('keys');
+    const keys = requested === null ? [...CORE_KEYS] : [...new Set(requested.split(','))];
+    if (!keys.length || keys.some(key => !CORE_KEYS.has(key))) throw coreError(400, 'STATE_KEY', 'Loại dữ liệu không hợp lệ.');
+    const rows = (await query(env, `SELECT key,value,revision FROM ee_state WHERE owner=? AND key IN (${keys.map(() => '?').join(',')})`, [user.id, ...keys])).rows;
+    return json({ userId: user.id, records: Object.fromEntries(rows.map(row => [row.key, { value: JSON.parse(row.value), version: row.revision }])) });
+  }
+  if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
+  const data = await body(request, 1500000);
+  if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
+      !CORE_KEYS.has(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+    throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
+  }
+  const value = JSON.stringify(data.value);
+  // Compare-and-swap: stale devices never overwrite newer progress.
+  const result = data.version === 0
+    ? await query(env, 'INSERT INTO ee_state(owner,key,value,revision) VALUES(?,?,?,1) ON CONFLICT(owner,key) DO NOTHING RETURNING revision', [user.id, data.name, value])
+    : await query(env, 'UPDATE ee_state SET value=?,revision=revision+1 WHERE owner=? AND key=? AND revision=? RETURNING revision', [value, user.id, data.name, data.version]);
+  if (!result.rows.length) {
+    const latest = (await query(env, 'SELECT value,revision FROM ee_state WHERE owner=? AND key=?', [user.id, data.name])).rows[0];
+    return json({ code: 'VERSION_CONFLICT', error: 'Có tiến độ mới hơn; chưa ghi đè.', latest: latest ? { value: JSON.parse(latest.value), version: latest.revision } : null }, 409);
+  }
+  return json({ version: result.rows[0].revision, userId: user.id });
+}
+export async function handleElioCore(request, env) {
+  const url = new URL(request.url), path = url.pathname;
+  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', version: 1 });
+  if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
+  try {
+    if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');
+    if (['/api/core/auth/login', '/api/core/auth/register'].includes(path)) return await auth(request, env, path);
+    const user = await authenticate(request, env);
+    if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('X-Elio-User') !== user.id) {
+      throw coreError(409, 'ACCOUNT_CHANGED', 'Cần xác nhận đúng tài khoản trước khi ghi dữ liệu.');
+    }
+    if (path === '/api/core/auth/me' && request.method === 'GET') return json({ user: publicUser(user) });
+    if (path === '/api/core/auth/logout' && request.method === 'POST') {
+      await query(env, 'DELETE FROM sprach_core_sessions WHERE token_hash=? AND user_id=?', [await digest(cookieValue(request)), user.id]);
+      return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
+    }
+    if (path === '/api/core/state') return await state(request, env, user, url);
+    if (path === '/api/core/vocabulary' && request.method === 'GET') {
+      const limit = Number(url.searchParams.get('limit') ?? 100), offset = Number(url.searchParams.get('offset') ?? 0);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200 || !Number.isSafeInteger(offset) || offset < 0) throw coreError(400, 'PAGINATION', 'Phân trang không hợp lệ.');
+      const rows = (await query(env, 'SELECT source_id,german,article,word_type,vietnamese,example_de,example_vi,topic,level,source_deck_id,extra_json FROM elio_shared_vocabulary ORDER BY source_id LIMIT ? OFFSET ?', [limit, offset])).rows;
+      return json({ cards: rows });
+    }
+    if (path === '/api/core/records' && request.method === 'GET') {
+      const kind = url.searchParams.get('kind');
+      if (!['grammar', 'vocab', 'writing', 'speaking', 'listening', 'exam'].includes(kind)) throw coreError(400, 'RECORD_KIND', 'Loại tài liệu không hợp lệ.');
+      return json({ items: (await query(env, 'SELECT id,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1) ORDER BY id LIMIT 200', [kind, user.id])).rows });
+    }
+    if (path === '/api/core/admin/users' && request.method === 'GET') {
+      if (publicUser(user).role !== 'admin') throw coreError(403, 'ADMIN_REQUIRED', 'Chỉ Admin được thực hiện.');
+      return json({ items: (await query(env, 'SELECT id,email,name,role,blocked FROM ee_users ORDER BY id LIMIT 500')).rows });
+    }
+    throw coreError(404, 'NOT_FOUND', 'API chưa được chuyển sang core mới.');
+  } catch (error) {
+    return json({ code: error.status ? error.code : 'CORE_ERROR', error: error.status ? error.message : 'Core chưa sẵn sàng; dữ liệu hiện tại được giữ nguyên.' }, error.status || 503);
+  }
+}

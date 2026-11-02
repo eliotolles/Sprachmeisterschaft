@@ -1,4 +1,5 @@
 import { listStagedElioVocabulary } from './src/lib/turso-content-api.js';
+import { handleElioCore } from './src/core/elio/gateway.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — CLOUDFLARE WORKER EDGE RUNTIME
 // Edge API Gateway for Secure Dynamic AI Model Discovery & Assets Serving
@@ -7,6 +8,10 @@ import { listStagedElioVocabulary } from './src/lib/turso-content-api.js';
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // Isolated migration API; disabled until explicit preview configuration.
+    // It never serves or modifies the presentation assets.
+    if (url.pathname.startsWith('/api/core/')) return handleElioCore(request, env);
 
     // 0. CORS Preflight
     if (request.method === 'OPTIONS') {
@@ -473,3 +478,4 @@ function jsonResponse(data, status = 200) {
     },
   });
 }
+
