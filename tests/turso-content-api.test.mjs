@@ -64,3 +64,19 @@ test('fails closed on upstream HTTP and query errors', async (t) => {
   });
   await assert.rejects(listStagedElioVocabulary(env), /query failed/);
 });
+
+test('rejects malformed database endpoint and malformed result shape', async (t) => {
+  await assert.rejects(
+    listStagedElioVocabulary({ ...env, TURSO_DATABASE_URL: 'https://example.org' }),
+    /Invalid Turso/
+  );
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      results: [{ type: 'ok', response: { result: { cols: [], rows: [] } } }],
+    }),
+  });
+  await assert.rejects(listStagedElioVocabulary(env), /Invalid Turso result shape/);
+});
