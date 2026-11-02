@@ -23,3 +23,40 @@ jobs:
         run: npm test
       - name: Run Python importer safety tests without secrets
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+
+  visual-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 2f8fe179f470d33279b028c2c643a4c821612d0f
+          path: .baseline
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build unchanged presentation baseline without secrets
+        working-directory: .baseline
+        run: |
+          npm ci
+          npm run build
+      - name: Build candidate without deployment credentials
+        run: |
+          npm ci
+          npm run build
+      - name: Install isolated browser QA tooling
+        run: |
+          npm install --no-save --package-lock=false playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Compare desktop/mobile and light/dark screenshots
+        run: node scripts/qa/compare-ui.mjs
+      - name: Save screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-ui-comparison
+          path: ui-artifacts
+          retention-days: 7
