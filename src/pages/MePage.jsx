@@ -25,11 +25,16 @@ export function MePage() {
   useEffect(() => {
     const handleDbChange = () => {
       setProfile(db.learnerProfile.get());
+      setUser(db.auth.getUser());
       setCards(db.vocabulary.findMany());
       setLogs(db.studyLogs.findMany());
     };
     window.addEventListener('sprach_db_change', handleDbChange);
-    return () => window.removeEventListener('sprach_db_change', handleDbChange);
+    window.addEventListener('sprach_auth_change', handleDbChange);
+    return () => {
+      window.removeEventListener('sprach_db_change', handleDbChange);
+      window.removeEventListener('sprach_auth_change', handleDbChange);
+    };
   }, []);
 
   const totalXp = logs.reduce((sum, l) => sum + (l.xp || 0), 0);

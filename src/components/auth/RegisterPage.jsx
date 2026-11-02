@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { UserPlus, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
+import { UserPlus, ArrowLeft, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 import { LEVEL_IDS } from '@/data/levels';
 import { GoogleButton } from './GoogleButton';
 
@@ -11,20 +11,23 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [targetLevel, setTargetLevel] = useState('B1');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleRegister = (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     setTimeout(() => {
-      db.auth.register({ name, email, password });
-      db.learnerProfile.update({
-        display_name: name || 'Học viên',
-        target_level: targetLevel,
-      });
-      // Direct to main app or OTP gate
-      navigate('/');
-    }, 400);
+      try {
+        db.auth.register({ name, email, password, targetLevel });
+        navigate('/');
+      } catch (err) {
+        setError(err.message || 'Đăng ký không thành công.');
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
   };
 
   const handleDemoLogin = () => {
@@ -98,6 +101,13 @@ export function RegisterPage() {
 
         {/* Registration Form */}
         <form onSubmit={handleRegister} className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2 animate-rise">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span className="leading-relaxed font-body">{error}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-mono font-medium text-foreground mb-1">

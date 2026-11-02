@@ -17,16 +17,13 @@ function loadDatabase() {
       if (!parsed.uiVoiceConfig) parsed.uiVoiceConfig = { fontFamily: 'serif', speechVoice: '', rate: 0.9, pitch: 1.0 };
       if (!parsed.listeningCollections) parsed.listeningCollections = [];
       if (!parsed.listeningEpisodes) parsed.listeningEpisodes = [];
-      // Clean up legacy sample IDs if present in user's localStorage
-      if (Array.isArray(parsed.listeningCollections)) {
-        parsed.listeningCollections = parsed.listeningCollections.filter(
-          (c) => !c.id.startsWith('nicos-weg-') && c.id !== 'easy-german-street'
-        );
-      }
-      if (Array.isArray(parsed.listeningEpisodes)) {
-        parsed.listeningEpisodes = parsed.listeningEpisodes.filter(
-          (e) => !e.id.startsWith('nw-') && !e.id.startsWith('eg-')
-        );
+      if (!parsed.userProfiles) parsed.userProfiles = {};
+      if (Array.isArray(parsed.users)) {
+        parsed.users.forEach((u) => {
+          if (!u.password) {
+            u.password = (u.role === 'admin' || (u.email || '').includes('admin')) ? 'admin123' : 'deutschmaster123';
+          }
+        });
       }
       if (!parsed.universalImports) parsed.universalImports = [];
       if (!parsed.studyPlans) parsed.studyPlans = {};
@@ -51,6 +48,7 @@ function loadDatabase() {
         id: 'usr_admin',
         name: 'Quản trị viên Hệ thống (Master Admin)',
         email: 'admin@sprachmeisterschaft.de',
+        password: 'admin123',
         role: 'admin',
         is_blocked: false,
         onboarding_completed: true,
@@ -61,6 +59,7 @@ function loadDatabase() {
         id: 'usr_student',
         name: 'Nguyễn Văn Đạt (Học viên)',
         email: 'hocvien@sprachmeisterschaft.de',
+        password: 'deutschmaster123',
         role: 'user',
         is_blocked: false,
         onboarding_completed: false,
@@ -68,6 +67,24 @@ function loadDatabase() {
         created_at: new Date().toISOString(),
       },
     ],
+    userProfiles: {
+      usr_admin: {
+        id: 'profile_usr_admin',
+        user_id: 'usr_admin',
+        display_name: 'Quản trị viên Hệ thống',
+        exam_date: addDays(formatDate(), 60),
+        daily_goal: 30,
+        target_level: 'C1',
+      },
+      usr_student: {
+        id: 'profile_usr_student',
+        user_id: 'usr_student',
+        display_name: 'Nguyễn Văn Đạt (Học viên)',
+        exam_date: addDays(formatDate(), 45),
+        daily_goal: 20,
+        target_level: 'B1',
+      },
+    },
     deletedGrammarIds: [],
     grammarOverrides: {},
     deletedExamIds: [],
@@ -172,7 +189,16 @@ export const db = {
   // Vocabulary Cards
   vocabulary: {
     findMany: (filter = {}) => {
-      let cards = [...state.vocabularyCards];
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id || 'usr_student';
+      let cards = [...(state.vocabularyCards || [])];
+
+      // Isolate cards by user (fallback for legacy cards without user_id to usr_student)
+      cards = cards.filter((c) => {
+        if (!c.user_id) return currentUserId === 'usr_student' || !curUser;
+        return c.user_id === currentUserId;
+      });
+
       if (filter.status && filter.status !== 'all') {
         cards = cards.filter((c) => c.status === filter.status);
       }
@@ -200,9 +226,12 @@ export const db = {
     findById: (id) => state.vocabularyCards.find((c) => c.id === id),
 
     create: (cardData) => {
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id || 'usr_student';
       const today = formatDate();
       const newCard = {
         id: `card_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        user_id: currentUserId,
         german: cardData.german,
         article: cardData.article || '',
         word_type: cardData.word_type || 'noun',
@@ -226,9 +255,14 @@ export const db = {
     },
 
     createMany: (cardsArray) => {
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id || 'usr_student';
       const today = formatDate();
+      const userCards = (state.vocabularyCards || []).filter(
+        (c) => c.user_id === currentUserId || (!c.user_id && currentUserId === 'usr_student')
+      );
       const existingKeys = new Set(
-        state.vocabularyCards.map(
+        userCards.map(
           (c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase()
         )
       );
@@ -240,6 +274,7 @@ export const db = {
           existingKeys.add(key);
           const card = {
             id: `card_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            user_id: currentUserId,
             german: item.german,
             article: item.article || '',
             word_type: item.word_type || 'noun',
@@ -278,40 +313,88 @@ export const db = {
     },
 
     delete: (id) => {
-      state.vocabularyCards = state.vocabularyCards.filter((c) => c.id !== id);
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id;
+      state.vocabularyCards = state.vocabularyCards.filter((c) => {
+        if (c.id === id) {
+          if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
+            return true; // Keep card belonging to another user
+          }
+          return false;
+        }
+        return true;
+      });
       saveDatabase(state);
       return true;
     },
 
     deleteByTopic: (topic) => {
-      state.vocabularyCards = state.vocabularyCards.filter((c) => c.topic !== topic);
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id;
+      state.vocabularyCards = state.vocabularyCards.filter((c) => {
+        if (c.topic === topic) {
+          if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
+            return true;
+          }
+          return false;
+        }
+        return true;
+      });
       saveDatabase(state);
       return true;
     },
 
     deleteByLevel: (level) => {
-      state.vocabularyCards = state.vocabularyCards.filter((c) => c.level !== level);
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id;
+      state.vocabularyCards = state.vocabularyCards.filter((c) => {
+        if (c.level === level) {
+          if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
+            return true;
+          }
+          return false;
+        }
+        return true;
+      });
       saveDatabase(state);
       return true;
     },
 
     clearAll: () => {
-      state.vocabularyCards = [];
+      const curUser = db.auth.getUser();
+      const currentUserId = curUser?.id;
+      if (!currentUserId) {
+        state.vocabularyCards = [];
+      } else {
+        // Only clear current user's cards
+        state.vocabularyCards = state.vocabularyCards.filter(
+          (c) => c.user_id && c.user_id !== currentUserId
+        );
+      }
       saveDatabase(state);
       return true;
     },
   },
 
-  // Study Logs (One per day, accumulated)
+  // Study Logs (One per day, accumulated per user)
   studyLogs: {
-    findMany: () => [...state.studyLogs],
+    findMany: () => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      return (state.studyLogs || []).filter((l) => !l.user_id || l.user_id === userId);
+    },
 
     getToday: () => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
       const today = formatDate();
-      let log = state.studyLogs.find((l) => l.date === today);
+      let log = (state.studyLogs || []).find(
+        (l) => l.date === today && (!l.user_id || l.user_id === userId)
+      );
       if (!log) {
         log = {
-          id: `log_${today}`,
+          id: `log_${today}_${userId}`,
+          user_id: userId,
           date: today,
           cards_reviewed: 0,
           new_words: 0,
@@ -325,11 +408,16 @@ export const db = {
     },
 
     recordActivity: ({ cardsReviewed = 0, newWords = 0, xp = 0, minutes = 0 }) => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
       const today = formatDate();
-      let log = state.studyLogs.find((l) => l.date === today);
+      let log = (state.studyLogs || []).find(
+        (l) => l.date === today && (!l.user_id || l.user_id === userId)
+      );
       if (!log) {
         log = {
-          id: `log_${today}`,
+          id: `log_${today}_${userId}`,
+          user_id: userId,
           date: today,
           cards_reviewed: 0,
           new_words: 0,
@@ -352,7 +440,11 @@ export const db = {
   // Skill Sessions
   skillSessions: {
     findMany: (filter = {}) => {
-      let sessions = [...state.skillSessions];
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      let sessions = (state.skillSessions || []).filter(
+        (s) => !s.user_id || s.user_id === userId
+      );
       if (filter.skill) {
         sessions = sessions.filter((s) => s.skill === filter.skill);
       }
@@ -361,8 +453,11 @@ export const db = {
     },
 
     create: (data) => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
       const session = {
         id: `skill_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        user_id: userId,
         skill: data.skill,
         score: Number(data.score) || 0,
         title: data.title || '',
@@ -380,7 +475,11 @@ export const db = {
   // Exam Results
   examResults: {
     findMany: (filter = {}) => {
-      let results = [...state.examResults];
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      let results = (state.examResults || []).filter(
+        (r) => !r.user_id || r.user_id === userId
+      );
       if (filter.exam_id) {
         results = results.filter((r) => r.exam_id === filter.exam_id);
       }
@@ -391,8 +490,11 @@ export const db = {
     },
 
     create: (data) => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
       const examResult = {
         id: `exam_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        user_id: userId,
         exam_id: data.exam_id || '',
         provider: data.provider || 'Goethe',
         title: data.title || '',
@@ -413,21 +515,70 @@ export const db = {
     },
   },
 
-  // Learner Profile (Target level applies to entire app)
+  // Learner Profile (Isolated per-user profile)
   learnerProfile: {
-    get: () => ({ ...state.learnerProfile }),
+    get: () => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      if (!state.userProfiles) state.userProfiles = {};
+
+      if (!state.userProfiles[userId]) {
+        state.userProfiles[userId] = {
+          id: `profile_${userId}`,
+          user_id: userId,
+          display_name: curUser?.name || curUser?.email?.split('@')[0] || 'Học viên',
+          exam_date: addDays(formatDate(), 45),
+          daily_goal: 20,
+          target_level: 'B1',
+        };
+        saveDatabase(state);
+      }
+      return { ...state.userProfiles[userId] };
+    },
 
     update: (updates) => {
-      state.learnerProfile = { ...state.learnerProfile, ...updates };
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      if (!state.userProfiles) state.userProfiles = {};
+
+      const existing = state.userProfiles[userId] || {
+        id: `profile_${userId}`,
+        user_id: userId,
+        display_name: curUser?.name || 'Học viên',
+        exam_date: addDays(formatDate(), 45),
+        daily_goal: 20,
+        target_level: 'B1',
+      };
+
+      state.userProfiles[userId] = { ...existing, ...updates };
+
+      // Sync display name with curUser & state.users if present
+      if (updates.display_name && curUser) {
+        curUser.name = updates.display_name;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+        const uIdx = (state.users || []).findIndex(
+          (u) => u.id === curUser.id || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
+        );
+        if (uIdx !== -1) {
+          state.users[uIdx].name = updates.display_name;
+        }
+      }
+
       saveDatabase(state);
-      return state.learnerProfile;
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return { ...state.userProfiles[userId] };
     },
   },
 
-  // Notes
+  // Notes (Isolated per-user notes)
   notes: {
     findMany: (filter = {}) => {
-      let notes = [...state.notes];
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
+      let notes = (state.notes || []).filter(
+        (n) => !n.user_id || n.user_id === userId
+      );
       if (filter.type && filter.type !== 'all') {
         notes = notes.filter((n) => n.type === filter.type);
       }
@@ -435,8 +586,11 @@ export const db = {
     },
 
     create: (noteData) => {
+      const curUser = db.auth.getUser();
+      const userId = curUser?.id || 'usr_student';
       const note = {
         id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        user_id: userId,
         title: noteData.title,
         content: noteData.content || '',
         type: noteData.type || 'note',
@@ -475,26 +629,57 @@ export const db = {
     },
 
     login: (email, password) => {
-      const cleanEmail = (email || 'hocvien@sprachmeisterschaft.de').trim().toLowerCase();
+      if (!email || !email.trim()) {
+        throw new Error('Vui lòng nhập địa chỉ email.');
+      }
+      if (!password) {
+        throw new Error('Vui lòng nhập mật khẩu.');
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+
       if (!user) {
-        user = {
-          id: 'usr_' + Date.now(),
-          email: cleanEmail,
-          name: cleanEmail.split('@')[0] || 'Học viên',
-          provider: 'email',
-          role: cleanEmail.includes('admin') ? 'admin' : 'user',
-          is_verified: true,
-          onboarding_completed: false,
-          study_plan: null,
-          created_at: new Date().toISOString(),
-        };
-        if (!state.users) state.users = [];
-        state.users.push(user);
+        throw new Error('Email này chưa được đăng ký trong hệ thống. Vui lòng bấm "Đăng ký ngay" để tạo tài khoản mới!');
+      }
+
+      if (user.password && user.password !== password) {
+        throw new Error('Mật khẩu không chính xác. Vui lòng kiểm tra lại!');
+      }
+
+      // If user had no password recorded yet, save it
+      if (!user.password) {
+        user.password = password;
         saveDatabase(state);
       }
+
+      // Ensure per-user profile exists
+      if (!state.userProfiles) state.userProfiles = {};
+      if (!state.userProfiles[user.id]) {
+        state.userProfiles[user.id] = {
+          id: `profile_${user.id}`,
+          user_id: user.id,
+          display_name: user.name || cleanEmail.split('@')[0],
+          exam_date: addDays(formatDate(), 45),
+          daily_goal: 20,
+          target_level: 'B1',
+        };
+        saveDatabase(state);
+      }
+
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
+
+      if (user.role === 'admin') {
+        localStorage.setItem('sprach_is_admin', 'true');
+        localStorage.setItem('sprach_master_admin_override', 'true');
+      } else {
+        localStorage.removeItem('sprach_is_admin');
+        localStorage.removeItem('sprach_master_admin_override');
+      }
+
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return user;
     },
 
@@ -505,9 +690,10 @@ export const db = {
         user = {
           id: 'usr_gg_' + Date.now(),
           email: cleanEmail,
-          name: profile.name || 'Nguyễn Văn Đạt',
+          name: profile.name || cleanEmail.split('@')[0],
           picture: profile.picture || null,
           provider: 'google',
+          password: 'google_oauth_pass',
           role: cleanEmail.includes('admin') ? 'admin' : 'user',
           is_verified: true,
           onboarding_completed: false,
@@ -516,17 +702,36 @@ export const db = {
         };
         if (!state.users) state.users = [];
         state.users.push(user);
-        saveDatabase(state);
       } else {
         if (profile.picture) user.picture = profile.picture;
-        saveDatabase(state);
       }
+
+      // Ensure user profile exists
+      if (!state.userProfiles) state.userProfiles = {};
+      if (!state.userProfiles[user.id]) {
+        state.userProfiles[user.id] = {
+          id: `profile_${user.id}`,
+          user_id: user.id,
+          display_name: profile.name || user.name,
+          exam_date: addDays(formatDate(), 45),
+          daily_goal: 20,
+          target_level: 'B1',
+        };
+      }
+      saveDatabase(state);
+
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-      if (profile.name) {
-        state.learnerProfile.display_name = profile.name;
-        saveDatabase(state);
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
+      if (user.role === 'admin') {
+        localStorage.setItem('sprach_is_admin', 'true');
+        localStorage.setItem('sprach_master_admin_override', 'true');
+      } else {
+        localStorage.removeItem('sprach_is_admin');
+        localStorage.removeItem('sprach_master_admin_override');
       }
+
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return user;
     },
 
@@ -535,9 +740,10 @@ export const db = {
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
       if (!user) {
         user = {
-          id: 'usr_demo',
+          id: 'usr_student',
           email: cleanEmail,
-          name: 'Nguyễn Văn Đạt (Demo)',
+          password: 'deutschmaster123',
+          name: 'Nguyễn Văn Đạt (Học viên)',
           provider: 'demo',
           role: 'user',
           is_verified: true,
@@ -547,35 +753,130 @@ export const db = {
         };
         if (!state.users) state.users = [];
         state.users.push(user);
-        saveDatabase(state);
       }
+
+      if (!state.userProfiles) state.userProfiles = {};
+      if (!state.userProfiles[user.id]) {
+        state.userProfiles[user.id] = {
+          id: `profile_${user.id}`,
+          user_id: user.id,
+          display_name: user.name,
+          exam_date: addDays(formatDate(), 45),
+          daily_goal: 20,
+          target_level: 'B1',
+        };
+      }
+      saveDatabase(state);
+
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
+      localStorage.removeItem('sprach_is_admin');
+      localStorage.removeItem('sprach_master_admin_override');
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return user;
     },
 
-    register: (data) => {
-      const cleanEmail = data.email.trim().toLowerCase();
+    loginAsAdmin: () => {
+      const cleanEmail = 'admin@sprachmeisterschaft.de';
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
       if (!user) {
         user = {
-          id: 'usr_' + Date.now(),
+          id: 'usr_admin',
           email: cleanEmail,
-          name: data.name || cleanEmail.split('@')[0],
-          provider: 'email',
-          role: 'user',
-          is_verified: false, // Needs OTP verification
-          onboarding_completed: false,
+          password: 'admin123',
+          name: 'Quản trị viên Hệ thống (Master Admin)',
+          provider: 'system',
+          role: 'admin',
+          is_verified: true,
+          onboarding_completed: true,
           study_plan: null,
           created_at: new Date().toISOString(),
         };
         if (!state.users) state.users = [];
         state.users.push(user);
-        saveDatabase(state);
       }
+
+      if (!state.userProfiles) state.userProfiles = {};
+      if (!state.userProfiles[user.id]) {
+        state.userProfiles[user.id] = {
+          id: `profile_${user.id}`,
+          user_id: user.id,
+          display_name: user.name,
+          exam_date: addDays(formatDate(), 60),
+          daily_goal: 30,
+          target_level: 'C1',
+        };
+      }
+      saveDatabase(state);
+
       localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      localStorage.setItem('sprach_master_admin_override', 'true');
+      localStorage.setItem('sprach_is_admin', 'true');
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
+
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return user;
+    },
+
+    register: (data) => {
+      if (!data.email || !data.email.trim()) {
+        throw new Error('Vui lòng cung cấp địa chỉ email hợp lệ.');
+      }
+      if (!data.password || data.password.length < 6) {
+        throw new Error('Mật khẩu phải có ít nhất 6 ký tự.');
+      }
+
+      const cleanEmail = data.email.trim().toLowerCase();
+      let existingUser = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (existingUser) {
+        throw new Error('Email này đã được đăng ký tài khoản trong hệ thống. Vui lòng bấm Đăng nhập!');
+      }
+
+      const newUser = {
+        id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        email: cleanEmail,
+        password: data.password,
+        name: data.name?.trim() || cleanEmail.split('@')[0],
+        provider: 'email',
+        role: cleanEmail.includes('admin') ? 'admin' : 'user',
+        is_verified: true,
+        onboarding_completed: false,
+        study_plan: null,
+        created_at: new Date().toISOString(),
+      };
+
+      if (!state.users) state.users = [];
+      state.users.push(newUser);
+
+      // Create isolated personal profile
+      if (!state.userProfiles) state.userProfiles = {};
+      state.userProfiles[newUser.id] = {
+        id: `profile_${newUser.id}`,
+        user_id: newUser.id,
+        display_name: newUser.name,
+        exam_date: addDays(formatDate(), 45),
+        daily_goal: 20,
+        target_level: data.targetLevel || 'B1',
+      };
+
+      saveDatabase(state);
+
+      localStorage.setItem(AUTH_KEY, JSON.stringify(newUser));
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
+
+      if (newUser.role === 'admin') {
+        localStorage.setItem('sprach_is_admin', 'true');
+        localStorage.setItem('sprach_master_admin_override', 'true');
+      } else {
+        localStorage.removeItem('sprach_is_admin');
+        localStorage.removeItem('sprach_master_admin_override');
+      }
+
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return newUser;
     },
 
     verifyOtp: (code) => {
@@ -598,24 +899,21 @@ export const db = {
 
     logout: () => {
       localStorage.removeItem(AUTH_KEY);
+      localStorage.removeItem('sprach_is_admin');
+      localStorage.removeItem('sprach_master_admin_override');
+      sessionStorage.removeItem('sprach_onboarding_dismissed');
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
     },
 
     isAdmin: () => {
       if (typeof window !== 'undefined') {
         if (localStorage.getItem('sprach_master_admin_override') === 'true') return true;
         if (localStorage.getItem('sprach_is_admin') === 'true') return true;
-        if (window.location.hash.startsWith('#/admin') || window.location.pathname.startsWith('/admin')) return true;
       }
       const u = db.auth.getUser();
-      if (!u) return true; // Default to admin mode for site owner/developer
-      const email = (u.email || '').toLowerCase();
-      return (
-        u.role === 'admin' ||
-        email.includes('admin') ||
-        email.includes('dat') ||
-        email.includes('elio')
-      );
+      if (!u) return false;
+      return u.role === 'admin';
     },
 
     toggleAdminMode: () => {
@@ -631,37 +929,6 @@ export const db = {
       }
       window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       return next;
-    },
-
-    loginAsAdmin: () => {
-      const cleanEmail = 'admin@elioeinfach.de';
-      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
-      if (!user) {
-        user = {
-          id: 'usr_super_admin',
-          email: cleanEmail,
-          name: 'Super Admin Elio',
-          provider: 'system',
-          role: 'admin',
-          is_verified: true,
-          onboarding_completed: true,
-          study_plan: null,
-          created_at: new Date().toISOString(),
-        };
-        if (!state.users) state.users = [];
-        state.users.push(user);
-        saveDatabase(state);
-      } else {
-        user.role = 'admin';
-        saveDatabase(state);
-      }
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('sprach_master_admin_override', 'true');
-        localStorage.setItem('sprach_is_admin', 'true');
-      }
-      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
-      return user;
     },
 
     setRole: (role) => {
@@ -754,16 +1021,26 @@ export const db = {
       if (!state.studyPlans) state.studyPlans = {};
       state.studyPlans[targetId] = roadmap;
 
-      // 3. Update learnerProfile
+      // 3. Update learnerProfile for this specific user
+      if (!state.userProfiles) state.userProfiles = {};
+      const userProf = state.userProfiles[targetId] || {
+        id: `profile_${targetId}`,
+        user_id: targetId,
+        display_name: curUser?.name || 'Học viên',
+        exam_date: addDays(formatDate(), 45),
+        daily_goal: 20,
+        target_level: 'B1',
+      };
       if (answers.targetLevel) {
-        state.learnerProfile.target_level = answers.targetLevel;
+        userProf.target_level = answers.targetLevel;
       }
       if (roadmap.meta?.targetDate) {
-        state.learnerProfile.exam_date = roadmap.meta.targetDate;
+        userProf.exam_date = roadmap.meta.targetDate;
       }
       if (answers.dailyMinutes) {
-        state.learnerProfile.daily_goal = Math.round(answers.dailyMinutes / 2);
+        userProf.daily_goal = Math.round(answers.dailyMinutes / 2);
       }
+      state.userProfiles[targetId] = userProf;
 
       saveDatabase(state);
 

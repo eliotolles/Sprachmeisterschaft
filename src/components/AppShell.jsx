@@ -59,6 +59,7 @@ export function AppShell({ children }) {
     };
     const handleAuthChange = () => {
       setUser(db.auth.getUser());
+      setProfile(db.learnerProfile.get());
       setShowOnboarding(db.studyPlan?.shouldShowOnboarding() || false);
     };
     window.addEventListener('sprach_db_change', handleDbChange);

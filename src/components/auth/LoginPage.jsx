@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { LogIn, ArrowLeft, Sparkles, ShieldCheck } from 'lucide-react';
+import { LogIn, ArrowLeft, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react';
 import { GoogleButton } from './GoogleButton';
 
 export function LoginPage() {
   const { navigate } = useRouter();
-  const [email, setEmail] = useState('hocvien@sprachmeisterschaft.de');
-  const [password, setPassword] = useState('deutschmaster123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     setTimeout(() => {
-      db.auth.login(email, password);
-      navigate('/');
-    }, 400);
+      try {
+        const u = db.auth.login(email, password);
+        if (u.role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
+      } catch (err) {
+        setError(err.message || 'Đăng nhập thất bại.');
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
   };
 
   const handleDemoLogin = () => {
@@ -107,6 +119,13 @@ export function LoginPage() {
 
         {/* Email & Password Form */}
         <form onSubmit={handleLogin} className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2 animate-rise">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span className="leading-relaxed font-body">{error}</span>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-mono font-medium text-foreground mb-1">
               Địa chỉ Email

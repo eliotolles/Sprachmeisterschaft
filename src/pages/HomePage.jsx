@@ -39,7 +39,11 @@ export function HomePage() {
       setStudyPlan(db.studyPlan?.get());
     };
     window.addEventListener('sprach_db_change', handleDbChange);
-    return () => window.removeEventListener('sprach_db_change', handleDbChange);
+    window.addEventListener('sprach_auth_change', handleDbChange);
+    return () => {
+      window.removeEventListener('sprach_db_change', handleDbChange);
+      window.removeEventListener('sprach_auth_change', handleDbChange);
+    };
   }, []);
 
   // Time-based German greeting
