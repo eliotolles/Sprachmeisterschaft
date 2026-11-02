@@ -334,8 +334,10 @@ async function loadSharedVocabularyOnce() {
     }
     throw new Error('Shared catalog exceeded safe pagination limit');
   })().catch(() => {
-    // A missing staging table, disabled feature or network outage must not break local learning.
+    // Fail closed: do not repeatedly hammer a disabled endpoint on every render.
+    // Reloading the page is sufficient after enabling a preview deployment.
     sharedVocabularyRows = [];
+    sharedVocabularyLoaded = true;
   }).finally(() => { sharedVocabularyLoading = null; });
   return sharedVocabularyLoading;
 }
