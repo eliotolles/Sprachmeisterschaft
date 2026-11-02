@@ -1,3 +1,4 @@
+import { listStagedElioVocabulary } from './src/lib/turso-content-api.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — CLOUDFLARE WORKER EDGE RUNTIME
 // Edge API Gateway for Secure Dynamic AI Model Discovery & Assets Serving
@@ -32,6 +33,23 @@ export default {
     // 3. Dynamic Key Verification Endpoint
     if (url.pathname === '/api/ai/verify' && request.method === 'POST') {
       return handleAiVerify(request, env);
+    }
+
+    // Read-only Elio content endpoint, disabled unless explicitly enabled in preview.
+    // Never writes to Turso, never returns tokens, and never touches user data.
+    if (url.pathname === '/api/content/elio-vocabulary' && request.method === 'GET') {
+      if (env.ELIO_SHARED_VOCAB_ENABLED !== 'true') {
+        return jsonResponse({ success: false, error: 'Shared vocabulary not enabled' }, 404);
+      }
+      const limit = Number(url.searchParams.get('limit') ?? 100);
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      try {
+        const cards = await listStagedElioVocabulary(env, { limit, offset });
+        return jsonResponse({ success: true, cards });
+      } catch (error) {
+        const invalid = error instanceof RangeError;
+        return jsonResponse({ success: false, error: invalid ? 'Invalid pagination' : 'Shared vocabulary unavailable' }, invalid ? 400 : 503);
+      }
     }
 
     // 3. Fallback: Phục vụ toàn bộ tài nguyên Single Page Application từ thư mục dist
