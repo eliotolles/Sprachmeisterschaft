@@ -51,6 +51,13 @@ def execute(url, token, statements):
         raise RuntimeError("Turso rejected import batch")
     return result
 
+def remote_count(url, token):
+    response = execute(url, token, [("SELECT COUNT(*) AS n FROM elio_shared_vocabulary", [])])
+    try:
+        return int(response["results"][0]["response"]["result"]["rows"][0][0]["value"])
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        raise RuntimeError("Malformed Turso count response") from error
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sqlite_file")
@@ -87,6 +94,9 @@ def main():
         if not parsed_host or not parsed_host.endswith(".turso.io"):
             raise ValueError("Invalid staging hostname")
         execute(url, token, [(CREATE, [])])
+        before = remote_count(url, token)
+        if before != 0:
+            raise ValueError("Target staging table is not empty; refusing to alter existing data")
         sql = ("INSERT OR IGNORE INTO elio_shared_vocabulary (" + ",".join(COLUMNS)
                + ") VALUES (" + ",".join("?" for _ in COLUMNS) + ")")
         cursor = connection.execute("SELECT " + ",".join(COLUMNS) + " FROM elio_shared_vocabulary ORDER BY source_id")
@@ -100,7 +110,10 @@ def main():
             execute(url, token, statements)
             processed += len(rows)
             print("Processed", processed, "of", count)
-        print("Import requests completed; verify remote counts before enabling preview.")
+        after = remote_count(url, token)
+        if after != count:
+            raise RuntimeError("Remote staging row count does not match source")
+        print(json.dumps({"verified_remote_count": after, "source_count": count, "status": "verified"}))
     finally:
         connection.close()
 
