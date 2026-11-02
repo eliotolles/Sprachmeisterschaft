@@ -386,7 +386,8 @@ export const db = {
       return cards;
     },
 
-    findById: (id) => state.vocabularyCards.find((c) => c.id === id) ||
+    findById: (id) => state.vocabularyCards.find((c) => c.id === id &&
+      (c.user_id === db.auth.getUser()?.id || (!c.user_id && !db.auth.getUser()))) ||
       (sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)
         ? { ...mapSharedElioCard(sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)), status: 'new' }
         : null),
@@ -470,7 +471,7 @@ export const db = {
 
     update: (id, updates) => {
       // First review of a shared template creates a personal copy, never mutating the source.
-      if (String(id).startsWith('elio_shared_') && !(state.vocabularyCards || []).some(c => c.id === id)) {
+      if (String(id).startsWith('elio_shared_') && !(state.vocabularyCards || []).some(c => c.id === id && c.user_id === db.auth.getUser()?.id)) {
         const row = sharedVocabularyRows.find(r => `elio_shared_${r.source_id}` === id);
         if (!row) return null;
         const currentUserId = db.auth.getUser()?.id;
@@ -487,7 +488,8 @@ export const db = {
           due_date: formatDate(),
         });
       }
-      const idx = state.vocabularyCards.findIndex((c) => c.id === id);
+      const idx = state.vocabularyCards.findIndex((c) => c.id === id &&
+        (c.user_id === db.auth.getUser()?.id || (!c.user_id && !db.auth.getUser())));
       if (idx !== -1) {
         state.vocabularyCards[idx] = { ...state.vocabularyCards[idx], ...updates };
         saveDatabase(state);
