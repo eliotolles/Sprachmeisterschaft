@@ -127,8 +127,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
-    async records(kind) {
-      requireUser(); return (await request('/records?kind=' + encodeURIComponent(kind))).items;
+    async records(kind,{limit=200,offset=0}={}) {
+      requireUser(); return (await request('/records?'+new URLSearchParams({kind,limit:String(limit),offset:String(offset)}))).items;
     },
     async aiConfigs(){requireUser();return request('/admin/ai/configs');},
     async addAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'POST',data:config,deadlineMs:60000});},

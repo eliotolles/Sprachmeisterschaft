@@ -1,6 +1,7 @@
 // Isolated build screenshots: no external services, credentials or real account data.
 import {chromium} from 'playwright';
 import {PNG} from 'pngjs';
+import pixelmatch from 'pixelmatch';
 import {comparePixels} from './pixel-compare.mjs';
 import {createServer} from 'node:http';import {readFile,mkdir,writeFile} from 'node:fs/promises';import {resolve,extname} from 'node:path';
 const roots=[resolve('.baseline/dist'),resolve('dist')],ports=[4173,4174],servers=[];
@@ -10,10 +11,10 @@ for(let i=0;i<roots.length;i++){
  await new Promise(r=>server.listen(ports[i],'127.0.0.1',r));servers.push(server);
 }
 await mkdir('ui-artifacts',{recursive:true});const browser=await chromium.launch({headless:true,args:['--disable-gpu','--disable-lcd-text','--force-color-profile=srgb','--font-render-hinting=none']});const report=[];
-const routes=['/landing','/register','/','/vocabulary','/skills','/skills/grammar','/exams','/elio','/progress'];
+const routes=['/landing','/register','/','/vocabulary','/review','/skills','/skills/grammar','/exams','/elio','/progress'];
 try{
  for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const colorScheme of ['light','dark'])for(const route of routes){
-  const images=[],errors=[];const label=(route==='/'?'home':route.slice(1).replaceAll('/','-'))+'-'+viewport.width+'-'+colorScheme;
+  const images=[],errors=[],dom=[];const label=(route==='/'?'home':route.slice(1).replaceAll('/','-'))+'-'+viewport.width+'-'+colorScheme;
   for(let i=0;i<2;i++){
    const context=await browser.newContext({viewport,colorScheme,locale:'vi-VN',timezoneId:'UTC',reducedMotion:'reduce'});
    await context.addInitScript(({theme})=>{
@@ -32,6 +33,7 @@ try{
    await page.goto(`http://127.0.0.1:${ports[i]}/#${route}`,{waitUntil:'networkidle'});
    await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'});
    await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
+   dom.push(await page.evaluate(()=>({text:document.body.innerText,elements:[...document.body.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,box:[r.x,r.y,r.width,r.height].map(n=>Math.round(n*1000)/1000),style:Object.fromEntries(['color','backgroundColor','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','padding','margin','border','borderRadius','opacity','transform','display','visibility'].map(k=>[k,s[k]]))};})})));
    let screenshot=await page.screenshot({animations:'disabled',fullPage:true}),stable=false;
    for(let pass=0;pass<4;pass++){await page.waitForTimeout(100);const next=await page.screenshot({animations:'disabled',fullPage:true});if(comparePixels(PNG.sync.read(screenshot),PNG.sync.read(next)).equal){stable=true;screenshot=next;break;}screenshot=next;}
    if(!stable)errors.push({build:i,message:'Screenshot did not stabilize'});
@@ -39,8 +41,11 @@ try{
    if(await page.locator('body').innerText().then(s=>s.trim().length<20))errors.push({build:i,message:'Empty rendered page'});
    await context.close();
   }
-  const pixels=comparePixels(PNG.sync.read(images[0]),PNG.sync.read(images[1]));
-  report.push({route,viewport,colorScheme,byteEqual:images[0].equals(images[1]),...pixels,errors});console.log(JSON.stringify(report.at(-1)));
+  const a=PNG.sync.read(images[0]),b=PNG.sync.read(images[1]),pixels=comparePixels(a,b),domEqual=JSON.stringify(dom[0])===JSON.stringify(dom[1]);
+  const nonAntialiased=a.width===b.width&&a.height===b.height?pixelmatch(a.data,b.data,null,a.width,a.height,{threshold:0,includeAA:false}):null;
+  const equal=domEqual&&(pixels.equal||(pixels.changedPixels<=100&&nonAntialiased===0));
+  await writeFile(`ui-artifacts/${label}-dom.json`,JSON.stringify({baseline:dom[0],candidate:dom[1]},null,2));
+  report.push({route,viewport,colorScheme,byteEqual:images[0].equals(images[1]),...pixels,domEqual,nonAntialiased,equal,errors});console.log(JSON.stringify(report.at(-1)));
  }
  await writeFile('ui-artifacts/report.json',JSON.stringify(report,null,2));
  if(report.some(r=>!r.equal||r.errors.length))process.exitCode=1;

@@ -1,0 +1,14 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createVocabularyBinding} from '../src/core/elio/vocabulary-binding.js';import {scheduleReview} from '../src/core/elio/srs.js';
+const row={source_id:'shared-source',german:'grün',vietnamese:'xanh',level:'A1',extra_json:'{"english":"green"}'};
+test('vocabulary UI binding hydrates source/private cards and saves source SRS without local mutation',async()=>{
+ let id='alice';const calls=[],legacy={findMany:()=>[{id:'legacy'}],findById:()=>null,update:()=>{throw Error('must not write locally');}};
+ const client={getUser:()=>id?{id}:null,vocabulary:async()=>[row],records:async()=>id==='alice'?[{id:'private-deck',public:0,data:JSON.stringify({words:[{id:'private-word',de:'Haus',vi:'nhà',level:'A1'},{de:'alt',vi:'cũ',level:'A1'}]})},{id:'public-duplicate',public:1,data:JSON.stringify({words:[{id:'shared-source',de:'grün',vi:'xanh'}]})}]:[],loadState:async()=>({}),reviewVocabulary:async(sourceId,rating,options)=>{calls.push({sourceId,rating,options});return {review:scheduleReview(undefined,rating,1000)};}};
+ const binding=createVocabularyBinding({client,legacy,isActive:()=>true});await binding.hydrate();const cards=binding.api.findMany();assert.equal(cards.length,3);assert.equal(cards[0].source_id,'shared-source');assert.equal(binding.api.findMany({search:'green'}).length,1);assert.equal(binding.api.warnings().length,1);
+ const updates=await binding.api.review(cards[0].id,2);assert.equal(updates.interval_days,1);assert.equal(calls[0].sourceId,'shared-source');assert.equal(calls[0].rating,'good');assert.equal(binding.api.findById(cards[0].id).status,'review');
+ await binding.api.review(cards[1].id,0);assert.equal(calls[1].options.deckId,'private-deck');await assert.rejects(binding.api.review(cards[2].id,2),e=>e.code==='SOURCE_ID_MISSING');assert.throws(()=>binding.api.update(cards[0].id,{}),e=>e.code==='VOCAB_ACTION_PENDING');
+ id='bob';assert.deepEqual(binding.api.findMany(),[]);await binding.hydrate();assert.equal(binding.api.findMany().length,1);assert.equal(binding.api.findMany().some(c=>c.german==='Haus'),false);
+});
+test('late hydration cannot expose previous account cards and disabled binding retains legacy API',async()=>{
+ let id='alice',resolve;const client={getUser:()=>({id}),vocabulary:()=>new Promise(r=>resolve=r),records:async()=>[],loadState:async()=>({})};const legacy={findMany:()=>[{id:'legacy'}],findById:()=>({id:'legacy'}),update:()=>true};const binding=createVocabularyBinding({client,legacy,isActive:()=>true});const pending=binding.hydrate();id='bob';assert.deepEqual(binding.api.findMany(),[]);resolve([row]);await assert.rejects(pending,e=>e.code==='ACCOUNT_CHANGED');assert.deepEqual(binding.api.findMany(),[]);
+ const disabled=createVocabularyBinding({client,legacy,isActive:()=>false});assert.equal(disabled.api.findMany()[0].id,'legacy');assert.equal(disabled.api.update('legacy',{}),true);
+});

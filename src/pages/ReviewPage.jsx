@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -17,28 +17,24 @@ export function ReviewPage() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [sessionResults, setSessionResults] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
+  const grading=useRef(false);
   const [startTime] = useState(Date.now());
 
   useEffect(() => {
-    const today = formatDate();
-    const due = db.vocabulary.findMany({ dueToday: true });
-    // If no due cards, get up to 10 newest unmastered cards for review practice
-    if (due.length > 0) {
-      setCards(due);
-    } else {
-      const allCards = db.vocabulary.findMany();
-      setCards(allCards.slice(0, 15));
-    }
+    const refresh=()=>{if(grading.current)return;setCards(existing=>{if(existing.length)return existing;const due=db.vocabulary.findMany({dueToday:true});return due.length?due:db.vocabulary.findMany().slice(0,15);});};
+    refresh();window.addEventListener('sprach_db_change',refresh);
+    return()=>window.removeEventListener('sprach_db_change',refresh);
   }, []);
 
   const currentCard = cards[currentIndex];
 
-  const handleGrade = (grade) => {
-    if (!currentCard) return;
+  const handleGrade = async (grade) => {
+    if (!currentCard || grading.current) return;grading.current=true;
+    try {
 
     // Calculate SM-2 SRS updates
-    const updates = computeSrs(currentCard, grade);
-    db.vocabulary.update(currentCard.id, updates);
+    const updates = db.vocabulary.isCore?.()?await db.vocabulary.review(currentCard.id,grade):computeSrs(currentCard, grade);
+    if(!db.vocabulary.isCore?.())db.vocabulary.update(currentCard.id, updates);
 
     const record = {
       card: currentCard,
@@ -59,21 +55,23 @@ export function ReviewPage() {
       const minutesSpent = Math.max(1, Math.round(durationSecs / 60));
 
       // Save StudyLog
-      db.studyLogs.recordActivity({
+      if(!db.vocabulary.isCore?.())db.studyLogs.recordActivity({
         cardsReviewed: reviewedCount,
         xp: xpEarned,
         minutes: minutesSpent,
       });
 
       setIsFinished(true);
-      toast.success(`Hoàn thành phiên ôn tập! +${xpEarned} XP`);
+      toast.success(db.vocabulary.isCore?.()?'Hoàn thành phiên ôn tập!':`Hoàn thành phiên ôn tập! +${xpEarned} XP`);
     }
+    }catch(error){toast.error(error.message || 'Chưa lưu được lần ôn.');}
+    finally{grading.current=false;}
   };
 
   // Preview next intervals for buttons
   const getIntervalPreview = (card, grade) => {
     if (!card) return '';
-    const temp = computeSrs(card, grade);
+    const temp = db.vocabulary.isCore?.()?db.vocabulary.previewReview(card,grade):computeSrs(card, grade);
     if (temp.interval_days === 0) return 'Hôm nay';
     if (temp.interval_days === 1) return '1 ngày';
     return `${temp.interval_days} ngày`;
@@ -282,3 +280,4 @@ export function ReviewPage() {
     </div>
   );
 }
+
