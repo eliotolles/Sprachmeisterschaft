@@ -505,6 +505,10 @@ export const db = {
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {
         if (c.id === id) {
+          // Shared Elio reviews are per-user even for admins; identical IDs
+          // must never delete another account's personal review history.
+          if (String(id).startsWith('elio_shared_') &&
+              c.user_id !== (currentUserId || 'usr_student')) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true; // Keep card belonging to another user
           }
