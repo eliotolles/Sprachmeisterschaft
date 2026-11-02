@@ -33,3 +33,19 @@ test('invalid records fail closed', () => {
     source_id: 'a', german: 'Haus', extra_json: '{',
   }));
 });
+
+test('two accounts can fork the same shared ID without sharing review state', () => {
+  const shared = { ...row };
+  const alice = { id: 'elio_shared_abc', user_id: 'alice', german: 'Haus', status: 'learned', repetitions: 9 };
+  const bob = { id: 'elio_shared_abc', user_id: 'bob', german: 'Haus', status: 'learning', repetitions: 2 };
+  const forAlice = mergePersonalAndSharedVocabulary([alice], [shared]);
+  const forBob = mergePersonalAndSharedVocabulary([bob], [shared]);
+  const forNewUser = mergePersonalAndSharedVocabulary([], [shared]);
+  assert.equal(forAlice.length, 1);
+  assert.equal(forBob.length, 1);
+  assert.equal(forNewUser.length, 1);
+  assert.equal(forAlice[0].repetitions, 9);
+  assert.equal(forBob[0].repetitions, 2);
+  assert.equal(Object.hasOwn(forNewUser[0], 'repetitions'), false);
+  assert.equal(forNewUser[0].is_shared, true);
+});
