@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { ShieldAlert, KeyRound, CheckCircle2 } from 'lucide-react';
+import { LandingPage } from '@/pages/LandingPage';
+import { LoginPage } from './LoginPage';
 
 export function AuthGate({ children }) {
   const { currentPath, navigate } = useRouter();
@@ -20,25 +22,34 @@ export function AuthGate({ children }) {
     };
   }, []);
 
-  // Allow auth and public pages without gate
-  if (
+  const isPublicRoute =
     currentPath === '/landing' ||
     currentPath === '/login' ||
     currentPath === '/register' ||
     currentPath === '/forgot-password' ||
-    currentPath === '/reset-password'
-  ) {
+    currentPath === '/reset-password';
+
+  useEffect(() => {
+    if (!user && !isPublicRoute) {
+      if (currentPath === '/' || currentPath === '') {
+        navigate('/landing');
+      } else {
+        navigate('/login');
+      }
+    }
+  }, [user, currentPath, isPublicRoute, navigate]);
+
+  // Allow auth and public pages without gate
+  if (isPublicRoute) {
     return children;
   }
 
-  // If not logged in:
+  // If not logged in, render fallback without blank screen while navigation takes effect
   if (!user) {
     if (currentPath === '/' || currentPath === '') {
-      navigate('/landing');
-      return null;
+      return <LandingPage />;
     }
-    navigate('/login');
-    return null;
+    return <LoginPage />;
   }
 
   // If newly registered and not verified OTP:

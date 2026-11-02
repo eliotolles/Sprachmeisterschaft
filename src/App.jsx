@@ -4,6 +4,7 @@ import { useRouter } from '@/lib/router';
 import { AuthGate } from '@/components/auth/AuthGate';
 import { AppShell } from '@/components/AppShell';
 import { GlobalConfirmModal } from '@/components/ui/ConfirmModal';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
 // Pages
 import { LandingPage } from '@/pages/LandingPage';
@@ -132,12 +133,12 @@ export function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
       <AuthGate>
         <AppShell>{renderView()}</AppShell>
       </AuthGate>
       <GlobalConfirmModal />
-    </>
+    </ErrorBoundary>
   );
 }
 export default App;

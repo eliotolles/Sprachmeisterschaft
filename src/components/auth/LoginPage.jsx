@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { LogIn, ArrowLeft, AlertCircle } from 'lucide-react';
+import { LogIn, ArrowLeft, AlertCircle, ShieldCheck } from 'lucide-react';
 import { GoogleButton } from './GoogleButton';
 
 export function LoginPage() {

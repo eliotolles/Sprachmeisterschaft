@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { db } from '@/lib/db';
-import { useRouter } from '@/lib/router';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { GoogleAccountModal } from './GoogleAccountModal';
 
 export function GoogleButton({
   label = 'Đăng nhập bằng Google',
@@ -9,48 +7,16 @@ export function GoogleButton({
   className = '',
   onSuccess,
 }) {
-  const { navigate } = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-
-  const handleGoogleLogin = () => {
-    if (isLoading || isSuccess) return;
-    setIsLoading(true);
-
-    // Simulate Google OAuth authentication handshake
-    setTimeout(() => {
-      const googleUser = {
-        name: 'Nguyễn Văn Đạt',
-        email: 'dat.nguyenviet.1999@gmail.com',
-        picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      };
-      db.auth.loginWithGoogle(googleUser);
-      setIsLoading(false);
-      setIsSuccess(true);
-
-      if (onSuccess) {
-        onSuccess(googleUser);
-      } else {
-        setTimeout(() => {
-          navigate('/');
-        }, 500);
-      }
-    }, 600);
-  };
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
-    <button
-      type="button"
-      onClick={handleGoogleLogin}
-      disabled={isLoading || isSuccess}
-      className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-sm border border-border bg-card hover:bg-card/90 text-foreground font-body text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md hover:border-accent/40 active:scale-[0.985] ${className}`}
-    >
-      {/* Google SVG Multi-color Icon */}
-      {isLoading ? (
-        <Loader2 className="w-5 h-5 text-accent animate-spin" />
-      ) : isSuccess ? (
-        <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-fade-in" />
-      ) : (
+    <>
+      <button
+        type="button"
+        onClick={() => setIsModalOpen(true)}
+        className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-sm border border-border bg-card hover:bg-card/90 text-foreground font-body text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md hover:border-accent/40 active:scale-[0.985] ${className}`}
+      >
+        {/* Google SVG Multi-color Icon */}
         <svg
           className="w-5 h-5 transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
           viewBox="0 0 24 24"
@@ -72,19 +38,21 @@ export function GoogleButton({
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
           />
         </svg>
-      )}
 
-      <span className="truncate">
-        {isLoading
-          ? 'Đang kết nối Google...'
-          : isSuccess
-          ? 'Xác thực Google thành công!'
-          : label}
-      </span>
+        <span className="truncate">{label}</span>
 
-      {/* Subtle shine highlight */}
-      <span className="absolute inset-0 rounded-sm pointer-events-none border border-transparent group-hover:border-accent/20 transition-colors" />
-    </button>
+        {/* Subtle shine highlight */}
+        <span className="absolute inset-0 rounded-sm pointer-events-none border border-transparent group-hover:border-accent/20 transition-colors" />
+      </button>
+
+      {/* Google Account Selector Dialog */}
+      <GoogleAccountModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={onSuccess}
+      />
+    </>
   );
 }
+
 export default GoogleButton;

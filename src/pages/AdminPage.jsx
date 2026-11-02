@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/db';
+import { db, isSystemAdminEmail } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
@@ -61,15 +61,24 @@ export function AdminPage() {
   const { navigate } = useRouter();
   const [activeTab, setActiveTab] = useState('ai'); // 'ai' | 'content' | 'users' | 'ui'
 
-  // Master Admin verification (Strictly role === 'admin')
+  // Master Admin verification (Strictly role === 'admin' or system admin email)
   const currentUser = db.auth.getUser();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = Boolean(
+    currentUser?.role === 'admin' ||
+    isSystemAdminEmail(currentUser?.email) ||
+    db.auth.isAdmin()
+  );
 
   // Listen to auth changes
   useEffect(() => {
     const handleAuth = () => {
       const u = db.auth.getUser();
-      if (!u || u.role !== 'admin') {
+      const hasAdmin = Boolean(
+        u?.role === 'admin' ||
+        isSystemAdminEmail(u?.email) ||
+        db.auth.isAdmin()
+      );
+      if (!u || !hasAdmin) {
         navigate('/');
       }
     };
