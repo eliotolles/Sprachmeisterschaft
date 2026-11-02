@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { AuthGate } from '@/components/auth/AuthGate';
 import { AppShell } from '@/components/AppShell';
@@ -37,6 +38,45 @@ import { ResetPasswordPage } from '@/components/auth/ResetPasswordPage';
 
 export function App() {
   const { currentPath } = useRouter();
+
+  useEffect(() => {
+    const applyFont = (family) => {
+      const root = document.documentElement;
+      if (family === 'serif') {
+        root.style.setProperty('--font-display', "'Cormorant Garamond', Georgia, serif");
+        root.style.setProperty('--font-heading', "'Lora', Georgia, serif");
+        root.style.setProperty('--font-body', "'Lora', Georgia, serif");
+      } else if (family === 'mono') {
+        root.style.setProperty('--font-display', "'JetBrains Mono', monospace");
+        root.style.setProperty('--font-heading', "'JetBrains Mono', monospace");
+        root.style.setProperty('--font-body', "'JetBrains Mono', monospace");
+      } else {
+        root.style.setProperty(
+          '--font-display',
+          "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        );
+        root.style.setProperty(
+          '--font-heading',
+          "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        );
+        root.style.setProperty(
+          '--font-body',
+          "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        );
+      }
+      // Keep eyebrow mono font strictly as JetBrains Mono so tags like SCHREIBEN / SCHREIBWERKSTATT are preserved
+      root.style.setProperty('--font-mono', "'JetBrains Mono', monospace");
+    };
+
+    const cfg = db.uiVoiceConfig?.get?.();
+    applyFont(cfg?.fontFamily || 'sans');
+
+    const handleConfigChange = (e) => {
+      applyFont(e.detail?.fontFamily || 'sans');
+    };
+    window.addEventListener('sprach_ui_config_change', handleConfigChange);
+    return () => window.removeEventListener('sprach_ui_config_change', handleConfigChange);
+  }, []);
 
   // Public unauthenticated routes
   if (currentPath === '/landing') return <LandingPage />;

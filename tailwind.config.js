@@ -8,9 +8,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ["var(--font-display)", "Georgia", "serif"],
-        heading: ["var(--font-heading)", "Georgia", "serif"],
-        body: ["var(--font-body)", "Georgia", "serif"],
+        display: ["var(--font-display)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
+        heading: ["var(--font-heading)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
+        body: ["var(--font-body)", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
         mono: ["var(--font-mono)", "monospace"],
       },
       colors: {

@@ -1685,8 +1685,8 @@ export function AdminPage() {
 
               <div className="space-y-2">
                 {[
-                  { id: 'serif', label: 'Ấn phẩm Đức cổ điển (Cormorant Garamond + Lora)', desc: 'Phong cách trang báo hàn lâm, trang nghiêm, ấm áp.' },
-                  { id: 'sans', label: 'Hiện đại & Trực quan (Inter + Outfit Sans)', desc: 'Gọn gàng, dễ nhìn, phù hợp màn hình nhỏ.' },
+                  { id: 'sans', label: 'Hiện đại & Trực quan (Inter Sans — Chuẩn an toàn, rõ nét)', desc: 'Gọn gàng, dễ nhìn, chống mỏi mắt trên cả máy tính & điện thoại.' },
+                  { id: 'serif', label: 'Ấn phẩm Đức cổ điển (Cormorant Garamond + Lora)', desc: 'Phong cách trang báo hàn lâm, cổ điển.' },
                   { id: 'mono', label: 'Học thuật Kỹ thuật (JetBrains Mono)', desc: 'Phù hợp người thích số liệu, thẻ từ sắc nét.' },
                 ].map((f) => (
                   <button

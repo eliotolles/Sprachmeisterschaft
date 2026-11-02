@@ -14,7 +14,11 @@ function loadDatabase() {
       if (!parsed.users) parsed.users = [];
       if (!parsed.aiConfigs) parsed.aiConfigs = [];
       if (!parsed.aiTaskAssignments) parsed.aiTaskAssignments = {};
-      if (!parsed.uiVoiceConfig) parsed.uiVoiceConfig = { fontFamily: 'serif', speechVoice: '', rate: 0.9, pitch: 1.0 };
+      if (!parsed.uiVoiceConfig) {
+        parsed.uiVoiceConfig = { fontFamily: 'sans', speechVoice: '', rate: 0.9, pitch: 1.0 };
+      } else if (parsed.uiVoiceConfig.fontFamily === 'serif') {
+        parsed.uiVoiceConfig.fontFamily = 'sans';
+      }
       if (!parsed.listeningCollections) parsed.listeningCollections = [];
       if (!parsed.listeningEpisodes) parsed.listeningEpisodes = [];
       if (!parsed.userProfiles) parsed.userProfiles = {};
@@ -133,7 +137,7 @@ function loadDatabase() {
       speaking_eval: { provider: 'gemini', model: 'gemini-2.0-flash' },
     },
     uiVoiceConfig: {
-      fontFamily: 'serif',
+      fontFamily: 'sans',
       speechVoice: '',
       rate: 0.9,
       pitch: 1.0,
@@ -1210,7 +1214,7 @@ export const db = {
   // UI & Voice Customization
   uiVoiceConfig: {
     get: () => ({
-      fontFamily: state.uiVoiceConfig?.fontFamily || 'serif',
+      fontFamily: state.uiVoiceConfig?.fontFamily || 'sans',
       speechVoice: state.uiVoiceConfig?.speechVoice || '',
       rate: state.uiVoiceConfig?.rate || 0.9,
       pitch: state.uiVoiceConfig?.pitch || 1.0,
