@@ -1,5 +1,6 @@
 import { formatDate, addDays, calculateStreak } from './algorithms';
 import { mergePersonalAndSharedVocabulary, mapSharedElioCard } from './shared-vocabulary.js';
+import { keepOtherAccountElioReview } from './elio-review-ownership.js';
 import { LISTENING_COLLECTIONS, LISTENING_EPISODES } from '@/data/listening-collections';
 import { rescheduleMissedTasks } from './study-plan-generator.js';
 
@@ -511,8 +512,7 @@ export const db = {
         if (c.id === id) {
           // Shared Elio reviews are per-user even for admins; identical IDs
           // must never delete another account's personal review history.
-          if (String(id).startsWith('elio_shared_') &&
-              c.user_id !== (currentUserId || 'usr_student')) return true;
+          if (keepOtherAccountElioReview(c, currentUserId)) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true; // Keep card belonging to another user
           }
@@ -529,8 +529,7 @@ export const db = {
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {
         if (c.topic === topic) {
-          if (String(c.id).startsWith('elio_shared_') &&
-              c.user_id !== (currentUserId || 'usr_student')) return true;
+          if (keepOtherAccountElioReview(c, currentUserId)) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true;
           }
@@ -547,8 +546,7 @@ export const db = {
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {
         if (c.level === level) {
-          if (String(c.id).startsWith('elio_shared_') &&
-              c.user_id !== (currentUserId || 'usr_student')) return true;
+          if (keepOtherAccountElioReview(c, currentUserId)) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true;
           }
@@ -566,14 +564,13 @@ export const db = {
       if (!currentUserId) {
         // Preserve Elio review forks belonging to signed-in accounts.
         state.vocabularyCards = state.vocabularyCards.filter(
-          (c) => String(c.id).startsWith('elio_shared_') &&
-            c.user_id && c.user_id !== 'usr_student'
+          (c) => keepOtherAccountElioReview(c, null)
         );
       } else {
         // Only clear current user's cards; never clear another Elio review fork.
         state.vocabularyCards = state.vocabularyCards.filter(
           (c) => String(c.id).startsWith('elio_shared_')
-            ? c.user_id !== currentUserId
+            ? keepOtherAccountElioReview(c, currentUserId)
             : c.user_id && c.user_id !== currentUserId
         );
       }
