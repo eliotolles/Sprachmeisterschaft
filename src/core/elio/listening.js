@@ -1,0 +1,25 @@
+import {coreError,query} from './database.js';
+import {fetchElioTranscript} from './transcript-backend.js';
+import {ListeningV2Core} from './listening-content.js';
+import {readJournal,saveJournal} from './journal.js';
+export const LISTENING_KEY='sprach_listening_results';
+export async function getTranscript(env,input){
+ const id=ListeningV2Core.id(input.url)||(/^[\w-]{11}$/.test(input.videoId||'')?input.videoId:null);
+ if(!id)throw coreError(400,'VIDEO_ID','URL YouTube không hợp lệ.');
+ return fetchElioTranscript(env,id,['de']);
+}
+// Caption answers are resolved from accessible stored records, never from the request.
+export async function submitDictation(env,user,input){
+ if(!Number.isSafeInteger(input.version)||input.version<0||!Number.isSafeInteger(input.cueIndex)||input.cueIndex<0||typeof input.answer!=='string'||input.answer.length>5000||typeof input.recordId!=='string')throw coreError(400,'DICTATION_INPUT','Bài nghe không hợp lệ.');
+ const row=(await query(env,"SELECT data FROM ee_records WHERE id=? AND kind='listening' AND (owner=? OR public=1)",[input.recordId,user.id])).rows[0];
+ if(!row)throw coreError(404,'LISTENING_NOT_FOUND','Không tìm thấy bài nghe.');
+ let data;try{data=JSON.parse(row.data);}catch{throw coreError(409,'LISTENING_INVALID','Dữ liệu bài nghe chưa đọc được.');}
+ const cue=data.cues?.[input.cueIndex];
+ if(!cue||typeof cue.text!=='string'||!cue.text.trim()||cue.text.length>5000)throw coreError(409,'CAPTION_REQUIRED','Bài nghe chưa có phụ đề để chấm.');
+ let result;try{result=ListeningV2Core.compare(input.answer,cue.text,input.strict===true);}catch{throw coreError(400,'DICTATION_LIMIT','Chia câu thành đoạn ngắn hơn.');}
+ const journal=await readJournal(env,user,LISTENING_KEY,input.version,{attempts:[]});if(journal.conflict)return journal;
+ if(!Array.isArray(journal.document.attempts))throw coreError(409,'HISTORY_INVALID','Lịch sử chưa đọc được.');
+ const attempt={id:crypto.randomUUID(),recordId:input.recordId,cueIndex:input.cueIndex,answer:input.answer,expected:cue.text,strict:input.strict===true,...result,at:Date.now()};
+ journal.document.attempts.push(attempt);const saved=await saveJournal(env,user,LISTENING_KEY,input.version,journal.document);
+ return saved.conflict?saved:{...saved,attempt};
+}

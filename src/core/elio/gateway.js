@@ -1,3 +1,4 @@
+import {getTranscript,submitDictation,LISTENING_KEY} from './listening.js';
 import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
@@ -13,7 +14,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY]);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -109,7 +110,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -138,6 +139,12 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/auth/logout' && request.method === 'POST') {
       await query(env, 'DELETE FROM sprach_core_sessions WHERE token_hash=? AND user_id=?', [await digest(cookieValue(request)), user.id]);
       return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
+    }
+    if (path === '/api/core/listening/transcript' && request.method === 'POST') {
+      await throttle(env,'core-caption:'+user.id,10,60000);const result=await getTranscript(env,await body(request,3000));return json(result,result.available?200:503);
+    }
+    if (path === '/api/core/listening/submit' && request.method === 'POST') {
+      const result=await submitDictation(env,user,await body(request,15000));return json(result,result.conflict?409:200);
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
     if (['/api/core/speaking/reply','/api/core/speaking/grade'].includes(path) && request.method === 'POST') {

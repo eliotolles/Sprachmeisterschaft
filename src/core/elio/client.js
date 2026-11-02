@@ -135,6 +135,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
     async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    async listeningTranscript(url){requireUser();return request('/listening/transcript',{method:'POST',data:{url},deadlineMs:65000});},
+    submitDictation(data,options){return journalJob('/listening/submit','sprach_listening_results',data,options);},
     speakingReply(data,options){return journalJob('/speaking/reply','sprach_speaking_results',data,options);},
     gradeSpeaking(sessionId,language='vi',options){return journalJob('/speaking/grade','sprach_speaking_results',{sessionId,language},options);},
     async transcribeGerman(audio){requireUser();return request('/speech/transcribe',{method:'POST',data:audio,deadlineMs:180000});},
