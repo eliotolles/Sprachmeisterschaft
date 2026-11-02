@@ -54,10 +54,10 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
     setSelectedEmail(account.email);
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const isAdmin = isSystemAdminEmail(account.email);
-        const user = db.auth.loginWithGoogle({
+        const user = await db.auth.loginWithGoogle({
           email: account.email,
           name: account.name,
           picture: account.avatarUrl || null,

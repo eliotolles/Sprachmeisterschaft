@@ -9,7 +9,7 @@ for(let i=0;i<roots.length;i++){
  const root=roots[i];const server=createServer(async(req,res)=>{try{let pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);let path=resolve(root,'.'+pathname);if(!path.startsWith(root+'/'))path=resolve(root,'index.html');let bytes;try{bytes=await readFile(path);}catch{path=resolve(root,'index.html');bytes=await readFile(path);}res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream'});res.end(bytes);}catch{res.writeHead(500);res.end('Fixture server error');}});
  await new Promise(r=>server.listen(ports[i],'127.0.0.1',r));servers.push(server);
 }
-await mkdir('ui-artifacts',{recursive:true});const browser=await chromium.launch({headless:true});const report=[];
+await mkdir('ui-artifacts',{recursive:true});const browser=await chromium.launch({headless:true,args:['--disable-gpu','--disable-lcd-text','--force-color-profile=srgb','--font-render-hinting=none']});const report=[];
 const routes=['/landing','/register','/','/vocabulary','/skills','/skills/grammar','/exams','/elio','/progress'];
 try{
  for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const colorScheme of ['light','dark'])for(const route of routes){
@@ -32,7 +32,10 @@ try{
    await page.goto(`http://127.0.0.1:${ports[i]}/#${route}`,{waitUntil:'networkidle'});
    await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'});
    await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
-   const screenshot=await page.screenshot({animations:'disabled',path:`ui-artifacts/${label}-${i?'candidate':'baseline'}.png`,fullPage:true});images.push(screenshot);
+   let screenshot=await page.screenshot({animations:'disabled',fullPage:true}),stable=false;
+   for(let pass=0;pass<4;pass++){await page.waitForTimeout(100);const next=await page.screenshot({animations:'disabled',fullPage:true});if(comparePixels(PNG.sync.read(screenshot),PNG.sync.read(next)).equal){stable=true;screenshot=next;break;}screenshot=next;}
+   if(!stable)errors.push({build:i,message:'Screenshot did not stabilize'});
+   await writeFile(`ui-artifacts/${label}-${i?'candidate':'baseline'}.png`,screenshot);images.push(screenshot);
    if(await page.locator('body').innerText().then(s=>s.trim().length<20))errors.push({build:i,message:'Empty rendered page'});
    await context.close();
   }

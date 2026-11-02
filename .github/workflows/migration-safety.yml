@@ -53,6 +53,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Compare desktop/mobile and light/dark screenshots
         run: node scripts/qa/compare-ui.mjs
+      - name: Exercise unchanged auth controls against server fixtures
+        run: node scripts/qa/auth-flow.mjs
       - name: Save screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,3 +1,4 @@
+import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.js';
 import { formatDate, addDays, calculateStreak } from './algorithms';
 import { mergePersonalAndSharedVocabulary, mapSharedElioCard } from './shared-vocabulary.js';
 import { keepOtherAccountElioReview } from './elio-review-ownership.js';
@@ -25,6 +26,7 @@ export function getCachedCloudflareAdmins() {
 }
 
 export function isSystemAdminEmail(email = '') {
+  const binding=elioAuthentication();if(binding&&binding.getMode()!=='legacy')return binding.isAdminEmail(email);
   if (!email) return false;
   const clean = email.trim().toLowerCase();
 
@@ -1892,3 +1894,6 @@ export const db = {
     },
   },
 };
+
+
+export const initializeElioAuthentication=()=>installElioAuthentication(db).initialize();

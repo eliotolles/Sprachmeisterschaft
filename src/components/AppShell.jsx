@@ -1,3 +1,4 @@
+import {toast} from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, Link } from '@/lib/router';
 import { db } from '@/lib/db';
@@ -129,9 +130,9 @@ export function AppShell({ children }) {
     { path: '/elio', label: 'ELIO', icon: Bot },
   ];
 
-  const handleLogout = () => {
-    db.auth.logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {await db.auth.logout();navigate('/login');}
+    catch(error){toast.error(error.message || 'Chưa đăng xuất được.');}
   };
 
   const handleMouseEnter = () => {

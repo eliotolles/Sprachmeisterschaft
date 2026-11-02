@@ -73,6 +73,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       const current = ++epoch; identity = null; versions.clear();
       return setIdentity((await request('/auth/login', { method: 'POST', data: { email, password }, expectedEpoch: current, user: null })).user);
     },
+    async startGoogleAuth({link=false}={}){return request('/auth/google/start',{method:'POST',data:{link}});},
     async register({ email, password, name }) {
       const current = ++epoch; identity = null; versions.clear();
       return setIdentity((await request('/auth/register', { method: 'POST', data: { email, password, name }, expectedEpoch: current, user: null })).user);

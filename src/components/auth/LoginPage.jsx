@@ -143,10 +143,10 @@ export function LoginPage() {
     setSelectedEmail(account.email);
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const isAdmin = isSystemAdminEmail(account.email);
-        const user = db.auth.loginWithGoogle({
+        const user = await db.auth.loginWithGoogle({
           email: account.email,
           name: account.name,
           picture: account.avatarUrl || null,
@@ -211,10 +211,10 @@ export function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const cleanEmail = customEmail.trim().toLowerCase();
-        const u = db.auth.login(cleanEmail, legacyPassword);
+        const u = await db.auth.login(cleanEmail, legacyPassword);
         if (u.role === 'admin' || isSystemAdminEmail(cleanEmail)) {
           toast.success(`👑 Đăng nhập thành công với quyền Super Admin!`);
           navigate('/admin');
@@ -279,10 +279,9 @@ export function LoginPage() {
               <ArrowLeft className="w-4 h-4 rotate-180" />
             </button>
             <button
-              onClick={() => {
-                db.auth.logout();
-                setCurrentUser(null);
-                setIsSwitchingAccount(true);
+              onClick={async () => {
+                try {await db.auth.logout();setCurrentUser(null);setIsSwitchingAccount(true);}
+                catch(error){setError(error.message || 'Chưa đăng xuất được.');}
               }}
               className="w-full py-2.5 px-4 rounded-xl border border-[#383a3f] text-[#c4c7c5] hover:text-white hover:bg-[#282a2d] text-sm transition-colors flex items-center justify-center gap-2"
             >

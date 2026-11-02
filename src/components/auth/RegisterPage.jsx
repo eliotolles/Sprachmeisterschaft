@@ -18,9 +18,9 @@ export function RegisterPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        db.auth.register({ name, email, password, targetLevel });
+        await db.auth.register({ name, email, password, targetLevel });
         navigate('/');
       } catch (err) {
         setError(err.message || 'Đăng ký không thành công.');
