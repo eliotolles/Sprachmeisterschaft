@@ -15,7 +15,7 @@ async function save(env,user,version,document){
 }
 export async function gradeWriting(env,user,data){
  if(!data||Object.keys(data).some(k=>!['task','text','level','examProvider','language','version','continuation'].includes(k))||typeof data.task!=='string'||!data.task.trim()||data.task.length>20000||typeof data.text!=='string'||!data.text.trim()||data.text.length>30000||
-  !['A1','A2','B1','B2'].includes(data.level)||!['Goethe','telc','ÖSD','ECL'].includes(data.examProvider)||!['vi','de','en'].includes(data.language||'vi')||!Number.isSafeInteger(data.version)||data.version<0)throw invalid();
+  !['A1','A2','B1','B2'].includes(data.level)||!['Goethe','telc','ÖSD','ECL','practice'].includes(data.examProvider)||!['vi','de','en'].includes(data.language||'vi')||!Number.isSafeInteger(data.version)||data.version<0)throw invalid();
  const state=await history(env,user,data.version);if(state.conflict)return state;
  const context={task:data.task,text:data.text,level:data.level,examProvider:data.examProvider};
  const response=await generateAI(env,user,{systemPrompt:feedbackPrompt('German writing',context,data.language||'vi'),userPrompt:'Evaluate only the learner response in the task data. Return the complete feedback JSON.',...(data.continuation?{continuation:data.continuation}:{})},{validate:value=>validateFeedback(value,data.text)});

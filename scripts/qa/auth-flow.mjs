@@ -4,14 +4,14 @@ const root=resolve('dist'),origin='http://127.0.0.1:4175';
 const server=createServer(async(req,res)=>{let path=resolve(root,'.'+new URL(req.url,origin).pathname);if(!path.startsWith(root+'/'))path=resolve(root,'index.html');let bytes;try{bytes=await readFile(path);}catch{path=resolve(root,'index.html');bytes=await readFile(path);}res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(path)]||'application/octet-stream'});res.end(bytes);});await new Promise(r=>server.listen(4175,'127.0.0.1',r));
 const browser=await chromium.launch();
 try{
- for(const action of ['login','register','google','review','review-fail','tutor','tutor-fail']){
+ for(const action of ['login','register','google','review','review-fail','tutor','tutor-fail','writing','writing-fail']){
   let identity=null;const requests=[],errors=[];const context=await browser.newContext();await context.addInitScript(()=>{sessionStorage.setItem('sprach_onboarding_dismissed','true');localStorage.setItem('sprach_elio_history',JSON.stringify([{role:'user',content:'Old other-account chat'}]));localStorage.setItem('sprachmeisterschaft_auth_v1',JSON.stringify({id:'forged-local-admin',name:'Local admin',role:'admin',email:'admin@example.invalid',is_verified:true}));});
   await context.route('**/*',async route=>{
    const request=route.request(),u=new URL(request.url());
    if(u.origin==='https://accounts.google.com')return route.fulfill({contentType:'text/html',body:'<h1>Isolated Google destination fixture</h1>'});
    if(u.origin!==origin)return route.abort();if(!u.pathname.startsWith('/api/'))return route.continue();
    requests.push({path:u.pathname,method:request.method()});let status=200,body={};
-   if(u.pathname==='/api/core/config')body={enabled:true,uiAuthEnabled:true,uiVocabularyEnabled:action.startsWith('review'),uiTutorEnabled:action.startsWith('tutor')};
+   if(u.pathname==='/api/core/config')body={enabled:true,uiAuthEnabled:true,uiVocabularyEnabled:action.startsWith('review'),uiTutorEnabled:action.startsWith('tutor'),uiWritingEnabled:action.startsWith('writing')};
    else if(u.pathname==='/api/core/auth/me'){status=401;body={code:'AUTH_REQUIRED',error:'Fixture session absent'};}
    else if(['/api/core/auth/login','/api/core/auth/register'].includes(u.pathname)){const data=request.postDataJSON();assert.equal(data.email,'qa@example.invalid');assert.equal(data.password,'Fixture-password-123!');await new Promise(r=>setTimeout(r,100));identity={id:'server-account-id',email:data.email,name:'Backend Fixture',role:'user'};body={user:identity};}
    else if(u.pathname==='/api/core/auth/google/start'){assert.deepEqual(request.postDataJSON(),{link:false});body={url:'https://accounts.google.com/o/oauth2/v2/auth?state=isolated-fixture'};}
@@ -19,12 +19,13 @@ try{
    else if(u.pathname==='/api/core/vocabulary/review'){const data=request.postDataJSON();assert.equal(data.sourceId,'fixture-source-id');assert.equal(data.rating,'good');assert.equal(data.version,0);assert.equal(request.headers()['x-elio-user'],'server-account-id');if(action==='review-fail'){status=503;body={code:'FIXTURE_UNAVAILABLE',error:'Fixture save failed'};}else body={userId:'server-account-id',sourceId:data.sourceId,version:1,direction:'de',review:{repetitions:1,intervalDays:1,ease:2.5,lapses:0,dueAt:Date.now()+86400000,lastReviewedAt:Date.now()}};}
    else if(u.pathname==='/api/core/tutor/reply'){const data=request.postDataJSON();assert.equal(data.text,'Erkläre Dativ');assert.equal(data.version,0);assert.equal(data.messages,undefined);if(action==='tutor-fail'){status=503;body={code:'AI_UNAVAILABLE',error:'Fixture tutor unavailable'};}else body={userId:'server-account-id',version:1,session:{id:'fixture-thread',level:'B1',language:'vi',messages:[{role:'user',text:data.text},{role:'assistant',text:'Dativ aus dem Server'}]}};}
    else if(u.pathname==='/api/core/tutor/new'){const data=request.postDataJSON();assert.equal(data.version,1);body={userId:'server-account-id',version:2,session:{id:'fixture-new-thread',level:'B1',language:'vi',messages:[]}};}
+   else if(u.pathname==='/api/core/writing/grade'){const data=request.postDataJSON();assert.equal(data.version,0);assert.equal(data.examProvider,'practice');if(action==='writing-fail'){status=503;body={code:'AI_UNAVAILABLE',error:'Fixture writing unavailable'};}else body={userId:'server-account-id',version:1,result:{id:'fixture-writing-result',text:data.text,feedback:{scores:Object.fromEntries(['Aufgabenerfüllung','Kohärenz','Wortschatz','Strukturen'].map(k=>[k,{score:3,comment:'Dẫn chứng từ bài.',improve:'Bổ sung chi tiết.'}])),summary:'Phản hồi nguồn trình duyệt.',formatReview:[],examReview:[],priorities:['Thêm lý do.'],writingPlan:[],errors:[],sentences:[{original:data.text,comment:'Đã kiểm tra câu.',corrected:data.text,status:'good',alternatives:[]}],corrected:data.text,model:'Ich übe regelmäßig Deutsch.',alternatives:[]}}};}
    else if(u.pathname==='/api/auth/admins')body={success:true,admins:[]};
    else body={items:[],cards:[],records:{},userId:identity?.id};
    return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/#/'+(action==='register'?'register':'login'),{waitUntil:'networkidle'});
-  if(action==='login'||action.startsWith('review')||action.startsWith('tutor')){
+  if(action==='login'||action.startsWith('review')||action.startsWith('tutor')||action.startsWith('writing')){
    await page.getByText('Đăng nhập mật khẩu truyền thống',{exact:true}).click();await page.getByPlaceholder('Email đăng nhập',{exact:true}).fill('qa@example.invalid');await page.getByPlaceholder('Mật khẩu (ví dụ: admin123)',{exact:true}).fill('Fixture-password-123!');await page.getByRole('button',{name:'Đăng nhập bằng Mật khẩu',exact:true}).click();
   }else if(action==='register'){
    await page.getByPlaceholder('Nguyễn Văn Đạt',{exact:true}).fill('Backend Fixture');await page.getByPlaceholder('hocvien@sprachmeisterschaft.de',{exact:true}).fill('qa@example.invalid');await page.locator('input[type=password]').fill('Fixture-password-123!');await page.getByRole('button',{name:'Đăng ký & Bắt đầu học',exact:true}).click();
@@ -47,6 +48,11 @@ try{
    if(action==='tutor-fail'){await page.getByText('Fixture tutor unavailable',{exact:true}).waitFor();assert.equal(await input.inputValue(),'Erkläre Dativ');}
    else{await page.getByText('Dativ aus dem Server',{exact:true}).waitFor();await page.getByRole('button',{name:'Xoá lịch sử chat',exact:true}).click();await page.getByText('Lịch sử hội thoại đã được làm mới. Hãy gửi câu hỏi tiếng Đức tiếp theo của bạn nhé!',{exact:true}).waitFor();assert.equal(requests.filter(r=>r.path==='/api/core/tutor/new').length,1);}
    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('sprach_elio_history'))[0].content),'Old other-account chat');assert.equal(requests.some(r=>r.method==='DELETE'),false);
+  }
+  if(action.startsWith('writing')){
+   await page.goto(origin+'/#/skills/writing');const input=page.getByPlaceholder('Sehr geehrte Damen und Herren, ich schreibe Ihnen, weil...',{exact:true}),text='Ich lerne jeden Tag Deutsch weil ich später in Deutschland arbeiten und mit meinen Kollegen sehr gut sprechen möchte.';await input.fill(text);await page.getByRole('button',{name:'Thẩm định bài viết với AI ELIO',exact:true}).click();
+   if(action==='writing-fail'){await page.getByText('Fixture writing unavailable',{exact:true}).waitFor();assert.equal(await input.inputValue(),text);assert.equal(await page.getByText('Hồ sơ thẩm định bài viết CEFR',{exact:true}).count(),0);}
+   else await page.getByText('Phản hồi nguồn trình duyệt.',{exact:true}).waitFor();assert.equal(requests.filter(r=>r.path==='/api/core/writing/grade').length,1);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('sprachmeisterschaft_db_v1')||'{}').skillSessions?.length||0),0);
   }
   assert.deepEqual(errors,[]);console.log(JSON.stringify({action,pass:true,serverAccount:identity?.id||null}));await context.close();
  }

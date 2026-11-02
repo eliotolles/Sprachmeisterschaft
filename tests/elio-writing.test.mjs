@@ -52,3 +52,6 @@ test('Vietnamese translation preserves original scores, German text and the orig
   const changed=feedback();changed.model='Changed German answer';assert.throws(()=>validateFeedbackTranslation(changed,source,text));
  }finally{db.close();globalThis.fetch=original;}
 });
+test('generic practice writing is explicit and does not assign an unsupported certificate provider',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch;globalThis.fetch=async(url,options)=>{if(String(url).endsWith('/models'))return models();assert(JSON.parse(options.body).messages[0].content.includes('practice'));return Response.json({choices:[{message:{content:JSON.stringify(feedback())},finish_reason:'stop'}]});};try{await configure(env);const r=await gradeWriting(env,alice,{...input(),examProvider:'practice'});assert.equal(r.result.examProvider,'practice');assert.equal(r.result.feedback.officialScore,false);}finally{db.close();globalThis.fetch=original;}
+});

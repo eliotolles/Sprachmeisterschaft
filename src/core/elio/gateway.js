@@ -132,7 +132,7 @@ async function state(request, env, user, url) {
 }
 export async function handleElioCore(request, env) {
   const url = new URL(request.url), path = url.pathname;
-  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true', version: 1 });
+  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true',uiWritingEnabled:env.ELIO_CORE_UI_WRITING_ENABLED==='true', version: 1 });
   if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
   try {
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');

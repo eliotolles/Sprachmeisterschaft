@@ -1,3 +1,4 @@
+import {elioWriting} from './elio-writing-runtime.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — UNIFIED AI EVALUATION & CORRECTION ENGINE
 // Chuẩn hóa toàn bộ cơ chế chấm bài, chữa lỗi và phân tích học thuật
@@ -425,7 +426,9 @@ export async function callAiWithFallback({ systemPrompt, userPrompt, jsonMode = 
  * 2. CHẤM BÀI VIẾT LUẬN & VIẾT THƯ (SCHREIBEN)
  * Đầy đủ 10 mục bắt buộc A - J theo đúng quy chuẩn Mục 8
  */
-export async function evaluateWritingFull({ task = '', text = '', level = 'B1', examProvider = 'Goethe' }) {
+export async function evaluateWritingFull({ task = '', text = '', level = 'B1', examProvider }) {
+  if(elioWriting.isActive())return elioWriting.grade({task,text,level,examProvider:examProvider||'practice'});
+  examProvider=examProvider||'Goethe';
   const words = text.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
 
@@ -860,3 +863,4 @@ export async function auditFullExamResults({ exam, readingAnswers = {}, listenin
     },
   };
 }
+

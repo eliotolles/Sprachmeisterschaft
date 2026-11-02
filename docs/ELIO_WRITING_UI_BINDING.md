@@ -1,0 +1,13 @@
+# Existing writing studio connected to Elio grading
+
+The writing studio keeps its existing form, tabs, cards, criterion labels, score display, colors, layout and classes. An explicit ELIO_CORE_UI_WRITING_ENABLED preview opt-in routes evaluateWritingFull to the secure server writing engine. The ordinary disabled preview remains unchanged. No production configuration was changed.
+
+Enabled mode loads writing tasks only from the authenticated backend records route (own/private or public records), including legacy flat records and structured collections. It does not expose legacy browser-wide exam/import datasets as the new core task source. The textarea waits for task loading, and account changes clear the previous account's draft/result. Actual task provider metadata is retained. Generic tasks explicitly use practice rather than being mislabeled Goethe/telc.
+
+The adapter maps validated DetailedFeedback onto existing UI fields: four evidence-backed criteria /20, original quoted sentences, corrections, real error reasons, prevention tips, alternatives, full revision, model response, priorities and writing plan. Missing genre/length/greeting judgments are labeled unevaluated, not fabricated as passed. All source feedback remains in the result. Legacy UI /100 arithmetic and its 12/20 practice badge remain presentation conventions; they are not official certificate results and officialScore is false.
+
+The new core path never falls through to deterministic/local grading when the provider fails. It keeps the learner text, displays the existing error surface and saves only validated completed server results. It does not add the old fixed 450-second session or eight-minute study log/XP to browser state. Server results/history remain account-scoped and versioned.
+
+Validation: 102 JavaScript tests and 7 Python importer tests pass locally; the full app builds. Nine isolated Chromium flows pass, including successful/failed writing grading, server feedback rendering, source text retention, and absence of fake local skill logs. The preceding tutor source commit passed GitHub build, 40 visual cases and seven browser control flows. Visual coverage now includes the writing route (44 viewport/theme cases); final CI must be checked on the new commit.
+
+Remaining: real configured-provider assessment quality, source task import controls, draft autosave/restore, saved-result/history view wiring, original legacy account compatibility and live data acceptance. The inherited practice badge must not be presented as an official Goethe/telc/ÖSD/ECL pass determination. All preview switches stay off until full acceptance.

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import {elioWriting} from '@/lib/elio-writing-runtime';
+import React, { useState,useEffect,useRef } from 'react';
 import { db } from '@/lib/db';
 import { evaluateWritingFull } from '@/lib/ai-evaluator';
 import { SKILL_POOLS } from '@/data/skills';
@@ -25,6 +26,8 @@ import { toast } from 'sonner';
 
 export function WritingStudio({ onBack }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [coreTasks,setCoreTasks]=useState([]),[coreTasksReady,setCoreTasksReady]=useState(!elioWriting.isActive());
+  const writingGeneration=useRef(0),submitting=useRef(false);
 
   const defaultCustomTask = {
     id: 'custom_writing',
@@ -35,7 +38,7 @@ export function WritingStudio({ onBack }) {
   };
 
   // Trích xuất toàn bộ các bài viết từ Kho đề dùng chung (Exams & Universal)
-  const allExams = getAllExams();
+  const allExams = elioWriting.isActive()?[]:getAllExams();
   const examWritingTasks = allExams.flatMap((exam) => {
     let tasksList = [];
     if (Array.isArray(exam.writingTasks) && exam.writingTasks.length > 0) {
@@ -69,7 +72,7 @@ export function WritingStudio({ onBack }) {
 
   let universalTasks = [];
   try {
-    universalTasks = db.universal.findMany({ type: 'writing' }).map((u) => ({
+    if(!elioWriting.isActive())universalTasks = db.universal.findMany({ type: 'writing' }).map((u) => ({
       id: u.id,
       title: u.title,
       level: u.level || 'B1',
@@ -79,7 +82,7 @@ export function WritingStudio({ onBack }) {
     }));
   } catch (e) {}
 
-  const combinedTasks = [
+  const combinedTasks = elioWriting.isActive()?coreTasks:[
     ...examWritingTasks,
     ...universalTasks,
     ...(SKILL_POOLS.writing_tasks || []),
@@ -90,7 +93,11 @@ export function WritingStudio({ onBack }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [activeSectionTab, setActiveSectionTab] = useState('overview'); // 'overview' | 'sentences' | 'errors' | 'rewrite' | 'model'
+  const [activeSectionTab, setActiveSectionTab] = useState('overview');
+  useEffect(()=>{if(!elioWriting.isActive())return;let mounted=true;
+    const load=()=>{const stamp=++writingGeneration.current;setCoreTasksReady(false);setCoreTasks([]);setText('');setResult(null);setSelectedTaskIndex(0);elioWriting.loadTasks().then(rows=>{if(mounted&&stamp===writingGeneration.current){setCoreTasks(rows);setCoreTasksReady(true);}}).catch(error=>{if(mounted&&stamp===writingGeneration.current)toast.error(error.message);});};
+    load();window.addEventListener('sprach_auth_change',load);return()=>{mounted=false;writingGeneration.current++;window.removeEventListener('sprach_auth_change',load);};
+  },[]); // 'overview' | 'sentences' | 'errors' | 'rewrite' | 'model'
 
   const task = tasks[selectedTaskIndex] || tasks[0] || defaultCustomTask;
   const words = text.trim().split(/\s+/).filter(Boolean);
@@ -98,27 +105,31 @@ export function WritingStudio({ onBack }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if(submitting.current)return;
+    if(elioWriting.isActive()&&!coreTasksReady){toast.error('Đề viết chưa tải xong.');return;}
     if (wordCount < 15) {
       toast.error('Bài viết cần tối thiểu 15 từ để AI chấm điểm nghiêm túc.');
       return;
     }
 
+    submitting.current=true;const accountId=db.auth.getUser()?.id;
     setLoading(true);
     try {
       const evaluation = await evaluateWritingFull({
         task: `${task.title}: ${task.prompt}`,
         text,
         level: task.level || 'B1',
-        examProvider: 'Goethe / telc',
+        examProvider: elioWriting.isActive()?(task.provider||task.examProvider||task.exam||'practice'):'Goethe / telc',
       });
 
+      if(elioWriting.isActive()&&db.auth.getUser()?.id!==accountId)return;
       setResult(evaluation);
 
       // Score 0-20 to 100 scale
       const scaled100 = Math.round((evaluation.totalPracticeScore / 20) * 100);
 
       // Save SkillSession
-      db.skillSessions.create({
+      if(!elioWriting.isActive())db.skillSessions.create({
         skill: 'writing',
         score: scaled100,
         title: `Schreibwerkstatt — ${task.title}`,
@@ -132,7 +143,7 @@ export function WritingStudio({ onBack }) {
       });
 
       // Save StudyLog
-      db.studyLogs.recordActivity({
+      if(!elioWriting.isActive())db.studyLogs.recordActivity({
         xp: Math.round(scaled100 / 2),
         minutes: 8,
       });
@@ -140,9 +151,9 @@ export function WritingStudio({ onBack }) {
       toast.success(`Đã hoàn tất thẩm định AI: ${evaluation.totalPracticeScore}/20 điểm (${scaled100}/100)!`);
     } catch (err) {
       console.error(err);
-      toast.error('Không thể thẩm định lúc này. Vui lòng kiểm tra lại kết nối.');
+      toast.error(elioWriting.isActive()?err.message:'Không thể thẩm định lúc này. Vui lòng kiểm tra lại kết nối.');
     } finally {
-      setLoading(false);
+      submitting.current=false;setLoading(false);
     }
   };
 
@@ -233,6 +244,7 @@ export function WritingStudio({ onBack }) {
             </div>
             <textarea
               rows={10}
+              disabled={elioWriting.isActive()&&!coreTasksReady}
               required
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -250,7 +262,7 @@ export function WritingStudio({ onBack }) {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading||(elioWriting.isActive()&&!coreTasksReady)}
             className="tap w-full py-3 bg-accent hover:bg-accent/90 disabled:opacity-50 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm flex items-center justify-center gap-2"
           >
             <PenTool className="w-4 h-4" />
