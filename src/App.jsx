@@ -79,12 +79,12 @@ export function App() {
     return () => window.removeEventListener('sprach_ui_config_change', handleConfigChange);
   }, []);
 
-  // Public unauthenticated routes
-  if (currentPath === '/landing') return <LandingPage />;
-  if (currentPath === '/login') return <LoginPage />;
-  if (currentPath === '/register') return <RegisterPage />;
-  if (currentPath === '/forgot-password') return <ForgotPasswordPage />;
-  if (currentPath === '/reset-password') return <ResetPasswordPage />;
+  // Public unauthenticated routes (wrapped in ErrorBoundary to prevent blank crashes)
+  if (currentPath === '/landing') return <ErrorBoundary><LandingPage /></ErrorBoundary>;
+  if (currentPath === '/login') return <ErrorBoundary><LoginPage /></ErrorBoundary>;
+  if (currentPath === '/register') return <ErrorBoundary><RegisterPage /></ErrorBoundary>;
+  if (currentPath === '/forgot-password') return <ErrorBoundary><ForgotPasswordPage /></ErrorBoundary>;
+  if (currentPath === '/reset-password') return <ErrorBoundary><ResetPasswordPage /></ErrorBoundary>;
 
   // Render routed view
   const renderView = () => {
