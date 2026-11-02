@@ -55,5 +55,14 @@ class ImporterSafetyTests(unittest.TestCase):
                     module.main()
                 remote.assert_not_called()
 
-if __name__ == "__main__":
-    unittest.main()
+
+    def test_remote_count_rejects_malformed_response(self):
+        with patch.object(module, "execute", return_value={"results": []}):
+            with self.assertRaisesRegex(RuntimeError, "Malformed Turso count"):
+                module.remote_count("https://fake.turso.io/v2/pipeline", "fake")
+
+    def test_remote_count_reads_turso_integer_cell(self):
+        response = {"results": [{"response": {"result": {"rows": [[{"type": "integer", "value": "6718"}]]}}}]}
+        with patch.object(module, "execute", return_value=response):
+            self.assertEqual(module.remote_count("https://fake.turso.io/v2/pipeline", "fake"), 6718)
+\nif __name__ == "__main__":\n    unittest.main()\n
