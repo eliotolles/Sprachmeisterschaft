@@ -922,28 +922,19 @@ export const db = {
     },
 
     isAdmin: () => {
-      if (typeof window !== 'undefined') {
-        if (localStorage.getItem('sprach_master_admin_override') === 'true') return true;
-        if (localStorage.getItem('sprach_is_admin') === 'true') return true;
-      }
       const u = db.auth.getUser();
       if (!u) return false;
       return u.role === 'admin';
     },
 
     toggleAdminMode: () => {
-      if (typeof window === 'undefined') return false;
-      const current = db.auth.isAdmin();
-      const next = !current;
-      localStorage.setItem('sprach_master_admin_override', next ? 'true' : 'false');
-      localStorage.setItem('sprach_is_admin', next ? 'true' : 'false');
       const u = db.auth.getUser();
-      if (u) {
-        u.role = next ? 'admin' : 'user';
-        localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+      if (!u) return false;
+      // Only allow toggle if user is actually an admin or in local dev admin testing
+      if (u.role !== 'admin' && !u.email?.includes('admin')) {
+        return false;
       }
-      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
-      return next;
+      return true;
     },
 
     setRole: (role) => {
@@ -951,13 +942,19 @@ export const db = {
       if (u) {
         u.role = role;
         if (role === 'admin') {
-          localStorage.setItem('sprach_master_admin_override', 'true');
           localStorage.setItem('sprach_is_admin', 'true');
         } else {
           localStorage.removeItem('sprach_master_admin_override');
           localStorage.removeItem('sprach_is_admin');
         }
         localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+        if (state.users) {
+          const idx = state.users.findIndex((x) => x.id === u.id);
+          if (idx >= 0) {
+            state.users[idx].role = role;
+            saveDatabase(state);
+          }
+        }
         window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       }
     },

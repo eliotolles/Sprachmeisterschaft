@@ -61,20 +61,48 @@ export function AdminPage() {
   const { navigate } = useRouter();
   const [activeTab, setActiveTab] = useState('ai'); // 'ai' | 'content' | 'users' | 'ui'
 
-  // Master Admin verification
+  // Master Admin verification (Strictly role === 'admin')
   const currentUser = db.auth.getUser();
-  const [isAdmin, setIsAdmin] = useState(() => db.auth.isAdmin());
+  const isAdmin = currentUser?.role === 'admin';
 
-  // Automatically persist admin role when entering Admin Panel
+  // Listen to auth changes
   useEffect(() => {
-    localStorage.setItem('sprach_is_admin', 'true');
-    localStorage.setItem('sprach_master_admin_override', 'true');
-    const u = db.auth.getUser();
-    if (u && u.role !== 'admin') {
-      u.role = 'admin';
-      localStorage.setItem('sprach_current_user', JSON.stringify(u));
-    }
-  }, []);
+    const handleAuth = () => {
+      const u = db.auth.getUser();
+      if (!u || u.role !== 'admin') {
+        navigate('/');
+      }
+    };
+    window.addEventListener('sprach_auth_change', handleAuth);
+    return () => window.removeEventListener('sprach_auth_change', handleAuth);
+  }, [navigate]);
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 px-4 text-center space-y-4 animate-fade-in">
+        <div className="w-16 h-16 mx-auto rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 flex items-center justify-center">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <div className="eyebrow text-rose-600">TRUY CẬP HẠN CHẾ</div>
+        <h2 className="font-display text-2xl font-bold text-foreground">
+          Khu vực dành riêng cho Quản trị viên
+        </h2>
+        <p className="font-body text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+          Tài khoản hiện tại ({currentUser?.email || 'Học viên'}) không có thẩm quyền Quản trị viên (Super Admin).
+          Vui lòng đăng nhập bằng tài khoản có quyền quản trị để truy cập trang này.
+        </p>
+        <div className="pt-3 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="tap px-5 py-2.5 rounded-sm bg-accent text-accent-foreground font-mono text-xs font-semibold shadow-sm"
+          >
+            ← Về trang học tập
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // AI State
   const [aiConfigs, setAiConfigs] = useState(() => db.aiConfig.getConfigs());

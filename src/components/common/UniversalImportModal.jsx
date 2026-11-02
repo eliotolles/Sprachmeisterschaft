@@ -753,21 +753,20 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                 </div>
               </div>
 
-              {/* 3 Scope Cards - Always interactive */}
+              {/* 3 Scope Cards - Admin can choose all; normal users can only import to private */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     if (!isAdminState) {
-                      db.auth.setRole('admin');
-                      localStorage.setItem('sprach_is_admin', 'true');
-                      localStorage.setItem('sprach_master_admin_override', 'true');
-                      setIsAdminState(true);
-                      toast.success('Đã kích hoạt quyền Quản trị viên để Publish toàn hệ thống!');
+                      toast.warning('Chỉ Quản trị viên mới có quyền Publish kho dùng chung toàn hệ thống.');
+                      return;
                     }
                     setScope('public');
                   }}
                   className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    !isAdminState ? 'opacity-60 cursor-not-allowed border-dashed' : ''
+                  } ${
                     scope === 'public'
                       ? 'border-emerald-500 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 font-semibold ring-1 ring-emerald-500'
                       : 'border-border bg-card text-muted-foreground hover:text-foreground'
@@ -775,7 +774,10 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                 >
                   <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
                   <div>
-                    <div className="font-bold">🌍 Toàn hệ thống</div>
+                    <div className="font-bold flex items-center gap-1">
+                      <span>🌍 Toàn hệ thống</span>
+                      {!isAdminState && <span className="text-[9px] text-amber-600">(Admin)</span>}
+                    </div>
                     <div className="text-[10px] text-muted-foreground leading-snug">Publish công khai cho mọi học viên</div>
                   </div>
                 </button>
@@ -800,13 +802,14 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                   type="button"
                   onClick={() => {
                     if (!isAdminState) {
-                      db.auth.setRole('admin');
-                      localStorage.setItem('sprach_is_admin', 'true');
-                      setIsAdminState(true);
+                      toast.warning('Chỉ Quản trị viên mới có quyền đặt chế độ Nội bộ Admin.');
+                      return;
                     }
                     setScope('admin_only');
                   }}
                   className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    !isAdminState ? 'opacity-60 cursor-not-allowed border-dashed' : ''
+                  } ${
                     scope === 'admin_only'
                       ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
                       : 'border-border bg-card text-muted-foreground hover:text-foreground'
@@ -814,7 +817,10 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                 >
                   <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <div>
-                    <div className="font-bold">🔒 Nội bộ Admin</div>
+                    <div className="font-bold flex items-center gap-1">
+                      <span>🔒 Nội bộ Admin</span>
+                      {!isAdminState && <span className="text-[9px] text-amber-600">(Admin)</span>}
+                    </div>
                     <div className="text-[10px] text-muted-foreground leading-snug">Chỉ ban quản trị kiểm duyệt</div>
                   </div>
                 </button>

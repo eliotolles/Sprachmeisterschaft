@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, Link } from '@/lib/router';
 import { db } from '@/lib/db';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -34,17 +34,30 @@ export function AppShell({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => db.studyPlan?.shouldShowOnboarding() || false);
 
-  // Sidebar Collapse / Expand State (Controlled explicitly by user and persisted)
+  // Auto-collapse / Expand State with Auto-Hover Reveal
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('sprach_sidebar_collapsed') === 'true';
     }
     return false;
   });
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Auto-collapse when entering immersive pages (Listening Studio / Exam testing)
+  useEffect(() => {
+    const isImmersivePage =
+      (currentPath.startsWith('/skills/listening/') && currentPath.split('/').length > 3) ||
+      (currentPath.startsWith('/exams/') && currentPath !== '/exams');
+    if (isImmersivePage) {
+      setIsCollapsed(true);
+      setIsHovered(false);
+    }
+  }, [currentPath]);
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
       const next = !prev;
+      setIsHovered(false);
       if (typeof window !== 'undefined') {
         localStorage.setItem('sprach_sidebar_collapsed', String(next));
       }
@@ -70,7 +83,9 @@ export function AppShell({ children }) {
     };
   }, []);
 
-  const navGroups = [
+  const userIsAdmin = Boolean(user?.role === 'admin' || db.auth.isAdmin());
+
+  const navGroups = useMemo(() => [
     {
       group: 'Học / Lernen',
       items: [
@@ -96,10 +111,13 @@ export function AppShell({ children }) {
       items: [
         { path: '/progress', label: 'Tiến độ', de: 'Fortschritt', icon: TrendingUp },
         { path: '/me', label: 'Meine Seiten', de: 'Mein Bereich', icon: UserCheck },
-        { path: '/admin', label: 'Quản trị viên', de: 'Admin Panel', icon: ShieldCheck },
+        // Quản trị viên chỉ hiển thị duy nhất khi tài khoản có quyền Admin
+        ...(userIsAdmin
+          ? [{ path: '/admin', label: 'Quản trị viên', de: 'Admin Panel', icon: ShieldCheck, adminOnly: true }]
+          : []),
       ],
     },
-  ];
+  ], [userIsAdmin]);
 
   // Mobile bottom navigation (5 core tabs)
   const mobileNavItems = [
@@ -115,18 +133,34 @@ export function AppShell({ children }) {
     navigate('/login');
   };
 
+  // When collapsed, hovering smoothly expands the sidebar as an overlay without shifting layout
+  const effectiveExpanded = !isCollapsed || isHovered;
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background text-foreground antialiased selection:bg-accent/20 selection:text-accent">
-      {/* Desktop Sidebar with Clean Explicit Toggle & Zero Lag */}
-      <aside
-        className={`hidden md:flex flex-col border-r border-border bg-card/85 backdrop-blur-md sticky top-0 h-screen overflow-y-auto shrink-0 select-none transition-[width] duration-200 ease-in-out z-30 ${
+      {/* Desktop Sidebar Static Placeholder: Guarantees Zero Layout Shift for Page Content */}
+      <div
+        className={`hidden md:block shrink-0 transition-[width] duration-200 ease-in-out ${
           isCollapsed ? 'w-16' : 'w-60 lg:w-64'
+        }`}
+      />
+
+      {/* Desktop Sidebar with Auto-Hover Overlay & Clean Explicit Toggle */}
+      <aside
+        onMouseEnter={() => isCollapsed && setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={`hidden md:flex flex-col border-r border-border bg-card/95 backdrop-blur-md fixed top-0 left-0 h-screen overflow-y-auto shrink-0 select-none transition-all duration-200 ease-out ${
+          isCollapsed && isHovered
+            ? 'w-60 lg:w-64 shadow-2xl z-50 ring-1 ring-border/80'
+            : isCollapsed
+            ? 'w-16 z-30'
+            : 'w-60 lg:w-64 z-30'
         }`}
       >
         {/* Brand / Logo + Collapse Toggle Button */}
-        <div className={`border-b border-border transition-all ${isCollapsed ? 'p-3 text-center' : 'p-4'}`}>
+        <div className={`border-b border-border transition-all ${!effectiveExpanded ? 'p-3 text-center' : 'p-4'}`}>
           <div className="flex items-center justify-between gap-2">
-            {!isCollapsed ? (
+            {effectiveExpanded ? (
               <Link to="/" className="block group min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-2 h-2 rounded-full bg-accent" />
@@ -152,9 +186,9 @@ export function AppShell({ children }) {
               type="button"
               onClick={toggleCollapse}
               className="p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-              title={isCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+              title={isCollapsed ? 'Mở rộng và ghim thanh bên' : 'Thu gọn thanh bên (Tự động mở khi rê chuột)'}
             >
-              {isCollapsed ? (
+              {!effectiveExpanded ? (
                 <PanelLeftOpen className="w-4 h-4 text-accent" />
               ) : (
                 <PanelLeftClose className="w-4 h-4" />
@@ -162,7 +196,7 @@ export function AppShell({ children }) {
             </button>
           </div>
 
-          {!isCollapsed && (
+          {effectiveExpanded && (
             <div className="mt-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-xs font-mono text-accent">
               <span>Mục tiêu:</span>
               <strong className="font-bold">{profile.target_level || 'B1'}</strong>
@@ -171,10 +205,10 @@ export function AppShell({ children }) {
         </div>
 
         {/* Navigation Groups */}
-        <nav className={`flex-1 py-3 space-y-5 ${isCollapsed ? 'px-2' : 'px-3'}`}>
+        <nav className={`flex-1 py-3 space-y-5 ${!effectiveExpanded ? 'px-2' : 'px-3'}`}>
           {navGroups.map((group) => (
             <div key={group.group}>
-              {!isCollapsed && (
+              {effectiveExpanded && (
                 <div className="px-3 mb-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-semibold">
                   {group.group}
                 </div>
@@ -190,9 +224,9 @@ export function AppShell({ children }) {
                     <li key={item.path}>
                       <Link
                         to={item.path}
-                        title={isCollapsed ? item.label : undefined}
+                        title={!effectiveExpanded ? item.label : undefined}
                         className={`tap flex items-center rounded-sm text-sm font-medium transition-colors ${
-                          isCollapsed
+                          !effectiveExpanded
                             ? 'justify-center p-2.5'
                             : 'px-3 py-2'
                         } ${
@@ -207,7 +241,7 @@ export function AppShell({ children }) {
                               isActive ? 'text-accent-foreground' : 'text-accent/80'
                             }`}
                           />
-                          {!isCollapsed && (
+                          {effectiveExpanded && (
                             <span className="font-heading truncate">{item.label}</span>
                           )}
                         </div>
@@ -221,38 +255,26 @@ export function AppShell({ children }) {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className={`border-t border-border bg-card/90 space-y-3 ${isCollapsed ? 'p-2 text-center' : 'p-3.5'}`}>
-          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+        <div className={`border-t border-border bg-card/90 space-y-3 ${!effectiveExpanded ? 'p-2 text-center' : 'p-3.5'}`}>
+          <div className={`flex items-center ${!effectiveExpanded ? 'justify-center' : 'justify-between'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-8 h-8 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center font-display font-bold text-accent shrink-0">
                 {(profile.display_name || 'U').charAt(0).toUpperCase()}
               </div>
-              {!isCollapsed && (
+              {effectiveExpanded && (
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-semibold text-foreground truncate">
                       {profile.display_name || user?.name || 'Học viên'}
                     </span>
-                    {db.auth.isAdmin() ? (
-                      <button
-                        onClick={() => {
-                          db.auth.toggleAdminMode();
-                        }}
-                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold hover:bg-amber-500/25 shrink-0"
-                        title="Bấm để chuyển sang vai trò Học viên"
-                      >
+                    {userIsAdmin ? (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold shrink-0">
                         👑 Admin
-                      </button>
+                      </span>
                     ) : (
-                      <button
-                        onClick={() => {
-                          db.auth.toggleAdminMode();
-                        }}
-                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-muted border border-border text-muted-foreground hover:text-foreground shrink-0"
-                        title="Bấm để bật chế độ Quản trị viên (Super Admin)"
-                      >
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                         🎓 Học viên
-                      </button>
+                      </span>
                     )}
                   </div>
                   <div className="text-[10px] font-mono text-muted-foreground truncate">
@@ -268,10 +290,10 @@ export function AppShell({ children }) {
                 </div>
               )}
             </div>
-            {!isCollapsed && <ThemeToggle />}
+            {effectiveExpanded && <ThemeToggle />}
           </div>
 
-          {!isCollapsed ? (
+          {effectiveExpanded ? (
             <div className="flex items-center justify-between pt-1 text-xs font-mono text-muted-foreground">
               <Link
                 to="/landing"
@@ -283,23 +305,24 @@ export function AppShell({ children }) {
               </Link>
               <Link
                 to="/me/settings"
-                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm"
-                title="Cài đặt hệ thống"
+                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors"
+                title="Cài đặt cá nhân"
               >
                 <Settings className="w-3.5 h-3.5" />
                 <span>Cài đặt</span>
               </Link>
               <button
+                type="button"
                 onClick={handleLogout}
-                className="hover:text-accent inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors"
-                title="Đăng xuất khỏi tài khoản"
+                className="hover:text-rose-600 inline-flex items-center gap-1 p-1 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-sm transition-colors text-rose-500"
+                title="Đăng xuất"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Đăng xuất</span>
+                <span>Thoát</span>
               </button>
             </div>
           ) : (
-            <div className="flex justify-center pt-1">
+            <div className="flex flex-col items-center gap-1">
               <ThemeToggle />
             </div>
           )}
