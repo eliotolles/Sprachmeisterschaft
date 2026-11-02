@@ -13,7 +13,10 @@ export async function listStagedElioVocabulary(env, { limit = 100, offset = 0 } 
   const token = env?.TURSO_AUTH_TOKEN;
   if (!rawUrl || !token) throw new Error('Turso secrets are not configured');
   const url = new URL(rawUrl.replace(/^libsql:\/\//, 'https://').replace(/^wss:\/\//, 'https://'));
-  if (url.protocol !== 'https:') throw new Error('Turso URL must use HTTPS');
+  if (url.protocol !== 'https:' || !url.hostname.endsWith('.turso.io') ||
+      url.username || url.password || url.search || url.hash) {
+    throw new Error('Invalid Turso database endpoint');
+  }
   const response = await fetch(new URL('/v2/pipeline', url.origin), {
     method: 'POST',
     headers: {
@@ -39,8 +42,17 @@ export async function listStagedElioVocabulary(env, { limit = 100, offset = 0 } 
   if (result?.type === 'error') throw new Error('Turso query failed');
   if (result?.type !== 'ok') throw new Error('Unexpected Turso response');
   const columns = result.response?.result?.cols?.map(c => c.name) ?? [];
-  const rows = result.response?.result?.rows ?? [];
-  return rows.map(row => Object.fromEntries(row.map((cell, i) => [
-    columns[i], cell?.value ?? null,
-  ])));
+  const rows = result.response?.result?.rows;
+  if (!Array.isArray(rows) || columns.length !== 11 ||
+      !['source_id', 'german'].every(name => columns.includes(name))) {
+    throw new Error('Invalid Turso result shape');
+  }
+  return rows.map(row => {
+    if (!Array.isArray(row) || row.length !== columns.length) {
+      throw new Error('Invalid Turso row shape');
+    }
+    return Object.fromEntries(row.map((cell, i) => [
+      columns[i], cell?.value ?? null,
+    ]));
+  });
 }
