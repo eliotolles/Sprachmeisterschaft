@@ -89,6 +89,12 @@ export function LoginPage() {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  useEffect(()=>{
+    const code=new URLSearchParams(window.location.hash.split('?')[1]||'').get('coreAuthError');
+    const messages={GOOGLE_NOT_LINKED:'Google chưa được liên kết. Hãy đăng nhập bằng mật khẩu trước.',GOOGLE_ALREADY_LINKED:'Google đã được liên kết với tài khoản khác.',GOOGLE_STATE:'Phiên Google đã hết hạn hoặc không khớp. Hãy thử lại.',ACCOUNT_BLOCKED:'Tài khoản không được phép đăng nhập.',GOOGLE_NOT_CONFIGURED:'Chưa cấu hình Google OAuth phía server.',GOOGLE_IDENTITY:'Chưa xác minh được danh tính Google. Hãy thử lại.'};
+    if(messages[code])setError(messages[code]);
+  },[]);
+
 
   // Ghi nhớ phiên đăng nhập: Kiểm tra xem người dùng đã đăng nhập chưa
   const [currentUser, setCurrentUser] = useState(() => db.auth.getUser());

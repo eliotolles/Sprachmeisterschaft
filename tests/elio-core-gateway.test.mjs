@@ -170,3 +170,8 @@ test('new core routes retain authentication, private journals, protected results
   assert.equal((await call('/tutor/reply','POST',{text:'Hallo',level:'A1',language:'de',version:0},alice)).body.code,'AI_NOT_CONFIGURED');
  }finally{db.close();}
 });
+test('failed Google callback returns to the existing login route with a safe code and no session',async()=>{
+ const {db,env}=fixture();try{
+ const response=await handleElioCore(new Request('https://migration.test/api/core/auth/google/callback?state=invalid&code=private-code'),{...env,GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture'});assert.equal(response.status,303);assert.equal(response.headers.get('Location'),'https://migration.test/#/login?coreAuthError=GOOGLE_STATE');assert.match(response.headers.get('Set-Cookie'),/Max-Age=0/);assert.equal(db.prepare('SELECT count(*) n FROM sprach_core_sessions').get().n,0);assert(!response.headers.get('Location').includes('private-code'));
+ }finally{db.close();}
+});

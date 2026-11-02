@@ -142,7 +142,10 @@ export async function handleElioCore(request, env) {
       const result=await startGoogleAuth(request,env,input,user);return json({url:result.url},200,{'Set-Cookie':result.cookie});
     }
     if (path === '/api/core/auth/google/callback' && request.method === 'GET') {
-      const user=await completeGoogleAuth(request,env),session=await issueSession(env,user);const headers=new Headers({'Location':new URL(publicUser(user).role==='admin'?'/#/admin':'/#/',request.url).href,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});headers.append('Set-Cookie',session.headers.get('Set-Cookie'));headers.append('Set-Cookie',googleStateCookie('',0));return new Response(null,{status:303,headers});
+      let destination,sessionCookie=null;
+      try{const user=await completeGoogleAuth(request,env),session=await issueSession(env,user);sessionCookie=session.headers.get('Set-Cookie');destination=publicUser(user).role==='admin'?'/#/admin':'/#/';}
+      catch(error){const allowed=['GOOGLE_NOT_LINKED','GOOGLE_ALREADY_LINKED','GOOGLE_STATE','ACCOUNT_BLOCKED','GOOGLE_NOT_CONFIGURED','GOOGLE_IDENTITY'];const code=allowed.includes(error.code)?error.code:'GOOGLE_IDENTITY';destination='/#/login?coreAuthError='+code;}
+      const headers=new Headers({'Location':new URL(destination,request.url).href,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});if(sessionCookie)headers.append('Set-Cookie',sessionCookie);headers.append('Set-Cookie',googleStateCookie('',0));return new Response(null,{status:303,headers});
     }
     if (['/api/core/auth/login', '/api/core/auth/register'].includes(path)) return await auth(request, env, path);
     const user = await authenticate(request, env);
