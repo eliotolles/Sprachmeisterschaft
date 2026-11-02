@@ -78,6 +78,16 @@ def main():
         ).fetchone()[0]
         if invalid:
             raise ValueError("Staging source contains blank IDs or German vocabulary")
+        # Validate every JSON payload before contacting a remote database.
+        for (source_id, extra_json) in connection.execute(
+            "SELECT source_id, extra_json FROM elio_shared_vocabulary"
+        ):
+            try:
+                parsed = json.loads(extra_json)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Invalid extra_json in staging source: " + source_id) from error
+            if not isinstance(parsed, dict):
+                raise ValueError("extra_json must be a JSON object: " + source_id)
         print(json.dumps({"mode": "apply" if args.apply else "dry-run",
                           "records": count, "unique_ids": unique,
                           "target": "isolated staging only"}))
