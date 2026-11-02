@@ -140,6 +140,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async saveSharedWord(data){requireUser();return request('/vocabulary/save',{method:'POST',data});},
     async studyStatistics(){requireUser();return request('/study/statistics');},
     focusTimer(data,options){return journalJob('/study/timer','sprach_core_focus_sessions',data,options);},
+    newTutorThread(data,options){return journalJob('/tutor/new','sprach_core_tutor_sessions',data,options);},
     tutorReply(data,options){return journalJob('/tutor/reply','sprach_core_tutor_sessions',data,options);},
     async importCollection(kind,collection,visibility='private'){requireUser();return request('/import/collection',{method:'POST',data:{kind,collection,visibility}});},
     async extractDocument(data,options={}){requireUser();return continueJob('/import/extract',data,{...options,current:epoch,user:identity});},

@@ -1,7 +1,7 @@
 import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
 import {readVocabularyDeck,saveSharedWord} from './personal-vocabulary.js';
 import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
-import {tutorReply,TUTOR_KEY} from './tutor.js';
+import {tutorReply,newTutorThread,TUTOR_KEY} from './tutor.js';
 import {importCollection,extractDocument} from './importer.js';
 import {examFormats,startExam,answerExam,readExams,examCatalogData} from './examination.js';
 import {getTranscript,submitDictation,LISTENING_KEY} from './listening.js';
@@ -132,7 +132,7 @@ async function state(request, env, user, url) {
 }
 export async function handleElioCore(request, env) {
   const url = new URL(request.url), path = url.pathname;
-  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true', version: 1 });
+  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true', version: 1 });
   if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
   try {
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');
@@ -174,6 +174,7 @@ export async function handleElioCore(request, env) {
     }
     if (path === '/api/core/study/statistics' && request.method === 'GET') return json(await studyStatistics(env,user));
     if (path === '/api/core/study/timer' && request.method === 'POST') {const result=await focusTimer(env,user,await body(request,3000));return json(result,result.conflict?409:200);}
+    if (path === '/api/core/tutor/new' && request.method === 'POST') {await throttle(env,'core-tutor-new:'+user.id,20,60000);const result=await newTutorThread(env,user,await body(request,1000));return json(result,result.conflict?409:200);}
     if (path === '/api/core/tutor/reply' && request.method === 'POST') {
       await throttle(env,'core-ai:'+user.id,20,60000);const result=await tutorReply(env,user,await body(request,700000));return json(result,result.conflict?409:result.partial?202:200);
     }

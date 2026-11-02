@@ -1,3 +1,4 @@
+import {elioTutor} from '@/lib/elio-tutor-runtime';
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -10,7 +11,7 @@ export function ElioChatPage() {
   const [profile] = useState(() => db.learnerProfile.get());
   const [messages, setMessages] = useState(() => {
     try {
-      const saved = localStorage.getItem('sprach_elio_history');
+      const saved = elioTutor.isActive()?null:localStorage.getItem('sprach_elio_history');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
 
@@ -32,6 +33,7 @@ Bạn muốn mình giải đáp chủ đề nào hôm nay?`,
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
+  const activity=useRef(0),sending=useRef(false);
 
   // Quick suggestion chips
   const suggestions = [
@@ -43,22 +45,27 @@ Bạn muốn mình giải đáp chủ đề nào hôm nay?`,
 
   useEffect(() => {
     try {
-      localStorage.setItem('sprach_elio_history', JSON.stringify(messages.slice(-20)));
+      if(!elioTutor.isActive())localStorage.setItem('sprach_elio_history', JSON.stringify(messages.slice(-20)));
     } catch (e) {}
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  useEffect(()=>{if(!elioTutor.isActive())return;let mounted=true;const stamp=activity.current;elioTutor.load().then(history=>{if(mounted&&stamp===activity.current&&history.length)setMessages(history);}).catch(error=>{if(mounted)toast.error(error.message);});return()=>{mounted=false;};},[]);
+
   const handleSend = async (textToSend) => {
     const text = typeof textToSend === 'string' ? textToSend : input;
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loading || sending.current) return;
+    sending.current=true;activity.current++;
 
     const userMsg = { role: 'user', content: text.trim() };
-    const nextMessages = [...messages, userMsg].slice(-20); // Keep 20 turns context
+    const nextMessages = elioTutor.isActive()?[...messages,userMsg]:[...messages, userMsg].slice(-20); // Keep 20 turns context
     setMessages(nextMessages);
     setInput('');
     setLoading(true);
 
+    const accountId=db.auth.getUser()?.id;
     try {
+      if(elioTutor.isActive()){const confirmed=await elioTutor.reply(text.trim(),profile.target_level||'B1');if(db.auth.getUser()?.id===accountId)setMessages(confirmed);return;}
       const reply = await elioChat({
         messages: nextMessages,
         level: profile.target_level || 'B1',
@@ -69,13 +76,16 @@ Bạn muốn mình giải đáp chủ đề nào hôm nay?`,
       // Record activity into study log
       db.studyLogs.recordActivity({ xp: 5, minutes: 1 });
     } catch (err) {
-      toast.error('Lỗi phản hồi từ ELIO.');
+      if(elioTutor.isActive()&&db.auth.getUser()?.id===accountId){setMessages(messages);setInput(text);}
+      toast.error(elioTutor.isActive()?err.message:'Lỗi phản hồi từ ELIO.');
     } finally {
-      setLoading(false);
+      sending.current=false;setLoading(false);
     }
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
+    if(loading||sending.current)return;activity.current++;
+    if(elioTutor.isActive()){try{await elioTutor.startNew(profile.target_level||'B1');}catch(error){toast.error(error.message);return;}}
     const initial = [
       {
         role: 'assistant',
@@ -83,7 +93,7 @@ Bạn muốn mình giải đáp chủ đề nào hôm nay?`,
       },
     ];
     setMessages(initial);
-    localStorage.removeItem('sprach_elio_history');
+    if(!elioTutor.isActive())localStorage.removeItem('sprach_elio_history');
     toast.info('Đã làm mới lịch sử chat.');
   };
 
