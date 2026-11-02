@@ -1,4 +1,5 @@
 import { formatDate, addDays, calculateStreak } from './algorithms';
+import { mergePersonalAndSharedVocabulary, mapSharedElioCard } from './shared-vocabulary.js';
 import { LISTENING_COLLECTIONS, LISTENING_EPISODES } from '@/data/listening-collections';
 import { rescheduleMissedTasks } from './study-plan-generator.js';
 
@@ -304,12 +305,50 @@ function saveDatabase(data) {
 // Global in-memory cache
 let state = loadDatabase();
 
+// Shared catalog is kept in memory only: never persisted with account data.
+let sharedVocabularyRows = [];
+let sharedVocabularyLoading = null;
+let sharedVocabularyLoaded = false;
+async function loadSharedVocabularyOnce() {
+  if (sharedVocabularyLoaded || sharedVocabularyLoading || typeof window === 'undefined') return sharedVocabularyLoading;
+  sharedVocabularyLoading = (async () => {
+    const collected = [];
+    const ids = new Set();
+    for (let offset = 0; offset < 10000; offset += 200) {
+      const response = await fetch(`/api/content/elio-vocabulary?limit=200&offset=${offset}`);
+      if (!response.ok) throw new Error('Shared catalog unavailable');
+      const payload = await response.json();
+      if (!payload.success || !Array.isArray(payload.cards)) throw new Error('Invalid shared catalog response');
+      for (const row of payload.cards) {
+        const card = mapSharedElioCard(row);
+        if (ids.has(card.id)) throw new Error('Duplicate shared vocabulary ID');
+        ids.add(card.id);
+        collected.push(row);
+      }
+      if (payload.cards.length < 200) {
+        sharedVocabularyRows = collected;
+        sharedVocabularyLoaded = true;
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        return;
+      }
+    }
+    throw new Error('Shared catalog exceeded safe pagination limit');
+  })().catch(() => {
+    // A missing staging table, disabled feature or network outage must not break local learning.
+    sharedVocabularyRows = [];
+  }).finally(() => { sharedVocabularyLoading = null; });
+  return sharedVocabularyLoading;
+}
+
+
 export const db = {
   // Vocabulary Cards
   vocabulary: {
     findMany: (filter = {}) => {
       const curUser = db.auth.getUser();
       const currentUserId = curUser?.id || 'usr_student';
+      // Load the public catalog lazily. A disabled preview endpoint leaves personal cards intact.
+      void loadSharedVocabularyOnce();
       let cards = [...(state.vocabularyCards || [])];
 
       // Isolate cards by user (fallback for legacy cards without user_id to usr_student)
@@ -317,6 +356,11 @@ export const db = {
         if (!c.user_id) return currentUserId === 'usr_student' || !curUser;
         return c.user_id === currentUserId;
       });
+
+      // Shared cards are immutable templates; personal copies (same ID) override them.
+      cards = mergePersonalAndSharedVocabulary(cards, sharedVocabularyRows).map(card =>
+        card.is_shared ? { ...card, status: 'new' } : card
+      );
 
       if (filter.status && filter.status !== 'all') {
         cards = cards.filter((c) => c.status === filter.status);
@@ -342,7 +386,10 @@ export const db = {
       return cards;
     },
 
-    findById: (id) => state.vocabularyCards.find((c) => c.id === id),
+    findById: (id) => state.vocabularyCards.find((c) => c.id === id) ||
+      (sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)
+        ? { ...mapSharedElioCard(sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)), status: 'new' }
+        : null),
 
     create: (cardData) => {
       const curUser = db.auth.getUser();
@@ -422,6 +469,24 @@ export const db = {
     },
 
     update: (id, updates) => {
+      // First review of a shared template creates a personal copy, never mutating the source.
+      if (String(id).startsWith('elio_shared_') && !(state.vocabularyCards || []).some(c => c.id === id)) {
+        const row = sharedVocabularyRows.find(r => `elio_shared_${r.source_id}` === id);
+        if (!row) return null;
+        const currentUserId = db.auth.getUser()?.id;
+        if (!currentUserId) return null;
+        state.vocabularyCards.push({
+          ...mapSharedElioCard(row),
+          is_shared: false,
+          user_id: currentUserId,
+          status: 'new',
+          ease_factor: 2.5,
+          interval_days: 0,
+          repetitions: 0,
+          lapses: 0,
+          due_date: formatDate(),
+        });
+      }
       const idx = state.vocabularyCards.findIndex((c) => c.id === id);
       if (idx !== -1) {
         state.vocabularyCards[idx] = { ...state.vocabularyCards[idx], ...updates };
