@@ -62,3 +62,13 @@ jobs:
           name: migration-ui-comparison
           path: ui-artifacts
           retention-days: 7
+      - name: Package reproducible local QA runtime on explicit checkpoint
+        if: always() && contains(github.event.head_commit.message, '[qa-runtime]')
+        run: tar --exclude=.git --exclude=.baseline --exclude=ui-artifacts --exclude=qa-runtime.tgz -czf qa-runtime.tgz ./* /home/runner/.cache/ms-playwright
+      - name: Export local QA runtime without credentials
+        if: always() && contains(github.event.head_commit.message, '[qa-runtime]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-local-qa-runtime
+          path: qa-runtime.tgz
+          retention-days: 1
