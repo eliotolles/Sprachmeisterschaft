@@ -389,7 +389,7 @@ export const db = {
     },
 
     findById: (id) => state.vocabularyCards.find((c) => c.id === id &&
-      (c.user_id === db.auth.getUser()?.id || (!c.user_id && !db.auth.getUser()))) ||
+      (c.user_id === (db.auth.getUser()?.id || 'usr_student') || (!c.user_id && (db.auth.getUser()?.id || 'usr_student') === 'usr_student'))) ||
       (sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)
         ? { ...mapSharedElioCard(sharedVocabularyRows.find((r) => `elio_shared_${r.source_id}` === id)), status: 'new' }
         : null),
@@ -491,7 +491,7 @@ export const db = {
         });
       }
       const idx = state.vocabularyCards.findIndex((c) => c.id === id &&
-        (c.user_id === db.auth.getUser()?.id || (!c.user_id && !db.auth.getUser())));
+        (c.user_id === (db.auth.getUser()?.id || 'usr_student') || (!c.user_id && (db.auth.getUser()?.id || 'usr_student') === 'usr_student')));
       if (idx !== -1) {
         state.vocabularyCards[idx] = { ...state.vocabularyCards[idx], ...updates };
         saveDatabase(state);
