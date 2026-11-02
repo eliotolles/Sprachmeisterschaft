@@ -2,7 +2,7 @@
 import {chromium} from 'playwright';
 import {PNG} from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import {comparePixels} from './pixel-compare.mjs';
+import {comparePixels,comparePresentation} from './pixel-compare.mjs';
 import {createServer} from 'node:http';import {readFile,mkdir,writeFile} from 'node:fs/promises';import {resolve,extname} from 'node:path';
 const roots=[resolve('.baseline/dist'),resolve('dist')],ports=[4173,4174],servers=[];
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
@@ -43,7 +43,7 @@ try{
   }
   const a=PNG.sync.read(images[0]),b=PNG.sync.read(images[1]),pixels=comparePixels(a,b),domEqual=JSON.stringify(dom[0])===JSON.stringify(dom[1]);
   const nonAntialiased=a.width===b.width&&a.height===b.height?pixelmatch(a.data,b.data,null,a.width,a.height,{threshold:0,includeAA:false}):null;
-  const equal=domEqual&&(pixels.equal||(pixels.changedPixels<=100&&nonAntialiased===0));
+  const {equal}=comparePresentation(a,b,domEqual);
   await writeFile(`ui-artifacts/${label}-dom.json`,JSON.stringify({baseline:dom[0],candidate:dom[1]},null,2));
   report.push({route,viewport,colorScheme,byteEqual:images[0].equals(images[1]),...pixels,domEqual,nonAntialiased,equal,errors});console.log(JSON.stringify(report.at(-1)));
  }
