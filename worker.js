@@ -7,12 +7,29 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. Dynamic Model Discovery Endpoint (CORS-free Edge Gateway)
+    // 0. CORS Preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        },
+      });
+    }
+
+    // 1. Dynamic Admin List from Cloudflare Environment Variables / Secrets
+    if (url.pathname === '/api/auth/admins' && (request.method === 'GET' || request.method === 'POST')) {
+      return handleGetAdmins(request, env);
+    }
+
+    // 2. Dynamic Model Discovery Endpoint (CORS-free Edge Gateway)
     if (url.pathname === '/api/ai/discover' && request.method === 'POST') {
       return handleAiDiscover(request, env);
     }
 
-    // 2. Dynamic Key Verification Endpoint
+    // 3. Dynamic Key Verification Endpoint
     if (url.pathname === '/api/ai/verify' && request.method === 'POST') {
       return handleAiVerify(request, env);
     }
@@ -25,6 +42,77 @@ export default {
     return response;
   },
 };
+
+/**
+ * Dynamic Admin Emails Resolver from Cloudflare Environment Variables & Secrets
+ * Scans ALL environment variables matching ADMIN / OWNER / SUPERADMIN or Cloudflare KV
+ */
+async function handleGetAdmins(request, env) {
+  try {
+    const emails = new Set();
+
+    if (env) {
+      // 1. Direct env variable checks
+      const knownKeys = [
+        'ADMIN_EMAILS',
+        'ADMIN_EMAIL',
+        'ADMIN_LIST',
+        'ADMINS',
+        'SUPERADMIN_EMAIL',
+        'SUPERADMIN_EMAILS',
+        'PRIMARY_ADMIN_EMAIL',
+      ];
+      for (const k of knownKeys) {
+        if (env[k] && typeof env[k] === 'string') {
+          env[k].split(/[,;\s]+/).forEach((e) => {
+            const clean = e.trim().toLowerCase();
+            if (clean.includes('@')) emails.add(clean);
+          });
+        }
+      }
+
+      // 2. Scan ALL other env keys containing ADMIN or OWNER
+      for (const [k, v] of Object.entries(env)) {
+        if (typeof v === 'string' && (k.toUpperCase().includes('ADMIN') || k.toUpperCase().includes('OWNER'))) {
+          v.split(/[,;\s]+/).forEach((e) => {
+            const clean = e.trim().toLowerCase();
+            if (clean.includes('@')) emails.add(clean);
+          });
+        }
+      }
+
+      // 3. Check Cloudflare KV if bound
+      if (env.KV && typeof env.KV.get === 'function') {
+        const raw = (await env.KV.get('ADMIN_EMAILS')) || (await env.KV.get('ADMIN_LIST'));
+        if (raw) {
+          raw.split(/[,;\s]+/).forEach((e) => {
+            const clean = e.trim().toLowerCase();
+            if (clean.includes('@')) emails.add(clean);
+          });
+        }
+      }
+    }
+
+    // Always ensure primary admin email is included
+    emails.add('dat.nguyenviet.1999@gmail.com');
+    emails.add('admin@sprachmeisterschaft.de');
+
+    return jsonResponse({
+      success: true,
+      source: emails.size > 2 ? 'cloudflare_env' : 'default_fallback',
+      admins: Array.from(emails),
+    });
+  } catch (err) {
+    return jsonResponse(
+      {
+        success: false,
+        error: err.message,
+        admins: ['dat.nguyenviet.1999@gmail.com', 'admin@sprachmeisterschaft.de'],
+      },
+      200
+    );
+  }
+}
 
 /**
  * Handle Model Discovery from Cloudflare Edge

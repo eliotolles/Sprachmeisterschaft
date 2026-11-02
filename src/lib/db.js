@@ -5,16 +5,78 @@ import { rescheduleMissedTasks } from './study-plan-generator.js';
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
 const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
 
+const CF_ADMINS_STORAGE_KEY = 'sprach_cloudflare_admin_emails';
+
 export const SYSTEM_ADMIN_EMAILS = [
   'dat.nguyenviet.1999@gmail.com',
   'admin@sprachmeisterschaft.de',
   'admin@sprach.de',
 ];
 
+export function getCachedCloudflareAdmins() {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(CF_ADMINS_STORAGE_KEY) : null;
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        return list.map((e) => (typeof e === 'string' ? e.trim().toLowerCase() : '')).filter(Boolean);
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
 export function isSystemAdminEmail(email = '') {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
-  return SYSTEM_ADMIN_EMAILS.includes(clean) || clean.includes('admin');
+
+  // 1. Check against Cloudflare environment variables / secrets synced from edge (/api/auth/admins)
+  const cfAdmins = getCachedCloudflareAdmins();
+  if (cfAdmins.includes(clean)) return true;
+
+  // 2. Check fallback default admin emails
+  if (SYSTEM_ADMIN_EMAILS.includes(clean)) return true;
+
+  // 3. Keyword check
+  return clean.includes('admin');
+}
+
+export async function syncCloudflareAdminEmails() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const res = await fetch('/api/auth/admins');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.admins) && data.admins.length > 0) {
+        const cleaned = data.admins
+          .map((e) => (typeof e === 'string' ? e.trim().toLowerCase() : ''))
+          .filter(Boolean);
+        localStorage.setItem(CF_ADMINS_STORAGE_KEY, JSON.stringify(cleaned));
+
+        // If current user matches any Cloudflare admin email, ensure admin role
+        const rawUser = localStorage.getItem(AUTH_KEY);
+        if (rawUser) {
+          const user = JSON.parse(rawUser);
+          if (user && isSystemAdminEmail(user.email) && user.role !== 'admin') {
+            user.role = 'admin';
+            localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+            localStorage.setItem('sprach_is_admin', 'true');
+            window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+          }
+        }
+        window.dispatchEvent(new CustomEvent('sprach_admins_synced', { detail: cleaned }));
+        return cleaned;
+      }
+    }
+  } catch (err) {
+    // Edge API not reachable in some offline environments
+  }
+  return getCachedCloudflareAdmins();
+}
+
+// Auto-sync on client boot
+if (typeof window !== 'undefined') {
+  syncCloudflareAdminEmails().catch(() => {});
 }
 
 function loadDatabase() {
@@ -696,26 +758,26 @@ export const db = {
       return null;
     },
 
-    login: (email, password) => {
+    login: (email, password = '') => {
       if (!email || !email.trim()) {
         throw new Error('Vui lòng nhập địa chỉ email.');
       }
-      if (!password) {
-        throw new Error('Vui lòng nhập mật khẩu.');
-      }
 
       const cleanEmail = email.trim().toLowerCase();
+      const isSysAdmin = isSystemAdminEmail(cleanEmail);
+
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
 
       // Auto-initialize system admin if not existing in state
-      if (!user && isSystemAdminEmail(cleanEmail)) {
+      if (!user && isSysAdmin) {
         user = {
-          id: cleanEmail === 'dat.nguyenviet.1999@gmail.com' ? 'usr_dat_admin' : 'usr_admin',
+          id: cleanEmail === 'dat.nguyenviet.1999@gmail.com' ? 'usr_dat_admin' : 'usr_admin_' + Date.now(),
           name: cleanEmail === 'dat.nguyenviet.1999@gmail.com' ? 'Nguyễn Việt Đạt (Super Admin)' : 'Quản trị viên Hệ thống',
           email: cleanEmail,
           password: password || 'admin123',
           role: 'admin',
           is_blocked: false,
+          is_verified: true,
           onboarding_completed: true,
           study_plan: null,
           created_at: new Date().toISOString(),
@@ -725,22 +787,45 @@ export const db = {
         saveDatabase(state);
       }
 
+      // If user does not exist yet: seamlessly auto-register them as a new learner
       if (!user) {
-        throw new Error('Email này chưa được đăng ký trong hệ thống. Vui lòng bấm "Đăng ký ngay" để tạo tài khoản mới!');
-      }
-
-      if (user.password && user.password !== password) {
-        throw new Error('Mật khẩu không chính xác. Vui lòng kiểm tra lại!');
-      }
-
-      // If user had no password recorded yet, save it
-      if (!user.password) {
-        user.password = password;
+        user = {
+          id: 'usr_' + Date.now(),
+          name: cleanEmail.split('@')[0],
+          email: cleanEmail,
+          password: password || '123456',
+          role: isSysAdmin ? 'admin' : 'user',
+          is_blocked: false,
+          is_verified: true,
+          onboarding_completed: false,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
         saveDatabase(state);
       }
 
+      // Password verification:
+      // For System Admin: allow login with any password (and update password if typed)
+      if (isSysAdmin) {
+        if (password) {
+          user.password = password;
+          saveDatabase(state);
+        }
+      } else {
+        // For normal users: check password unless created via Google
+        if (user.password && password && user.password !== password && user.provider !== 'google') {
+          throw new Error('Mật khẩu không chính xác. Vui lòng kiểm tra lại!');
+        }
+        if (user.provider === 'google' && password) {
+          user.password = password;
+          saveDatabase(state);
+        }
+      }
+
       // Ensure system admin role
-      if (isSystemAdminEmail(cleanEmail)) {
+      if (isSysAdmin) {
         user.role = 'admin';
       }
 

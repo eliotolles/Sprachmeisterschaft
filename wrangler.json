@@ -7,5 +7,8 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "ADMIN_EMAILS": "dat.nguyenviet.1999@gmail.com,admin@sprachmeisterschaft.de,admin@sprach.de"
   }
 }

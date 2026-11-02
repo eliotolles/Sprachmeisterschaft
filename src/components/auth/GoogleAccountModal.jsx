@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/db';
+import { db, isSystemAdminEmail } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import {
   X,
@@ -18,14 +18,14 @@ const SAVED_ACCOUNTS_KEY = 'sprach_saved_google_accounts';
 
 const DEFAULT_ACCOUNTS = [
   {
-    name: 'Nguyễn Văn Đạt',
+    name: 'Nguyễn Việt Đạt',
     email: 'dat.nguyenviet.1999@gmail.com',
-    picture: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    picture: null,
     isAdmin: true,
   },
 ];
 
-export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
+export function GoogleAccountModal({ isOpen, onClose, onSuccess, prefillEmail = '' }) {
   const { navigate } = useRouter();
   const [view, setView] = useState('list'); // 'list' | 'add'
   const [customEmail, setCustomEmail] = useState('');
@@ -40,13 +40,6 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure primary admin is always included
-          const hasAdmin = parsed.some(
-            (a) => a.email?.toLowerCase() === 'dat.nguyenviet.1999@gmail.com'
-          );
-          if (!hasAdmin) {
-            return [...DEFAULT_ACCOUNTS, ...parsed];
-          }
           return parsed;
         }
       }
@@ -56,14 +49,18 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
 
   useEffect(() => {
     if (isOpen) {
-      setView('list');
+      if (prefillEmail && prefillEmail.includes('@')) {
+        setCustomEmail(prefillEmail);
+        setView('add');
+      } else {
+        setView('list');
+      }
       setError('');
-      setCustomEmail('');
       setCustomName('');
       setIsSubmitting(false);
       setSelectedEmail(null);
     }
-  }, [isOpen]);
+  }, [isOpen, prefillEmail]);
 
   if (!isOpen) return null;
 
@@ -93,7 +90,7 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
         saveAccountToHistory(account);
 
         toast.success(
-          account.email.toLowerCase() === 'dat.nguyenviet.1999@gmail.com'
+          isSystemAdminEmail(account.email)
             ? 'Đăng nhập thành công với quyền Super Admin!'
             : `Đăng nhập Google thành công: ${account.name || account.email}`
         );
@@ -126,7 +123,7 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
     }
 
     const cleanName = customName.trim() || cleanEmail.split('@')[0];
-    const isAdmin = cleanEmail === 'dat.nguyenviet.1999@gmail.com';
+    const isAdmin = isSystemAdminEmail(cleanEmail);
 
     const newAccount = {
       name: cleanName,
@@ -215,7 +212,7 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
               {/* Account list */}
               {accounts.map((acc) => {
                 const isSelected = selectedEmail === acc.email && isSubmitting;
-                const isAdminAccount = acc.email.toLowerCase() === 'dat.nguyenviet.1999@gmail.com';
+                const isAdminAccount = isSystemAdminEmail(acc.email);
 
                 return (
                   <button

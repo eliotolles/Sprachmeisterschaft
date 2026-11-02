@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { GoogleAccountModal } from './GoogleAccountModal';
 
 export function GoogleButton({
-  label = 'Đăng nhập bằng Google',
+  label = 'Tiếp tục với Google',
   sublabel = 'Truy cập tức thì bằng tài khoản Google',
   className = '',
+  prefillEmail = '',
   onSuccess,
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,6 +49,7 @@ export function GoogleButton({
       {/* Google Account Selector Dialog */}
       <GoogleAccountModal
         isOpen={isModalOpen}
+        prefillEmail={prefillEmail}
         onClose={() => setIsModalOpen(false)}
         onSuccess={onSuccess}
       />
