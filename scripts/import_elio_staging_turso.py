@@ -6,7 +6,8 @@ Usage:
   python scripts/import_elio_staging_turso.py staging.db
   ELIO_STAGING_TURSO_DATABASE_URL=libsql://... \
   ELIO_STAGING_TURSO_AUTH_TOKEN=... \
-  python scripts/import_elio_staging_turso.py staging.db --apply --acknowledge-isolated-database
+  python scripts/import_elio_staging_turso.py staging.db --apply --acknowledge-isolated-database \\
+    --expected-staging-host my-isolated-db-org.turso.io
 """
 import argparse
 import json
@@ -55,6 +56,7 @@ def main():
     parser.add_argument("sqlite_file")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--acknowledge-isolated-database", action="store_true")
+    parser.add_argument("--expected-staging-host", help="Exact hostname of the separately created staging Turso database")
     args = parser.parse_args()
     connection = sqlite3.connect("file:" + os.path.abspath(args.sqlite_file) + "?mode=ro", uri=True)
     try:
@@ -69,8 +71,8 @@ def main():
                           "target": "isolated staging only"}))
         if not args.apply:
             return
-        if not args.acknowledge_isolated_database:
-            raise ValueError("Explicit staging database acknowledgement required")
+        if not args.acknowledge_isolated_database or not args.expected_staging_host:
+            raise ValueError("Explicit staging acknowledgement and exact expected host required")
         raw = os.environ.get("ELIO_STAGING_TURSO_DATABASE_URL", "")
         token = os.environ.get("ELIO_STAGING_TURSO_AUTH_TOKEN", "")
         if not raw or not token:
@@ -79,6 +81,11 @@ def main():
         if prod and endpoint(raw) == endpoint(prod):
             raise ValueError("Staging URL matches production URL")
         url = endpoint(raw)
+        parsed_host = urllib.parse.urlparse(url).hostname
+        if parsed_host != args.expected_staging_host.lower().strip():
+            raise ValueError("Staging host does not match explicitly expected host")
+        if not parsed_host or not parsed_host.endswith(".turso.io"):
+            raise ValueError("Invalid staging hostname")
         execute(url, token, [(CREATE, [])])
         sql = ("INSERT OR IGNORE INTO elio_shared_vocabulary (" + ",".join(COLUMNS)
                + ") VALUES (" + ",".join("?" for _ in COLUMNS) + ")")
