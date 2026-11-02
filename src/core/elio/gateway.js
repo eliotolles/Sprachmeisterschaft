@@ -1,5 +1,6 @@
 import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
+import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
 
 // Elio's per-account records and optimistic revisions, mapped to the existing ee_* schema.
 // No bootstrap account, schema initialization, password rewrite, or bulk migration runs here.
@@ -8,7 +9,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan']);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -104,7 +105,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || data.name === REVIEW_KEY || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -136,10 +137,12 @@ export async function handleElioCore(request, env) {
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
     if (path === '/api/core/vocabulary' && request.method === 'GET') {
-      const limit = Number(url.searchParams.get('limit') ?? 100), offset = Number(url.searchParams.get('offset') ?? 0);
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200 || !Number.isSafeInteger(offset) || offset < 0) throw coreError(400, 'PAGINATION', 'Phân trang không hợp lệ.');
-      const rows = (await query(env, 'SELECT source_id,german,article,word_type,vietnamese,example_de,example_vi,topic,level,source_deck_id,extra_json FROM elio_shared_vocabulary ORDER BY source_id LIMIT ? OFFSET ?', [limit, offset])).rows;
-      return json({ cards: rows });
+      return json(await readVocabulary(env, url));
+    }
+    if (path === '/api/core/vocabulary/review' && request.method === 'POST') {
+      const result = await reviewVocabulary(env, user, await body(request, 2000));
+      if (result.conflict) return json({ code: 'VERSION_CONFLICT', error: 'Có tiến độ mới hơn; lần ôn chưa được ghi lại.', version: result.version }, 409);
+      return json(result);
     }
     if (path === '/api/core/records' && request.method === 'GET') {
       const kind = url.searchParams.get('kind');

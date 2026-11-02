@@ -105,3 +105,17 @@ test('shared and personal legacy records retain backend visibility boundaries',a
     assert.deepEqual((await call('/records?kind=grammar','GET',undefined,bob)).body.items.map(x=>x.id),['shared']);
   }finally{db.close();}
 });
+test('review API requires auth, computes server schedule and cannot be bypassed by a generic state write',async()=>{
+  const {db,call,login}=fixture();try{
+    const data={sourceId:'existing-source',rating:'good',version:0};
+    assert.equal((await call('/vocabulary/review','POST',data)).status,401);
+    const alice=await login('alice@example.invalid');
+    const result=await call('/vocabulary/review','POST',data,alice);
+    assert.equal(result.status,200);assert.equal(result.body.review.repetitions,1);assert.equal(result.body.version,1);
+    assert.equal((await call('/vocabulary/review','POST',data,alice)).status,409);
+    assert.equal((await call('/state','PUT',{name:'sprach_vocabulary_reviews',value:{},version:1},alice)).status,400);
+    assert.equal((await call('/vocabulary/review','POST',{...data,version:1,rating:'invalid'},alice)).status,400);
+    const state=await call('/state?keys=sprach_vocabulary_reviews','GET',undefined,alice);
+    assert.equal(state.body.records.sprach_vocabulary_reviews.value.history.length,1);
+  }finally{db.close();}
+});

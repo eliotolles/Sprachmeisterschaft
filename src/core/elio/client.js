@@ -77,9 +77,30 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
-    async vocabulary({ limit = 200, offset = 0 } = {}) {
+    async vocabulary({ limit = 200, offset = 0, q, deck, level } = {}) {
       requireUser();
-      return (await request('/vocabulary?limit=' + encodeURIComponent(limit) + '&offset=' + encodeURIComponent(offset))).cards;
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      for (const [key, value] of Object.entries({ q, deck, level })) if (value !== undefined) params.set(key, value);
+      return (await request('/vocabulary?' + params)).cards;
+    },
+    reviewVocabulary(sourceId, rating, { direction = 'de' } = {}) {
+      requireUser();
+      const name = 'sprach_vocabulary_reviews', current = epoch, user = identity, key = user.id + ':' + name;
+      const prior = writes.get(key) || Promise.resolve();
+      const next = prior.catch(() => {}).then(async () => {
+        if (current !== epoch) throw fail('ACCOUNT_CHANGED', 'Không ghi lần ôn của tài khoản trước.');
+        if (!versions.has(name)) await loadState([name], current, user);
+        const payload = await request('/vocabulary/review', { method: 'POST',
+          data: { sourceId, rating, direction, version: versions.get(name) }, expectedEpoch: current, user });
+        if (payload.userId !== user.id || payload.sourceId !== sourceId || !Number.isSafeInteger(payload.version)) {
+          throw fail('INVALID_RESPONSE', 'Xác nhận ôn từ không hợp lệ.');
+        }
+        versions.set(name, payload.version);
+        return payload;
+      });
+      writes.set(key, next);
+      next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
+      return next;
     },
     async records(kind) {
       requireUser(); return (await request('/records?kind=' + encodeURIComponent(kind))).items;

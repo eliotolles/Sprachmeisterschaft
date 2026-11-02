@@ -42,3 +42,15 @@ test('late previous-account response never overwrites a newer login', async () =
   await assert.rejects(old, error => error.code === 'ACCOUNT_CHANGED');
   assert.equal(client.getUser().id, 'new');
 });
+test('review client serializes grades and advances only confirmed server revisions',async()=>{
+  let revision=0;const grades=[];
+  const client=createElioClient({fetcher:async(url,options)=>{
+    if(url.endsWith('/auth/login'))return Response.json({user});
+    if(options.method==='GET')return Response.json({userId:'alice',records:{}});
+    const data=JSON.parse(options.body);assert.equal(data.version,revision);revision++;grades.push(data.rating);
+    return Response.json({userId:'alice',sourceId:data.sourceId,version:revision,review:{repetitions:revision}});
+  }});
+  await client.login(user.email,'fixture-password');
+  await Promise.all([client.reviewVocabulary('source','good'),client.reviewVocabulary('source','easy')]);
+  assert.deepEqual(grades,['good','easy']);assert.equal(revision,2);
+});
