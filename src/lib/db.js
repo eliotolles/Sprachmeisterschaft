@@ -5,13 +5,9 @@ import { rescheduleMissedTasks } from './study-plan-generator.js';
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
 const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
 
+import { SYSTEM_ADMIN_EMAILS } from './SYSTEM_ADMIN_EMAILS.js';
+export { SYSTEM_ADMIN_EMAILS };
 const CF_ADMINS_STORAGE_KEY = 'sprach_cloudflare_admin_emails';
-
-export const SYSTEM_ADMIN_EMAILS = [
-  'dat.nguyenviet.1999@gmail.com',
-  'admin@sprachmeisterschaft.de',
-  'admin@sprach.de',
-];
 
 export function getCachedCloudflareAdmins() {
   try {

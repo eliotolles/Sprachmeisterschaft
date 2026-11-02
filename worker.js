@@ -93,9 +93,18 @@ async function handleGetAdmins(request, env) {
       }
     }
 
-    // Always ensure primary admin email is included
-    emails.add('dat.nguyenviet.1999@gmail.com');
-    emails.add('admin@sprachmeisterschaft.de');
+    // Always ensure primary admin emails are included
+    [
+      'dat.nguyenviet.1999@gmail.com',
+      'elio.nv260399@gmail.com',
+      'dat.nv260399@gmail.com',
+      'dat.nguyenviet.99@gmail.com',
+      'dat.uneti.1999@gmail.com',
+      'dat.uneti.99@gmail.com',
+      'dat.sunlife99@gmail.com',
+      'admin@sprachmeisterschaft.de',
+      'admin@sprach.de',
+    ].forEach((e) => emails.add(e));
 
     return jsonResponse({
       success: true,
