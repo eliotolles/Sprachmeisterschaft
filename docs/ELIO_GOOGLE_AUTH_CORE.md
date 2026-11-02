@@ -1,0 +1,11 @@
+# Verified Google authentication core
+
+Source verification logic: ElioEinfachlernen- cloudflare-return bd5179107363ebcc19764454b08d7c94acd1a289. The compatibility layer targets existing ee_users and ee_google_identities; it does not copy Elio's automatic account seeding.
+
+POST `/api/core/auth/google/start` creates a 10-minute, one-use state/nonce/PKCE flow and an HttpOnly Secure SameSite=Lax host cookie. Optional authenticated linking captures the server-authenticated user ID and requires the current account header. GET `/api/core/auth/google/callback` consumes matching state, exchanges the code server-side, verifies Google's RS256 signature and issuer/audience/expiry/nonce/verified-email claims, and resolves the Google subject through existing identity mappings. Stored database ID, role and blocked status are authoritative. No email-only Google impersonation or automatic email-based account linking/account creation is allowed.
+
+Successful callback issues the existing secure core session and returns to the unchanged home/admin route. Existing passwords/accounts/sessions are not rewritten. Explicit SQL preparation adds only sprach_core_google_flows; runtime initialization is forbidden. GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are server-only prerequisites. No production values or database schema were changed in this commit.
+
+Fixtures cover PKCE binding, cookie state mismatch, one-time replay rejection, signed token verification, forged subject/signature, wrong audience/nonce/issuer/expiry, database roles and unmatched-subject refusal. Real Google callback registration, client credentials and UI connection remain acceptance requirements. Three existing salted legacy passwords remain unsupported until their original algorithm can be verified; no algorithm guesses or resets were added.
+
+Visual CI builds baseline/candidate with no deployment secrets, blocks external network calls in browsers, uses synthetic accounts, and compares 9 routes at 1440/390 widths in light/dark modes. Observed Chromium text raster rounding is accepted only when every channel differs by at most 2/255 and no more than 20 pixels differ; dimensions and larger/layout changes fail. No regions are masked. Screenshot artifacts are retained seven days.

@@ -12,3 +12,10 @@ CREATE TABLE IF NOT EXISTS sprach_core_limits (
   count INTEGER NOT NULL,
   until_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sprach_core_google_flows (
+  state_hash TEXT PRIMARY KEY,
+  nonce TEXT NOT NULL,
+  verifier TEXT NOT NULL,
+  expires INTEGER NOT NULL,
+  link_user TEXT
+);

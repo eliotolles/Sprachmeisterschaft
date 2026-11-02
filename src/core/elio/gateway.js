@@ -1,3 +1,4 @@
+import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
 import {readVocabularyDeck,saveSharedWord} from './personal-vocabulary.js';
 import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
 import {tutorReply,TUTOR_KEY} from './tutor.js';
@@ -135,6 +136,14 @@ export async function handleElioCore(request, env) {
   if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
   try {
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');
+    if (path === '/api/core/auth/google/start' && request.method === 'POST') {
+      await throttle(env,'core-google:'+await digest(request.headers.get('CF-Connecting-IP')||'unknown'),20,60000);const input=await body(request,1000);const user=input.link===true?await authenticate(request,env):null;
+      if(user&&request.headers.get('X-Elio-User')!==user.id)throw coreError(409,'ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+      const result=await startGoogleAuth(request,env,input,user);return json({url:result.url},200,{'Set-Cookie':result.cookie});
+    }
+    if (path === '/api/core/auth/google/callback' && request.method === 'GET') {
+      const user=await completeGoogleAuth(request,env),session=await issueSession(env,user);const headers=new Headers({'Location':new URL(publicUser(user).role==='admin'?'/#/admin':'/#/',request.url).href,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});headers.append('Set-Cookie',session.headers.get('Set-Cookie'));headers.append('Set-Cookie',googleStateCookie('',0));return new Response(null,{status:303,headers});
+    }
     if (['/api/core/auth/login', '/api/core/auth/register'].includes(path)) return await auth(request, env, path);
     const user = await authenticate(request, env);
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('X-Elio-User') !== user.id) {

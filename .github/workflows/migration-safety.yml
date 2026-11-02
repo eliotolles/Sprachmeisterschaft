@@ -49,7 +49,7 @@ jobs:
           npm run build
       - name: Install isolated browser QA tooling
         run: |
-          npm install --no-save --package-lock=false playwright@1.56.1
+          npm install --no-save --package-lock=false playwright@1.56.1 pngjs@7.0.0
           npx playwright install --with-deps chromium
       - name: Compare desktop/mobile and light/dark screenshots
         run: node scripts/qa/compare-ui.mjs

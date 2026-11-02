@@ -1,0 +1,26 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync} from 'node:fs';
+import {startGoogleAuth,completeGoogleAuth,verifyGoogleToken} from '../src/core/elio/google-auth.js';
+const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'migration-google-fixture',alg:'RS256'};
+const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+async function token(claims){const data=encode({alg:'RS256',kid:jwk.kid})+'.'+encode(claims);return data+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(data))).toString('base64url');}
+function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../db/elio-core-additive.sql',import.meta.url),'utf8'));db.exec("CREATE TABLE ee_users(id TEXT PRIMARY KEY,email TEXT,name TEXT,role TEXT,blocked INTEGER);CREATE TABLE ee_google_identities(google_sub TEXT PRIMARY KEY,user_id TEXT);INSERT INTO ee_users VALUES('alice','alice@example.invalid','Alice','user',0);INSERT INTO ee_google_identities VALUES('known-subject','alice')");return {db,env:{GOOGLE_CLIENT_ID:'fixture-client',GOOGLE_CLIENT_SECRET:'fixture-secret',TEST_CORE_DB:async(sql,args=[])=>{const s=db.prepare(sql);return /^SELECT/.test(sql)||/RETURNING/.test(sql)?{rows:s.all(...args)}:{rows:[],changes:Number(s.run(...args).changes)};}}};}
+const request=()=>new Request('https://migration.test/api/core/auth/google/start',{method:'POST'});
+test('Google flow uses PKCE and one-time cookie state; verified subject retains stored ID/role and replay fails',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch;try{
+ const flow=await startGoogleAuth(request(),env,{});assert.match(flow.cookie,/HttpOnly; Secure; SameSite=Lax/);const u=new URL(flow.url);assert.equal(u.origin,'https://accounts.google.com');assert.equal(u.searchParams.get('code_challenge_method'),'S256');assert.equal(u.searchParams.get('redirect_uri'),'https://migration.test/api/core/auth/google/callback');
+ const saved=db.prepare('SELECT * FROM sprach_core_google_flows').get();assert(!flow.url.includes(saved.verifier));const state=u.searchParams.get('state');const claims={iss:'https://accounts.google.com',aud:env.GOOGLE_CLIENT_ID,sub:'known-subject',nonce:saved.nonce,email_verified:true,email:'untrusted-admin@example.invalid',exp:Math.floor(Date.now()/1000)+300,iat:Math.floor(Date.now()/1000)};const jwt=await token(claims);
+ globalThis.fetch=async(url,options)=>{if(String(url)==='https://www.googleapis.com/oauth2/v3/certs')return Response.json({keys:[jwk]});assert.equal(String(url),'https://oauth2.googleapis.com/token');assert.equal(options.body.get('code_verifier'),saved.verifier);assert.equal(options.body.get('client_secret'),'fixture-secret');return Response.json({id_token:jwt});};
+ const callback=new Request('https://migration.test/api/core/auth/google/callback?state='+state+'&code=fixture-code',{headers:{Cookie:flow.cookie.split(';')[0]}});
+ await assert.rejects(completeGoogleAuth(new Request(callback.url,{headers:{Cookie:'__Host-sprach_google=wrong'}}),env),e=>e.code==='GOOGLE_STATE');assert.equal(db.prepare('SELECT count(*) n FROM sprach_core_google_flows').get().n,1);
+ const user=await completeGoogleAuth(callback,env);assert.equal(user.id,'alice');assert.equal(user.role,'user');assert.equal(user.email,'alice@example.invalid');await assert.rejects(completeGoogleAuth(callback,env),e=>e.code==='GOOGLE_STATE');
+ for(const change of [{aud:'other-client'},{nonce:'wrong'},{exp:0},{email_verified:false},{iss:'https://attacker.invalid'}])await assert.rejects(verifyGoogleToken(await token({...claims,...change}),env,saved.nonce));
+ const parts=jwt.split('.');parts[1]=encode({...claims,sub:'forged'});await assert.rejects(verifyGoogleToken(parts.join('.'),env,saved.nonce));
+ }finally{db.close();globalThis.fetch=original;}
+});
+test('Google does not auto-link by email or create accounts, and missing configuration fails closed',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch;try{
+ await assert.rejects(startGoogleAuth(request(),{},{}),e=>e.code==='GOOGLE_NOT_CONFIGURED');await assert.rejects(startGoogleAuth(request(),env,{link:true}),e=>e.status===401);
+ const flow=await startGoogleAuth(request(),env,{}),u=new URL(flow.url),saved=db.prepare('SELECT * FROM sprach_core_google_flows').get();const jwt=await token({iss:'accounts.google.com',aud:env.GOOGLE_CLIENT_ID,sub:'unlinked-subject',nonce:saved.nonce,email_verified:true,email:'alice@example.invalid',exp:Math.floor(Date.now()/1000)+300,iat:Math.floor(Date.now()/1000)});
+ globalThis.fetch=async url=>String(url).includes('/certs')?Response.json({keys:[jwk]}):Response.json({id_token:jwt});await assert.rejects(completeGoogleAuth(new Request('https://migration.test/api/core/auth/google/callback?state='+u.searchParams.get('state')+'&code=fixture',{headers:{Cookie:flow.cookie.split(';')[0]}}),env),e=>e.code==='GOOGLE_NOT_LINKED');assert.equal(db.prepare('SELECT count(*) n FROM ee_users').get().n,1);assert.equal(db.prepare('SELECT count(*) n FROM ee_google_identities').get().n,1);
+ }finally{db.close();globalThis.fetch=original;}
+});

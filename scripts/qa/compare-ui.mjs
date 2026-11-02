@@ -1,5 +1,7 @@
 // Isolated build screenshots: no external services, credentials or real account data.
 import {chromium} from 'playwright';
+import {PNG} from 'pngjs';
+import {comparePixels} from './pixel-compare.mjs';
 import {createServer} from 'node:http';import {readFile,mkdir,writeFile} from 'node:fs/promises';import {resolve,extname} from 'node:path';
 const roots=[resolve('.baseline/dist'),resolve('dist')],ports=[4173,4174],servers=[];
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
@@ -34,7 +36,8 @@ try{
    if(await page.locator('body').innerText().then(s=>s.trim().length<20))errors.push({build:i,message:'Empty rendered page'});
    await context.close();
   }
-  report.push({route,viewport,colorScheme,equal:images[0].equals(images[1]),errors});console.log(JSON.stringify(report.at(-1)));
+  const pixels=comparePixels(PNG.sync.read(images[0]),PNG.sync.read(images[1]));
+  report.push({route,viewport,colorScheme,byteEqual:images[0].equals(images[1]),...pixels,errors});console.log(JSON.stringify(report.at(-1)));
  }
  await writeFile('ui-artifacts/report.json',JSON.stringify(report,null,2));
  if(report.some(r=>!r.equal||r.errors.length))process.exitCode=1;
