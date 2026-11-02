@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function ExamsListPage() {
   const { navigate } = useRouter();
@@ -39,16 +40,28 @@ export function ExamsListPage() {
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
 
-  const handleDeleteExam = (examId, examTitle) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa đề thi "${examTitle}" không?`)) {
+  const handleDeleteExam = async (examId, examTitle) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa đề thi',
+      message: `Bạn có chắc chắn muốn xóa đề thi "${examTitle}" không?`,
+      confirmText: 'Xóa đề thi',
+      variant: 'danger',
+    });
+    if (ok) {
       db.exams.delete(examId);
       setAllExamsList(getAllExams());
       toast.success(`Đã xóa đề thi: "${examTitle}"!`);
     }
   };
 
-  const handleResetExams = () => {
-    if (window.confirm('Khôi phục lại toàn bộ danh mục đề thi mặc định gốc của hệ thống?')) {
+  const handleResetExams = async () => {
+    const ok = await showConfirmModal({
+      title: 'Khôi phục đề thi gốc',
+      message: 'Khôi phục lại toàn bộ danh mục đề thi mặc định gốc của hệ thống?',
+      confirmText: 'Khôi phục đề gốc',
+      variant: 'warning',
+    });
+    if (ok) {
       db.exams.resetDefaults();
       setAllExamsList(getAllExams());
       toast.success('Đã khôi phục danh mục đề thi gốc!');

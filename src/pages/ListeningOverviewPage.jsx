@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { LEVEL_IDS } from '@/data/levels';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   Headphones,
   Plus,
@@ -25,10 +26,16 @@ import {
   X,
 } from 'lucide-react';
 
-export function ListeningOverviewPage() {
+export function ListeningOverviewPage({ initialTab = null }) {
   const { navigate } = useRouter();
   const [selectedLevel, setSelectedLevel] = useState('ALL');
-  const [activeScopeTab, setActiveScopeTab] = useState('all'); // 'all' (Kho chung) | 'personal' (Kho cá nhân)
+  const [activeScopeTab, setActiveScopeTab] = useState(() => {
+    if (initialTab) return initialTab;
+    if (typeof window !== 'undefined' && (window.location.hash.includes('personal') || window.location.pathname.includes('personal'))) {
+      return 'personal';
+    }
+    return 'all';
+  });
   const [collections, setCollections] = useState(() => db.listening.getCollections());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);
@@ -57,15 +64,27 @@ export function ListeningOverviewPage() {
     }
   });
 
-  const handleDeleteCollection = (colId, colTitle) => {
-    if (window.confirm(`Bạn có chắc chắn muốn xóa bộ video "${colTitle}" cùng toàn bộ tập trong bộ không?`)) {
+  const handleDeleteCollection = async (colId, colTitle) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa bộ video',
+      message: `Bạn có chắc chắn muốn xóa bộ video "${colTitle}" cùng toàn bộ các tập con không?`,
+      confirmText: 'Xóa bộ video',
+      variant: 'danger',
+    });
+    if (ok) {
       db.listening.deleteCollection(colId);
       toast.success(`Đã xóa bộ video: "${colTitle}"`);
     }
   };
 
-  const handleResetListening = () => {
-    if (window.confirm('Khôi phục lại toàn bộ các bộ video luyện nghe gốc chuẩn Nicos Weg của hệ thống?')) {
+  const handleResetListening = async () => {
+    const ok = await showConfirmModal({
+      title: 'Khôi phục video luyện nghe',
+      message: 'Khôi phục lại toàn bộ các bộ video luyện nghe gốc chuẩn Nicos Weg của hệ thống?',
+      confirmText: 'Khôi phục gốc',
+      variant: 'warning',
+    });
+    if (ok) {
       db.listening.resetDefaults();
       toast.success('Đã khôi phục các bộ video gốc!');
     }

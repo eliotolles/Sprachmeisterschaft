@@ -20,6 +20,7 @@ import {
   Compass,
   BookOpen,
   Headphones,
+  Video,
   ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
@@ -93,6 +94,7 @@ export function AppShell({ children }) {
       items: [
         { path: '/skills', label: 'Kỹ năng', de: 'Fertigkeiten', icon: Sparkles },
         { path: '/skills/listening', label: 'Luyện nghe', de: 'Hörverstehen', icon: Headphones },
+        { path: '/skills/listening/personal', label: 'Video cá nhân', de: 'Eigene Videos', icon: Video },
         { path: '/game', label: 'Trò chơi', de: 'Der/Die/Das', icon: Gamepad2 },
         { path: '/exams', label: 'Luyện thi', de: 'Prüfung', icon: FileCheck2 },
         { path: '/readiness', label: 'Sẵn sàng thi', de: 'Prüfungsreife', icon: Gauge },

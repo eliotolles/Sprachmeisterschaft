@@ -6,6 +6,7 @@ import { SpeakButton } from '@/components/ui/SpeakButton';
 import { SITUATIONS } from '@/data/situations';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   Utensils,
   Activity,
@@ -80,8 +81,14 @@ export function VocabSituationsPage() {
   const currentSituation = allSituations.find((s) => s.id === selectedId) || allSituations[0];
   const IconComponent = (currentSituation && ICONS[currentSituation.icon]) || MessageCircle;
 
-  const handleDeleteSituation = (sitId, sitTitle) => {
-    if (window.confirm(`Bạn có chắc muốn xóa tình huống "${sitTitle}" không?`)) {
+  const handleDeleteSituation = async (sitId, sitTitle) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa tình huống giao tiếp',
+      message: `Bạn có chắc muốn xóa tình huống "${sitTitle}" không?`,
+      confirmText: 'Xóa tình huống',
+      variant: 'danger',
+    });
+    if (ok) {
       db.situations.delete(sitId);
       toast.success(`Đã xóa tình huống "${sitTitle}"!`);
       const remaining = allSituations.filter((s) => s.id !== sitId);
@@ -91,8 +98,14 @@ export function VocabSituationsPage() {
     }
   };
 
-  const handleResetSituations = () => {
-    if (window.confirm('Khôi phục lại toàn bộ các tình huống giao tiếp gốc của hệ thống?')) {
+  const handleResetSituations = async () => {
+    const ok = await showConfirmModal({
+      title: 'Khôi phục tình huống gốc',
+      message: 'Khôi phục lại toàn bộ các tình huống giao tiếp gốc của hệ thống?',
+      confirmText: 'Khôi phục gốc',
+      variant: 'warning',
+    });
+    if (ok) {
       db.situations.resetDefaults();
       toast.success('Đã khôi phục các tình huống gốc!');
     }
@@ -111,9 +124,15 @@ export function VocabSituationsPage() {
     toast.success('Đã lưu thông tin tình huống!');
   };
 
-  const handleDeletePhrase = (index) => {
+  const handleDeletePhrase = async (index) => {
     if (!currentSituation) return;
-    if (window.confirm(`Xóa mẫu câu #${index + 1}?`)) {
+    const ok = await showConfirmModal({
+      title: 'Xóa mẫu câu',
+      message: `Bạn có chắc muốn xóa mẫu câu #${index + 1}?`,
+      confirmText: 'Xóa mẫu câu',
+      variant: 'danger',
+    });
+    if (ok) {
       const updatedPhrases = [...(currentSituation.phrases || [])];
       updatedPhrases.splice(index, 1);
       db.situations.update(currentSituation.id, { phrases: updatedPhrases });

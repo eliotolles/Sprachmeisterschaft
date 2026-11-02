@@ -2,6 +2,7 @@ import React from 'react';
 import { useRouter } from '@/lib/router';
 import { AuthGate } from '@/components/auth/AuthGate';
 import { AppShell } from '@/components/AppShell';
+import { GlobalConfirmModal } from '@/components/ui/ConfirmModal';
 
 // Pages
 import { LandingPage } from '@/pages/LandingPage';
@@ -54,6 +55,7 @@ export function App() {
     if (currentPath === '/vocabulary/dictionary') return <VocabDictionaryPage />;
     if (currentPath === '/vocabulary/situations') return <VocabSituationsPage />;
     if (currentPath === '/skills') return <SkillsOverviewPage />;
+    if (currentPath === '/skills/listening/personal' || currentPath === '/personal-videos') return <ListeningOverviewPage initialTab="personal" />;
     if (currentPath === '/skills/listening') return <ListeningOverviewPage />;
     if (currentPath === '/admin') return <AdminPage />;
     if (currentPath === '/game') return <GamePage />;
@@ -88,9 +90,12 @@ export function App() {
   };
 
   return (
-    <AuthGate>
-      <AppShell>{renderView()}</AppShell>
-    </AuthGate>
+    <>
+      <AuthGate>
+        <AppShell>{renderView()}</AppShell>
+      </AuthGate>
+      <GlobalConfirmModal />
+    </>
   );
 }
 export default App;

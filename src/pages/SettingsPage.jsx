@@ -24,6 +24,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function SettingsPage() {
   const { navigate } = useRouter();
@@ -101,8 +102,14 @@ export function SettingsPage() {
     toast.success('Đã lưu cài đặt! Trình độ mục tiêu mới đã áp dụng toàn app.');
   };
 
-  const handleResetData = () => {
-    if (window.confirm('Bạn có chắc chắn muốn đặt lại cơ sở dữ liệu về mặc định ban đầu không?')) {
+  const handleResetData = async () => {
+    const ok = await showConfirmModal({
+      title: 'Đặt lại cơ sở dữ liệu',
+      message: 'Bạn có chắc chắn muốn đặt lại cơ sở dữ liệu về mặc định ban đầu không? Toàn bộ dữ liệu luyện tập cục bộ sẽ được nạp lại từ đầu.',
+      confirmText: 'Đặt lại toàn bộ',
+      variant: 'danger',
+    });
+    if (ok) {
       localStorage.removeItem('sprachmeisterschaft_db_v1');
       window.location.reload();
     }

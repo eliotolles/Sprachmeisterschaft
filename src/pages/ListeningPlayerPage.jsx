@@ -33,6 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = 'nw-a1-ep1' }) {
   const { navigate } = useRouter();
@@ -342,8 +343,14 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
   const canManage = isAdmin || currentEpisode.created_by === currentUser?.id;
 
-  const handleDeleteEpisode = () => {
-    if (window.confirm(`Bạn có chắc muốn xóa video "${currentEpisode.title}" này không?`)) {
+  const handleDeleteEpisode = async () => {
+    const ok = await showConfirmModal({
+      title: 'Xóa video luyện nghe',
+      message: `Bạn có chắc muốn xóa video "${currentEpisode.title}" này không? Thao tác này sẽ xóa tập video khỏi bộ.`,
+      confirmText: 'Xóa video',
+      variant: 'danger',
+    });
+    if (ok) {
       db.listening.deleteEpisode(currentEpisode.id);
       toast.success('Đã xóa video thành công!');
       navigate('/skills/listening');

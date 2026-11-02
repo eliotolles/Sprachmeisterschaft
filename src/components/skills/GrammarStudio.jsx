@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function GrammarStudio({ onBack }) {
   const isAdmin = db.auth.isAdmin();
@@ -72,15 +73,27 @@ export function GrammarStudio({ onBack }) {
   const [userAnswers, setUserAnswers] = useState({});
   const [exerciseSubmitted, setExerciseSubmitted] = useState({});
 
-  const handleDeleteTopic = (topicId, topicTitle) => {
-    if (window.confirm(`Bạn có chắc muốn xóa chủ điểm ngữ pháp "${topicTitle}" không?`)) {
+  const handleDeleteTopic = async (topicId, topicTitle) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa chủ điểm ngữ pháp',
+      message: `Bạn có chắc muốn xóa chủ điểm ngữ pháp "${topicTitle}" không?`,
+      confirmText: 'Xóa chủ điểm',
+      variant: 'danger',
+    });
+    if (ok) {
       db.grammar.delete(topicId);
       toast.success(`Đã xóa chủ điểm: "${topicTitle}"!`);
     }
   };
 
-  const handleResetGrammar = () => {
-    if (window.confirm('Khôi phục lại toàn bộ 100 chủ đề ngữ pháp gốc của hệ thống?')) {
+  const handleResetGrammar = async () => {
+    const ok = await showConfirmModal({
+      title: 'Khôi phục ngữ pháp gốc',
+      message: 'Khôi phục lại toàn bộ 100 chủ đề ngữ pháp gốc của hệ thống?',
+      confirmText: 'Khôi phục gốc',
+      variant: 'warning',
+    });
+    if (ok) {
       db.grammar.resetDefaults();
       toast.success('Đã khôi phục ngữ pháp gốc!');
     }

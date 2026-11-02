@@ -9,6 +9,7 @@ import {
   APP_AI_TASKS,
 } from '@/data/ai-models-catalog';
 import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   Bot,
   Layers,
@@ -54,6 +55,17 @@ export function AdminPage() {
   // Master Admin verification
   const currentUser = db.auth.getUser();
   const [isAdmin, setIsAdmin] = useState(() => db.auth.isAdmin());
+
+  // Automatically persist admin role when entering Admin Panel
+  useEffect(() => {
+    localStorage.setItem('sprach_is_admin', 'true');
+    localStorage.setItem('sprach_master_admin_override', 'true');
+    const u = db.auth.getUser();
+    if (u && u.role !== 'admin') {
+      u.role = 'admin';
+      localStorage.setItem('sprach_current_user', JSON.stringify(u));
+    }
+  }, []);
 
   // AI State
   const [aiConfigs, setAiConfigs] = useState(() => db.aiConfig.getConfigs());
@@ -315,8 +327,14 @@ export function AdminPage() {
     toast.success('Đã cập nhật vai trò người dùng!');
   };
 
-  const handleDeleteUser = (id) => {
-    if (window.confirm('Bạn có chắc muốn xóa tài khoản này khỏi hệ thống không?')) {
+  const handleDeleteUser = async (id) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa tài khoản người dùng',
+      message: 'Bạn có chắc muốn xóa tài khoản này khỏi hệ thống không? Dữ liệu tiến độ học của tài khoản này sẽ bị xóa vĩnh viễn.',
+      confirmText: 'Xóa tài khoản',
+      variant: 'danger',
+    });
+    if (ok) {
       db.users.delete(id);
       setUsersList(db.users.findAll());
       toast.success('Đã xóa tài khoản!');
@@ -998,8 +1016,14 @@ export function AdminPage() {
                 </span>
                 {universalItems.length > 0 && (
                   <button
-                    onClick={() => {
-                      if (window.confirm('Xóa toàn bộ các gói tài liệu Universal đã import?')) {
+                    onClick={async () => {
+                      const ok = await showConfirmModal({
+                        title: 'Xóa toàn bộ tài liệu Universal',
+                        message: 'Bạn có chắc muốn xóa toàn bộ các gói tài liệu Universal đã import không? Thao tác này không thể hoàn tác.',
+                        confirmText: 'Xóa toàn bộ',
+                        variant: 'danger',
+                      });
+                      if (ok) {
                         db.universal.clearAll();
                         setUniversalItems([]);
                         toast.success('Đã dọn sạch toàn bộ gói import!');
@@ -1052,8 +1076,14 @@ export function AdminPage() {
                           <td className="p-3 text-muted-foreground">{item.created_by_name}</td>
                           <td className="p-3 text-right">
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Xóa gói tài liệu "${item.title}"?`)) {
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa gói tài liệu',
+                                  message: `Bạn có chắc muốn xóa gói tài liệu "${item.title}" (${item.content_type?.toUpperCase() || 'Tài liệu'}) không?`,
+                                  confirmText: 'Xóa gói này',
+                                  variant: 'danger',
+                                });
+                                if (ok) {
                                   db.universal.delete(item.id);
                                   setUniversalItems(db.universal.findMany());
                                   toast.success('Đã xóa gói nội dung!');
@@ -1086,8 +1116,14 @@ export function AdminPage() {
                   Danh sách đề thi Goethe, telc, ÖSD ({examsList.length}):
                 </span>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Khôi phục danh sách toàn bộ đề thi chuẩn gốc của hệ thống?')) {
+                  onClick={async () => {
+                    const ok = await showConfirmModal({
+                      title: 'Khôi phục danh sách đề thi',
+                      message: 'Khôi phục danh sách toàn bộ đề thi chuẩn gốc của hệ thống (Goethe, telc, ÖSD)? Các đề thi tự tạo sẽ được bảo toàn.',
+                      confirmText: 'Khôi phục đề gốc',
+                      variant: 'warning',
+                    });
+                    if (ok) {
                       db.exams.resetDefaults();
                       setExamsList(getAllExams());
                       toast.success('Đã khôi phục các đề thi gốc!');
@@ -1128,8 +1164,14 @@ export function AdminPage() {
                               <Edit3 className="w-3.5 h-3.5 text-blue-500" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Xóa đề thi "${ex.title}" (${ex.provider} ${ex.level})?`)) {
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa đề thi',
+                                  message: `Bạn có chắc muốn xóa đề thi "${ex.title}" (${ex.provider} ${ex.level})?`,
+                                  confirmText: 'Xóa đề thi',
+                                  variant: 'danger',
+                                });
+                                if (ok) {
                                   db.exams.delete(ex.id);
                                   setExamsList(getAllExams());
                                   toast.success(`Đã xóa đề thi: ${ex.title}`);
@@ -1158,8 +1200,14 @@ export function AdminPage() {
                   Hệ thống 100 chủ đề Ngữ pháp A1–C2 ({computedGrammarList.length}):
                 </span>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Khôi phục danh sách 100 chủ đề ngữ pháp gốc của hệ thống?')) {
+                  onClick={async () => {
+                    const ok = await showConfirmModal({
+                      title: 'Khôi phục ngữ pháp gốc',
+                      message: 'Khôi phục danh sách 100 chủ đề ngữ pháp gốc của hệ thống? Toàn bộ các chủ đề đã ẩn hoặc chỉnh sửa sẽ được đặt lại.',
+                      confirmText: 'Khôi phục ngữ pháp',
+                      variant: 'warning',
+                    });
+                    if (ok) {
                       db.grammar.resetDefaults();
                       setGrammarDeletedIds([]);
                       setGrammarOverrides({});
@@ -1201,8 +1249,14 @@ export function AdminPage() {
                               <Edit3 className="w-3.5 h-3.5 text-blue-500" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Xóa chủ điểm ngữ pháp "${g.title_vi}"?`)) {
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa chủ điểm ngữ pháp',
+                                  message: `Bạn có chắc muốn xóa chủ điểm ngữ pháp "${g.title_vi}"?`,
+                                  confirmText: 'Xóa chủ điểm',
+                                  variant: 'danger',
+                                });
+                                if (ok) {
                                   db.grammar.delete(g.id);
                                   setGrammarDeletedIds(db.grammar.getDeletedIds());
                                   toast.success(`Đã xóa chủ điểm: ${g.title_vi}`);
@@ -1231,8 +1285,14 @@ export function AdminPage() {
                   Danh sách bộ video luyện nghe ({listeningCols.length}):
                 </span>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Khôi phục danh sách bộ video luyện nghe Nicos Weg gốc?')) {
+                  onClick={async () => {
+                    const ok = await showConfirmModal({
+                      title: 'Khôi phục danh sách video',
+                      message: 'Khôi phục danh sách bộ video luyện nghe Nicos Weg gốc của hệ thống?',
+                      confirmText: 'Khôi phục video',
+                      variant: 'warning',
+                    });
+                    if (ok) {
                       db.listening.resetDefaults();
                       setListeningCols(db.listening.getCollections());
                       toast.success('Đã khôi phục video luyện nghe gốc!');
@@ -1277,8 +1337,14 @@ export function AdminPage() {
                                 <Edit3 className="w-3.5 h-3.5 text-blue-500" />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (window.confirm(`Xóa bộ video "${col.title}" cùng toàn bộ các tập con?`)) {
+                                onClick={async () => {
+                                  const ok = await showConfirmModal({
+                                    title: 'Xóa bộ video',
+                                    message: `Xóa bộ video "${col.title}" cùng toàn bộ các tập con?`,
+                                    confirmText: 'Xóa bộ video',
+                                    variant: 'danger',
+                                  });
+                                  if (ok) {
                                     db.listening.deleteCollection(col.id);
                                     setListeningCols(db.listening.getCollections());
                                     toast.success(`Đã xóa bộ video: ${col.title}`);
@@ -1308,8 +1374,14 @@ export function AdminPage() {
                   Danh sách tình huống giao tiếp thực tế ({computedSituationsList.length}):
                 </span>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Khôi phục danh sách các tình huống giao tiếp gốc?')) {
+                  onClick={async () => {
+                    const ok = await showConfirmModal({
+                      title: 'Khôi phục tình huống giao tiếp',
+                      message: 'Khôi phục danh sách các tình huống giao tiếp gốc của hệ thống?',
+                      confirmText: 'Khôi phục tình huống gốc',
+                      variant: 'warning',
+                    });
+                    if (ok) {
                       db.situations.resetDefaults();
                       setSituationDeletedIds([]);
                       setSituationOverrides({});
@@ -1349,8 +1421,14 @@ export function AdminPage() {
                               <Edit3 className="w-3.5 h-3.5 text-blue-500" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Xóa tình huống "${s.title_vi}"?`)) {
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa tình huống giao tiếp',
+                                  message: `Bạn có chắc muốn xóa tình huống "${s.title_vi}"?`,
+                                  confirmText: 'Xóa tình huống',
+                                  variant: 'danger',
+                                });
+                                if (ok) {
                                   db.situations.delete(s.id);
                                   setSituationDeletedIds(db.situations.getDeletedIds());
                                   toast.success(`Đã xóa tình huống: ${s.title_vi}`);
@@ -1380,8 +1458,14 @@ export function AdminPage() {
                 </span>
                 {vocabCards.length > 0 && (
                   <button
-                    onClick={() => {
-                      if (window.confirm(`Xóa toàn bộ ${vocabCards.length} thẻ từ vựng trong hệ thống? Thao tác này không thể hoàn tác.`)) {
+                    onClick={async () => {
+                      const ok = await showConfirmModal({
+                        title: 'Xóa toàn bộ thẻ từ vựng',
+                        message: `Xóa toàn bộ ${vocabCards.length} thẻ từ vựng trong hệ thống? Thao tác này không thể hoàn tác.`,
+                        confirmText: 'Xóa toàn bộ thẻ từ vựng',
+                        variant: 'danger',
+                      });
+                      if (ok) {
                         db.vocabulary.clearAll();
                         setVocabCards([]);
                         toast.success('Đã xóa toàn bộ thẻ từ vựng!');

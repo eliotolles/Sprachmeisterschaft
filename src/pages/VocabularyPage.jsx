@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate } from '@/lib/algorithms';
 import { Search, Plus, Trash2, RotateCw, Filter, BookOpen, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function VocabularyPage() {
   const { navigate } = useRouter();
@@ -114,12 +115,14 @@ export function VocabularyPage() {
           <div className="flex items-center gap-2">
             {isAdmin && cards.length > 0 && (
               <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Bạn có chắc chắn muốn xóa toàn bộ ${cards.length} thẻ từ vựng hiện có không? Thao tác này không thể hoàn tác.`
-                    )
-                  ) {
+                onClick={async () => {
+                  const ok = await showConfirmModal({
+                    title: 'Xóa toàn bộ thẻ từ vựng',
+                    message: `Bạn có chắc chắn muốn xóa toàn bộ ${cards.length} thẻ từ vựng hiện có không? Thao tác này không thể hoàn tác.`,
+                    confirmText: 'Xóa tất cả từ vựng',
+                    variant: 'danger',
+                  });
+                  if (ok) {
                     db.vocabulary.clearAll();
                     toast.success('Đã xóa toàn bộ bộ thẻ từ vựng!');
                   }

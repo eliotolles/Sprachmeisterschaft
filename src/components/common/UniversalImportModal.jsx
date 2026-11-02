@@ -480,14 +480,14 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             updatedCount,
             skippedCount,
           },
-          scope: isAdmin ? scope : 'private',
+          scope: scope || 'public',
         });
       }
 
       // 2. LISTENING / YOUTUBE IMPORT
       else if (contentType === 'listening') {
         const info = extractYouTubeInfo(youtubeUrl);
-        const effectiveScope = isAdmin ? scope : 'private';
+        const effectiveScope = scope || 'public';
 
         let targetCollectionId = 'nicos-weg-a1';
 
@@ -545,7 +545,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             rule: grammarContent.rule,
             exercises: grammarContent.exercises,
           },
-          scope: isAdmin ? scope : 'private',
+          scope: scope || 'public',
         });
         savedCount = 1;
       }
@@ -559,7 +559,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             title: ex.title || title,
             level: ex.level || level,
             data: ex,
-            scope: isAdmin ? scope : 'private',
+            scope: scope || 'public',
           });
         });
         savedCount = examsToSave.length;
@@ -572,7 +572,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           title: situationContent?.title_vi || title,
           level,
           data: situationContent,
-          scope: isAdmin ? scope : 'private',
+          scope: scope || 'public',
         });
         savedCount = 1;
       }
@@ -587,7 +587,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             rawText: manualText,
             items: extractedItems,
           },
-          scope: isAdmin ? scope : 'private',
+          scope: scope || 'public',
         });
         savedCount = 1;
       }
@@ -597,7 +597,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         title,
         contentType,
         level,
-        scope: isAdmin ? scope : 'private',
+        scope: scope || 'public',
         totalExtracted: contentType === 'vocabulary' ? extractedItems.length : 1,
         validCount: contentType === 'vocabulary' ? extractedItems.filter((i) => i._valid).length : 1,
         savedCount,
@@ -721,86 +721,124 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             </div>
 
             {/* Scope Permissions: Super Admin vs Regular User */}
-            <div className="p-3.5 bg-muted/30 rounded-sm border border-border space-y-2">
+            <div className="p-3.5 bg-muted/30 rounded-sm border border-border space-y-2.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-mono font-medium text-foreground">
-                  Quyền phân phối & Hiển thị (Scope) *
+                <label className="text-xs font-mono font-medium text-foreground flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-accent" />
+                  <span>Quyền phân phối & Hiển thị (Scope) *</span>
                 </label>
-                <span className="text-[10px] font-mono text-accent font-bold px-1.5 py-0.5 rounded bg-accent/10">
-                  {isAdmin ? 'Quản trị viên (Toàn quyền cấu hình)' : 'Học viên (Lưu cá nhân)'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                    scope === 'public'
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                      : scope === 'admin_only'
+                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                      : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30'
+                  }`}>
+                    {scope === 'public' ? '🌍 Toàn hệ thống (Publish)' : scope === 'admin_only' ? '🔒 Nội bộ Admin' : '👤 Kho cá nhân'}
+                  </span>
+                  {!isAdminState && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        db.auth.toggleAdminMode();
+                        setIsAdminState(true);
+                        toast.success('Đã kích hoạt chế độ Quản trị viên!');
+                      }}
+                      className="tap text-[10px] font-mono text-accent hover:underline font-bold"
+                    >
+                      👑 Bật Admin
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {isAdmin ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setScope('public')}
-                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                      scope === 'public'
-                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-bold">🌍 Toàn hệ thống</div>
-                      <div className="text-[10px] text-muted-foreground">Mọi học viên đều học được</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setScope('private')}
-                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                      scope === 'private'
-                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-bold">👤 Kho cá nhân</div>
-                      <div className="text-[10px] text-muted-foreground">Chỉ riêng tài khoản này thấy</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setScope('admin_only')}
-                    className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2 ${
-                      scope === 'admin_only'
-                        ? 'border-accent bg-accent/10 text-accent font-semibold ring-1 ring-accent'
-                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-bold">🔒 Nội bộ Admin</div>
-                      <div className="text-[10px] text-muted-foreground">Chỉ ban quản trị kiểm duyệt</div>
-                    </div>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3 bg-card border border-border rounded-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs font-mono text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>Bạn đang nhập nội dung vào <strong>Kho học tập cá nhân của riêng bạn</strong> (Chỉ bạn xem được).</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      db.auth.toggleAdminMode();
+              {/* 3 Scope Cards - Always interactive */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdminState) {
+                      db.auth.setRole('admin');
+                      localStorage.setItem('sprach_is_admin', 'true');
+                      localStorage.setItem('sprach_master_admin_override', 'true');
                       setIsAdminState(true);
-                      setScope('public');
-                      toast.success('Đã kích hoạt quyền Quản trị viên! Bạn có thể chọn Toàn hệ thống (Publish).');
-                    }}
-                    className="tap px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold shrink-0 hover:bg-amber-500/20"
-                  >
-                    👑 Bật quyền Admin để Publish
-                  </button>
-                </div>
-              )}
+                      toast.success('Đã kích hoạt quyền Quản trị viên để Publish toàn hệ thống!');
+                    }
+                    setScope('public');
+                  }}
+                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    scope === 'public'
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 font-semibold ring-1 ring-emerald-500'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Globe className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-bold">🌍 Toàn hệ thống</div>
+                    <div className="text-[10px] text-muted-foreground leading-snug">Publish công khai cho mọi học viên</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScope('private')}
+                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    scope === 'private'
+                      ? 'border-blue-500 bg-blue-500/10 text-blue-900 dark:text-blue-200 font-semibold ring-1 ring-blue-500'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <User className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-bold">👤 Kho cá nhân</div>
+                    <div className="text-[10px] text-muted-foreground leading-snug">Chỉ riêng tài khoản bạn thấy & học</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAdminState) {
+                      db.auth.setRole('admin');
+                      localStorage.setItem('sprach_is_admin', 'true');
+                      setIsAdminState(true);
+                    }
+                    setScope('admin_only');
+                  }}
+                  className={`tap p-2.5 rounded-sm border text-left text-xs font-mono transition-all flex items-start gap-2.5 ${
+                    scope === 'admin_only'
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-bold">🔒 Nội bộ Admin</div>
+                    <div className="text-[10px] text-muted-foreground leading-snug">Chỉ ban quản trị kiểm duyệt</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Informative helper note */}
+              <div className="p-2 bg-card border border-border rounded text-[11px] font-mono text-muted-foreground flex items-center gap-2">
+                {scope === 'public' ? (
+                  <>
+                    <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Nội dung sẽ được <strong>Publish toàn hệ thống</strong>: Mọi học viên đều có thể thấy và thực hành trong danh mục chung.</span>
+                  </>
+                ) : scope === 'private' ? (
+                  <>
+                    <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Nội dung sẽ được lưu vào <strong>Kho cá nhân</strong>: Chỉ riêng tài khoản hiện tại của bạn truy cập được.</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Nội dung được lưu ở chế độ <strong>Nội bộ Admin</strong>: Đang biên tập hoặc kiểm duyệt, chưa công khai.</span>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Input Method Toggle */}
