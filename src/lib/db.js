@@ -5,6 +5,18 @@ import { rescheduleMissedTasks } from './study-plan-generator.js';
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
 const AUTH_KEY = 'sprachmeisterschaft_auth_v1';
 
+export const SYSTEM_ADMIN_EMAILS = [
+  'dat.nguyenviet.1999@gmail.com',
+  'admin@sprachmeisterschaft.de',
+  'admin@sprach.de',
+];
+
+export function isSystemAdminEmail(email = '') {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return SYSTEM_ADMIN_EMAILS.includes(clean) || clean.includes('admin');
+}
+
 function loadDatabase() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -23,9 +35,32 @@ function loadDatabase() {
       if (!parsed.listeningEpisodes) parsed.listeningEpisodes = [];
       if (!parsed.userProfiles) parsed.userProfiles = {};
       if (Array.isArray(parsed.users)) {
+        // Ensure dat.nguyenviet.1999@gmail.com is present as Super Admin
+        const masterAdminEmail = 'dat.nguyenviet.1999@gmail.com';
+        let datAdmin = parsed.users.find((u) => u.email?.toLowerCase() === masterAdminEmail);
+        if (!datAdmin) {
+          datAdmin = {
+            id: 'usr_dat_admin',
+            name: 'Nguyễn Việt Đạt (Super Admin)',
+            email: masterAdminEmail,
+            password: 'admin123',
+            role: 'admin',
+            is_blocked: false,
+            onboarding_completed: true,
+            study_plan: null,
+            created_at: new Date().toISOString(),
+          };
+          parsed.users.unshift(datAdmin);
+        } else {
+          datAdmin.role = 'admin';
+        }
+
         parsed.users.forEach((u) => {
+          if (isSystemAdminEmail(u.email)) {
+            u.role = 'admin';
+          }
           if (!u.password) {
-            u.password = (u.role === 'admin' || (u.email || '').includes('admin')) ? 'admin123' : 'deutschmaster123';
+            u.password = (u.role === 'admin' || isSystemAdminEmail(u.email)) ? 'admin123' : 'deutschmaster123';
           }
         });
       }
@@ -56,9 +91,20 @@ function loadDatabase() {
     console.error('Failed to load database:', e);
   }
 
-  // Initial clean database with Admin & Student
+  // Initial clean database with Super Admin, Admin & Student
   return {
     users: [
+      {
+        id: 'usr_dat_admin',
+        name: 'Nguyễn Việt Đạt (Super Admin)',
+        email: 'dat.nguyenviet.1999@gmail.com',
+        password: 'admin123',
+        role: 'admin',
+        is_blocked: false,
+        onboarding_completed: true,
+        study_plan: null,
+        created_at: new Date().toISOString(),
+      },
       {
         id: 'usr_admin',
         name: 'Quản trị viên Hệ thống (Master Admin)',
@@ -638,7 +684,14 @@ export const db = {
     getUser: () => {
       try {
         const raw = localStorage.getItem(AUTH_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u && isSystemAdminEmail(u.email) && u.role !== 'admin') {
+            u.role = 'admin';
+            localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+          }
+          return u;
+        }
       } catch (e) {}
       return null;
     },
@@ -654,6 +707,24 @@ export const db = {
       const cleanEmail = email.trim().toLowerCase();
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
 
+      // Auto-initialize system admin if not existing in state
+      if (!user && isSystemAdminEmail(cleanEmail)) {
+        user = {
+          id: cleanEmail === 'dat.nguyenviet.1999@gmail.com' ? 'usr_dat_admin' : 'usr_admin',
+          name: cleanEmail === 'dat.nguyenviet.1999@gmail.com' ? 'Nguyễn Việt Đạt (Super Admin)' : 'Quản trị viên Hệ thống',
+          email: cleanEmail,
+          password: password || 'admin123',
+          role: 'admin',
+          is_blocked: false,
+          onboarding_completed: true,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.unshift(user);
+        saveDatabase(state);
+      }
+
       if (!user) {
         throw new Error('Email này chưa được đăng ký trong hệ thống. Vui lòng bấm "Đăng ký ngay" để tạo tài khoản mới!');
       }
@@ -666,6 +737,11 @@ export const db = {
       if (!user.password) {
         user.password = password;
         saveDatabase(state);
+      }
+
+      // Ensure system admin role
+      if (isSystemAdminEmail(cleanEmail)) {
+        user.role = 'admin';
       }
 
       // Ensure per-user profile exists
@@ -700,16 +776,17 @@ export const db = {
 
     loginWithGoogle: (profile = {}) => {
       const cleanEmail = (profile.email || 'dat.nguyenviet.1999@gmail.com').trim().toLowerCase();
+      const isSysAdmin = isSystemAdminEmail(cleanEmail);
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
       if (!user) {
         user = {
-          id: 'usr_gg_' + Date.now(),
+          id: isSysAdmin ? 'usr_dat_admin' : 'usr_gg_' + Date.now(),
           email: cleanEmail,
           name: profile.name || cleanEmail.split('@')[0],
           picture: profile.picture || null,
           provider: 'google',
           password: 'google_oauth_pass',
-          role: cleanEmail.includes('admin') ? 'admin' : 'user',
+          role: isSysAdmin ? 'admin' : 'user',
           is_verified: true,
           onboarding_completed: false,
           study_plan: null,
@@ -793,14 +870,14 @@ export const db = {
     },
 
     loginAsAdmin: () => {
-      const cleanEmail = 'admin@sprachmeisterschaft.de';
+      const cleanEmail = 'dat.nguyenviet.1999@gmail.com';
       let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
       if (!user) {
         user = {
-          id: 'usr_admin',
+          id: 'usr_dat_admin',
           email: cleanEmail,
           password: 'admin123',
-          name: 'Quản trị viên Hệ thống (Master Admin)',
+          name: 'Nguyễn Việt Đạt (Super Admin)',
           provider: 'system',
           role: 'admin',
           is_verified: true,
@@ -809,7 +886,9 @@ export const db = {
           created_at: new Date().toISOString(),
         };
         if (!state.users) state.users = [];
-        state.users.push(user);
+        state.users.unshift(user);
+      } else {
+        user.role = 'admin';
       }
 
       if (!state.userProfiles) state.userProfiles = {};
@@ -855,7 +934,7 @@ export const db = {
         password: data.password,
         name: data.name?.trim() || cleanEmail.split('@')[0],
         provider: 'email',
-        role: cleanEmail.includes('admin') ? 'admin' : 'user',
+        role: isSystemAdminEmail(cleanEmail) ? 'admin' : 'user',
         is_verified: true,
         onboarding_completed: false,
         study_plan: null,

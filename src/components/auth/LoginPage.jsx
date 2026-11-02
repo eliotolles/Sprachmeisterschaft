@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { LogIn, ArrowLeft, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react';
+import { LogIn, ArrowLeft, AlertCircle } from 'lucide-react';
 import { GoogleButton } from './GoogleButton';
 
 export function LoginPage() {
@@ -29,22 +29,6 @@ export function LoginPage() {
         setLoading(false);
       }
     }, 250);
-  };
-
-  const handleDemoLogin = () => {
-    setLoading(true);
-    setTimeout(() => {
-      db.auth.loginAsDemo();
-      navigate('/');
-    }, 300);
-  };
-
-  const handleAdminLogin = () => {
-    setLoading(true);
-    setTimeout(() => {
-      db.auth.loginAsAdmin();
-      navigate('/admin');
-    }, 300);
   };
 
   return (
@@ -81,30 +65,12 @@ export function LoginPage() {
           <div className="rule-double mt-3" />
         </div>
 
-        {/* 1. Google Authentication (Primary Highlight) */}
-        <div className="space-y-3 mb-5">
+        {/* 1. Google Authentication */}
+        <div className="mb-5">
           <GoogleButton
             label="Đăng nhập bằng Google"
             className="animate-rise delay-100"
           />
-
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="tap w-full py-2.5 px-3 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent text-xs font-mono font-medium flex items-center justify-center gap-2 transition-colors animate-rise delay-200"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Dùng thử tức thì với Tài khoản Khách (Demo)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleAdminLogin}
-            className="tap w-full py-2.5 px-3 rounded-sm border border-amber-600/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-colors"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-            <span>Đăng nhập Quản trị viên (Super Admin)</span>
-          </button>
         </div>
 
         {/* Divider */}
@@ -135,7 +101,7 @@ export function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="hocvien@sprachmeisterschaft.de"
+              placeholder="name@example.com"
               className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-accent transition-all duration-200"
             />
           </div>

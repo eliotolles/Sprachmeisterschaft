@@ -70,11 +70,6 @@ export function LandingPage() {
     setWordIndex((i) => (i + 1) % SAMPLE_WORDS.length);
   };
 
-  const handleDemoLogin = () => {
-    db.auth.loginAsDemo();
-    navigate('/');
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-accent/20 selection:text-accent relative overflow-x-hidden grain">
       {/* Classical ambient background glows */}
@@ -197,14 +192,13 @@ export function LandingPage() {
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
 
-                  <button
-                    type="button"
-                    onClick={handleDemoLogin}
+                  <Link
+                    to="/login"
                     className="tap flex items-center justify-center gap-2 py-2.5 px-4 rounded-sm border border-border bg-card hover:bg-muted text-foreground font-mono text-xs font-medium transition-colors"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-accent" />
-                    <span>Dùng thử bản Demo</span>
-                  </button>
+                    <span>Đăng nhập hệ thống</span>
+                  </Link>
                 </div>
               </div>
 
@@ -534,14 +528,13 @@ export function LandingPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
 
-              <button
-                type="button"
-                onClick={handleDemoLogin}
+              <Link
+                to="/login"
                 className="tap py-2.5 px-4 rounded-sm border border-border bg-card hover:bg-muted text-foreground font-mono text-xs font-medium flex items-center justify-center gap-2"
               >
                 <Sparkles className="w-4 h-4 text-accent" />
-                <span>Trải nghiệm bản Demo</span>
-              </button>
+                <span>Đăng nhập hệ thống</span>
+              </Link>
             </div>
           </div>
         </div>

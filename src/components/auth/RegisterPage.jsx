@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
-import { UserPlus, ArrowLeft, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UserPlus, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { LEVEL_IDS } from '@/data/levels';
 import { GoogleButton } from './GoogleButton';
 
@@ -28,14 +28,6 @@ export function RegisterPage() {
         setLoading(false);
       }
     }, 250);
-  };
-
-  const handleDemoLogin = () => {
-    setLoading(true);
-    setTimeout(() => {
-      db.auth.loginAsDemo();
-      navigate('/');
-    }, 300);
   };
 
   return (
@@ -73,20 +65,11 @@ export function RegisterPage() {
         </div>
 
         {/* 1. Google Authentication (Fast Registration) */}
-        <div className="space-y-3 mb-5">
+        <div className="mb-5">
           <GoogleButton
             label="Đăng ký nhanh bằng Google"
             className="animate-rise delay-100"
           />
-
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="tap w-full py-2.5 px-3 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent text-xs font-mono font-medium flex items-center justify-center gap-2 transition-colors animate-rise delay-200"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Trải nghiệm ngay không cần mật khẩu (Tài khoản Demo)</span>
-          </button>
         </div>
 
         {/* Divider */}
