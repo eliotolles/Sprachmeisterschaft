@@ -10,6 +10,15 @@ import {
 } from '@/data/ai-models-catalog';
 import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
+import { ModelCatalogModal } from '@/components/admin/ModelCatalogModal';
+import {
+  discoverProviderModels,
+  verifyProviderKey,
+  maskApiKey,
+  getCachedCatalog,
+  getSmartRecommendations,
+  DEFAULT_AI_POLICY,
+} from '@/lib/dynamic-model-discovery';
 import {
   Bot,
   Layers,
@@ -75,6 +84,7 @@ export function AdminPage() {
   const [providerName, setProviderName] = useState('');
   const [providerType, setProviderType] = useState('gemini');
   const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
+  const [backupModel, setBackupModel] = useState('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [isCustomModelMode, setIsCustomModelMode] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
@@ -84,6 +94,28 @@ export function AdminPage() {
   const [testingAi, setTestingAi] = useState(false);
   const [testResults, setTestResults] = useState({});
   const [taskPoolResults, setTaskPoolResults] = useState({});
+
+  // Dynamic Model Discovery & Policies State
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveredModels, setDiscoveredModels] = useState(() => {
+    const cached = getCachedCatalog('gemini');
+    return cached?.models || [];
+  });
+  const [smartRecs, setSmartRecs] = useState(() => {
+    const cached = getCachedCatalog('gemini');
+    return cached?.models ? getSmartRecommendations(cached.models) : [];
+  });
+  const [discoveryMeta, setDiscoveryMeta] = useState(() => {
+    const cached = getCachedCatalog('gemini');
+    return cached ? { totalCount: cached.count, freeCount: cached.freeCount, syncedAt: cached.lastSyncedAt } : null;
+  });
+  const [aiPolicies, setAiPolicies] = useState(() => db.aiConfig?.getPolicies?.() || DEFAULT_AI_POLICY);
+
+  // Model Catalog Modal State
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [activeCatalogConfig, setActiveCatalogConfig] = useState(null);
+  const [activeCatalogProvider, setActiveCatalogProvider] = useState('gemini');
+  const [activeCatalogModels, setActiveCatalogModels] = useState([]);
 
   // Content State
   const [universalItems, setUniversalItems] = useState(() => db.universal.findMany());
@@ -145,17 +177,195 @@ export function AdminPage() {
     .filter((s) => !situationDeletedIds.includes(s.id))
     .map((s) => (situationOverrides[s.id] ? { ...s, ...situationOverrides[s.id] } : s));
 
-  // Filter models for selected provider
-  const availableModelsForProvider = FREE_AI_MODELS.filter(
-    (m) => m.provider === providerType
-  );
+  // Sync discovered catalog when provider type changes
+  useEffect(() => {
+    const cached = getCachedCatalog(providerType);
+    if (cached && cached.models?.length > 0) {
+      setDiscoveredModels(cached.models);
+      setSmartRecs(getSmartRecommendations(cached.models));
+      setDiscoveryMeta({ totalCount: cached.count, freeCount: cached.freeCount, syncedAt: cached.lastSyncedAt });
+    } else {
+      setDiscoveredModels([]);
+      setSmartRecs([]);
+      setDiscoveryMeta(null);
+    }
+  }, [providerType]);
+
+  // Models available for current provider: dynamically discovered or fallback
+  const availableModelsForProvider = useMemo(() => {
+    if (discoveredModels.length > 0) {
+      return discoveredModels;
+    }
+    const cached = getCachedCatalog(providerType);
+    if (cached?.models?.length > 0) {
+      return cached.models;
+    }
+    // Safe initial seed from catalog
+    return FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
+      id: m.id,
+      rawId: m.id,
+      name: m.name,
+      provider: m.provider,
+      desc: m.desc,
+      speed: m.speed,
+      badge: m.badge,
+      hasVision: m.hasVision,
+      isNew: m.isNew,
+      contextWindow: m.speed,
+      capabilities: { text: true, vision: m.hasVision, audio: false, reasoning: m.isNew },
+      pricing: { isFree: true, tier: 'FREE_ELIGIBLE', note: m.badge },
+    }));
+  }, [discoveredModels, providerType]);
 
   const handleSelectSuggestedModel = (model) => {
     setSelectedModel(model.id);
     setIsCustomModelMode(false);
-    setHasVision(model.hasVision);
+    setHasVision(Boolean(model.capabilities?.vision || model.hasVision));
     if (!providerName) {
-      setProviderName(`${model.name}`);
+      setProviderName(`${model.name || model.id}`);
+    }
+  };
+
+  const handleDiscoverModels = async (keyOverride = null, prov = providerType) => {
+    const targetKey = keyOverride !== null ? keyOverride : apiKey;
+    if (!targetKey?.trim() && prov !== 'custom') {
+      toast.error(`Vui lòng nhập API Key cho ${prov.toUpperCase()} trước khi khám phá danh mục model.`);
+      return;
+    }
+    setIsDiscovering(true);
+    toast.loading(`Đang kết nối API chính thức của ${prov.toUpperCase()} để lấy danh mục model thực tế...`, {
+      id: 'live-discover',
+    });
+    try {
+      const res = await discoverProviderModels({
+        provider: prov,
+        apiKey: targetKey,
+        baseUrl: customBaseUrl,
+      });
+
+      setDiscoveredModels(res.models || []);
+      setSmartRecs(res.recommendations || []);
+      setDiscoveryMeta({
+        totalCount: res.totalCount,
+        freeCount: res.freeCount,
+        syncedAt: res.syncedAt,
+        source: res.source,
+      });
+
+      if (res.recommendations?.[0]) {
+        setSelectedModel(res.recommendations[0].id);
+        setHasVision(Boolean(res.recommendations[0].capabilities?.vision));
+        if (res.recommendations[1]) {
+          setBackupModel(res.recommendations[1].id);
+        }
+      }
+
+      toast.success(
+        `Đã phát hiện ${res.totalCount} model thực tế từ ${prov.toUpperCase()} (${res.freeCount} Free Tier)!`,
+        { id: 'live-discover' }
+      );
+    } catch (err) {
+      toast.error(`Khám phá thất bại: ${err.message}`, { id: 'live-discover' });
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const handleOpenCatalogModal = (config = null) => {
+    if (config) {
+      // Existing active config
+      setActiveCatalogConfig(config);
+      setActiveCatalogProvider(config.provider);
+      const cached = getCachedCatalog(config.provider);
+      if (cached?.models?.length > 0) {
+        setActiveCatalogModels(cached.models);
+      } else {
+        const fallbacks = FREE_AI_MODELS.filter((m) => m.provider === config.provider).map((m) => ({
+          id: m.id,
+          rawId: m.id,
+          name: m.name,
+          provider: config.provider,
+          desc: m.desc,
+          capabilities: { text: true, vision: m.hasVision, reasoning: m.isNew },
+          pricing: { isFree: true, tier: 'FREE_ELIGIBLE', note: m.badge },
+        }));
+        setActiveCatalogModels(fallbacks);
+      }
+    } else {
+      // New form
+      setActiveCatalogConfig(null);
+      setActiveCatalogProvider(providerType);
+      setActiveCatalogModels(
+        discoveredModels.length > 0
+          ? discoveredModels
+          : FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
+              id: m.id,
+              rawId: m.id,
+              name: m.name,
+              provider: providerType,
+              desc: m.desc,
+              capabilities: { text: true, vision: m.hasVision, reasoning: m.isNew },
+              pricing: { isFree: true, tier: 'FREE_ELIGIBLE', note: m.badge },
+            }))
+      );
+    }
+    setIsCatalogModalOpen(true);
+  };
+
+  const handleSelectPrimaryFromModal = (modelId, modelObj) => {
+    if (activeCatalogConfig) {
+      const updated = {
+        ...activeCatalogConfig,
+        model: modelId,
+        hasVision: Boolean(modelObj?.capabilities?.vision),
+        tier: modelObj?.pricing?.tier || 'UNKNOWN',
+      };
+      db.aiConfig.saveConfig(updated);
+      setAiConfigs(db.aiConfig.getConfigs());
+    } else {
+      setSelectedModel(modelId);
+      setHasVision(Boolean(modelObj?.capabilities?.vision));
+      if (!providerName) {
+        setProviderName(modelObj?.name || modelId);
+      }
+    }
+  };
+
+  const handleSelectBackupFromModal = (modelId, modelObj) => {
+    if (activeCatalogConfig) {
+      const updated = {
+        ...activeCatalogConfig,
+        backupModel: modelId,
+      };
+      db.aiConfig.saveConfig(updated);
+      setAiConfigs(db.aiConfig.getConfigs());
+    } else {
+      setBackupModel(modelId);
+    }
+  };
+
+  const handlePolicyToggle = (key, val) => {
+    const updated = db.aiConfig.updatePolicies({ [key]: val });
+    setAiPolicies(updated);
+    toast.success(`Đã cập nhật chính sách AI: ${key} = ${val ? 'BẬT' : 'TẮT'}`);
+  };
+
+  const handleSyncConfigModels = async (cfg) => {
+    toast.loading(`Đang đồng bộ model mới từ ${cfg.provider.toUpperCase()}...`, { id: `sync-${cfg.id}` });
+    try {
+      const res = await discoverProviderModels({
+        provider: cfg.provider,
+        apiKey: cfg.apiKey,
+        baseUrl: cfg.baseUrl,
+      });
+      toast.success(`Đã cập nhật ${res.totalCount} model (${res.freeCount} Free Tier)!`, { id: `sync-${cfg.id}` });
+      if (providerType === cfg.provider) {
+        setDiscoveredModels(res.models);
+        setSmartRecs(res.recommendations);
+        setDiscoveryMeta({ totalCount: res.totalCount, freeCount: res.freeCount, syncedAt: res.syncedAt });
+      }
+    } catch (err) {
+      toast.error(`Đồng bộ thất bại: ${err.message}`, { id: `sync-${cfg.id}` });
     }
   };
 
@@ -181,6 +391,10 @@ export function AdminPage() {
 
     if (res.success) {
       toast.success(res.message);
+      // Auto-trigger discovery if not discovered yet
+      if (discoveredModels.length === 0) {
+        handleDiscoverModels(apiKey.trim(), providerType);
+      }
     } else {
       toast.error(res.message);
     }
@@ -212,7 +426,7 @@ export function AdminPage() {
       toast.error('Mã model không hợp lệ! Vui lòng không nhập địa chỉ email vào ô Model.');
       return;
     }
-    if (!apiKey.trim()) {
+    if (!apiKey.trim() && providerType !== 'custom') {
       toast.error('Vui lòng dán mã API Key!');
       return;
     }
@@ -221,16 +435,20 @@ export function AdminPage() {
       name: providerName || `${providerType.toUpperCase()} - ${finalModel}`,
       provider: providerType,
       model: finalModel,
+      backupModel: backupModel.trim() || null,
       apiKey: apiKey.trim(),
+      maskedKey: maskApiKey(apiKey),
       baseUrl: providerType === 'custom' ? customBaseUrl.trim() : undefined,
-      hasVision,
+      hasVision: Boolean(hasVision),
       priority: Number(priority) || 1,
       enabled: true,
+      discoveredAt: new Date().toISOString(),
     };
     db.aiConfig.saveConfig(newConfig);
     setAiConfigs(db.aiConfig.getConfigs());
     setProviderName('');
     setApiKey('');
+    setBackupModel('');
     setCustomModelInput('');
     toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
   };
@@ -420,20 +638,96 @@ export function AdminPage() {
         })}
       </div>
 
-      {/* ========================================================================= */}
-      {/* TAB 1: AI & PHÂN CÔNG (Matching Image 2 & 3) */}
-      {/* ========================================================================= */}
       {activeTab === 'ai' && (
         <div className="space-y-6 animate-fade-in">
+          {/* AI Policy & Free-Tier First Controls */}
+          <div className="surface p-5 rounded-sm border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
+              <div>
+                <div className="eyebrow text-emerald-700 dark:text-emerald-400">CHÍNH SÁCH QUẢN TRỊ AI · FREE TIER FIRST</div>
+                <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <span>Ưu tiên Model Miễn Phí & Kiểm soát Chi Phí Zero-Cost</span>
+                </h3>
+              </div>
+              <div className="px-2.5 py-1 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 text-[11px] font-mono font-bold flex items-center gap-1.5 self-start sm:self-auto">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live API Discovery · Zero Hardcoded Models</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
+              <label className="flex items-start gap-2.5 p-3 rounded-sm border border-emerald-500/20 bg-background/80 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(aiPolicies.FREE_ONLY)}
+                  onChange={(e) => handlePolicyToggle('FREE_ONLY', e.target.checked)}
+                  className="mt-0.5 rounded-sm border-border text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <div className="font-bold text-foreground">Chỉ dùng Free Tier (FREE_ONLY)</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                    Chỉ gọi các model hoàn toàn miễn phí hoặc trong hạn mức free tier được xác thực.
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-sm border border-emerald-500/20 bg-background/80 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(aiPolicies.FREE_FIRST_SORT)}
+                  onChange={(e) => handlePolicyToggle('FREE_FIRST_SORT', e.target.checked)}
+                  className="mt-0.5 rounded-sm border-border text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <div className="font-bold text-foreground">Ưu tiên Free lên đầu (FREE_FIRST)</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                    Tự động xếp model miễn phí lên vị trí đầu trong danh mục và danh sách gợi ý.
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-sm border border-emerald-500/20 bg-background/80 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(aiPolicies.ALLOW_PAID_MODELS)}
+                  onChange={(e) => handlePolicyToggle('ALLOW_PAID_MODELS', e.target.checked)}
+                  className="mt-0.5 rounded-sm border-border text-amber-600 focus:ring-amber-500"
+                />
+                <div>
+                  <div className="font-bold text-foreground">Cho phép model trả phí</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                    Kích hoạt để chọn model tính phí. Cần Admin xác nhận khi kích hoạt model thương mại.
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-sm border border-emerald-500/20 bg-background/80 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={Boolean(aiPolicies.AUTO_PAID_FALLBACK)}
+                  onChange={(e) => handlePolicyToggle('AUTO_PAID_FALLBACK', e.target.checked)}
+                  className="mt-0.5 rounded-sm border-border text-rose-600 focus:ring-rose-500"
+                />
+                <div>
+                  <div className="font-bold text-foreground">Không tự nhảy sang trả phí</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                    Tuyệt đối không bao giờ tự động chuyển sang model có phí khi model free hết hạn mức.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           {/* Section 1: API AI · Ưu tiên & dự phòng */}
           <div className="surface p-6 border border-border space-y-5">
             <div>
-              <div className="eyebrow mb-1">CẤU HÌNH NHÀ CUNG CẤP</div>
+              <div className="eyebrow mb-1">CẤU HÌNH NHÀ CUNG CẤP & KHÁM PHÁ MODEL THỰC TẾ</div>
               <h3 className="font-display text-xl font-bold text-foreground">
-                API AI · Ưu tiên & dự phòng
+                API Key Management & Dynamic Model Discovery
               </h3>
               <p className="font-body text-xs text-muted-foreground mt-0.5">
-                Key được mã hóa bảo mật. Quota có thể dùng chung theo dự án nhà cung cấp. Hỗ trợ dự phòng thông minh khi hết lượt gọi.
+                Sprachmeisterschaft kết nối trực tiếp với API chính thức của nhà cung cấp để lấy model thực tế, không dùng model hardcode tĩnh.
               </p>
             </div>
 
@@ -443,11 +737,19 @@ export function AdminPage() {
               autoComplete="off"
               className="p-4 rounded-sm bg-muted/20 border border-border space-y-4"
             >
-              <div className="font-mono text-xs font-bold text-foreground flex items-center gap-2">
-                <Plus className="w-4 h-4 text-accent" />
-                <span>+ Thêm cấu hình API AI</span>
+              <div className="font-mono text-xs font-bold text-foreground flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-accent" />
+                  <span>+ Thêm cấu hình API AI & Khám phá Model</span>
+                </div>
+                {discoveryMeta && (
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    Đã tải {discoveryMeta.totalCount} model thực tế ({discoveryMeta.freeCount} Free Tier)
+                  </span>
+                )}
               </div>
 
+              {/* Row 1: Alias, Provider, Base URL */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-mono text-foreground mb-1">
@@ -459,14 +761,14 @@ export function AdminPage() {
                     autoComplete="off"
                     value={providerName}
                     onChange={(e) => setProviderName(e.target.value)}
-                    placeholder="Ví dụ: Gemini 2.0 Flash Đọc Ảnh"
+                    placeholder="Ví dụ: Google Gemini 2.5 Flash Free"
                     className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-mono text-foreground mb-1">
-                    Nhà cung cấp *
+                    Nhà cung cấp (10 Providers) *
                   </label>
                   <select
                     name="elio_ai_provider_select"
@@ -474,11 +776,6 @@ export function AdminPage() {
                     onChange={(e) => {
                       const p = e.target.value;
                       setProviderType(p);
-                      const def = FREE_AI_MODELS.find((m) => m.provider === p);
-                      if (def) {
-                        setSelectedModel(def.id);
-                        setHasVision(def.hasVision);
-                      }
                     }}
                     className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono font-bold"
                   >
@@ -493,14 +790,14 @@ export function AdminPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-mono text-foreground">
-                      Model chỉ định *
+                      Model chính chỉ định *
                     </label>
                     <button
                       type="button"
                       onClick={() => setIsCustomModelMode(!isCustomModelMode)}
                       className="text-[10px] font-mono text-accent hover:underline font-bold"
                     >
-                      {isCustomModelMode ? '← Chọn từ danh mục' : '+ Tự gõ Model khác'}
+                      {isCustomModelMode ? '← Danh mục' : '+ Tự gõ'}
                     </button>
                   </div>
 
@@ -517,12 +814,12 @@ export function AdminPage() {
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val.includes('@')) {
-                          toast.warning('Ô này chỉ để nhập mã Model AI (như gemini-2.0-flash), không phải địa chỉ email!');
+                          toast.warning('Ô này chỉ để nhập mã Model AI, không phải địa chỉ email!');
                           return;
                         }
                         setCustomModelInput(val);
                       }}
-                      placeholder="Gõ mã model (vd: gemini-2.0-flash, llama-3.3-70b-versatile...)"
+                      placeholder="Gõ mã model (vd: gemini-2.5-flash, llama-3.3-70b-versatile...)"
                       className="w-full px-3 py-2 text-xs rounded-sm border border-accent bg-card text-accent font-mono font-bold"
                     />
                   ) : (
@@ -532,18 +829,68 @@ export function AdminPage() {
                       onChange={(e) => {
                         const mId = e.target.value;
                         setSelectedModel(mId);
-                        const m = FREE_AI_MODELS.find((x) => x.id === mId);
-                        if (m) setHasVision(m.hasVision);
+                        const m = availableModelsForProvider.find((x) => x.id === mId);
+                        if (m) setHasVision(Boolean(m.capabilities?.vision || m.hasVision));
                       }}
                       className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
                     >
                       {availableModelsForProvider.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name} ({m.id}) {m.hasVision ? '📷 Đọc ảnh' : '⚡ Tốc độ'}
+                          {m.name || m.id} {m.capabilities?.vision || m.hasVision ? '📷 Đọc ảnh' : ''} {m.pricing?.isFree ? '· Free' : ''}
                         </option>
                       ))}
                     </select>
                   )}
+                </div>
+              </div>
+
+              {/* Row 2: API Key with Live Discovery Button */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                <div className="sm:col-span-8">
+                  <label className="block text-[11px] font-mono text-foreground mb-1">
+                    API Key ({providerType.toUpperCase()}) *
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      name="elio_custom_ai_secret_key"
+                      autoComplete="new-password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={`Dán mã API Key của ${providerType.toUpperCase()} vào đây...`}
+                      className="flex-1 px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                    />
+                    <button
+                      type="button"
+                      disabled={isDiscovering || (!apiKey.trim() && providerType !== 'custom')}
+                      onClick={() => handleDiscoverModels()}
+                      className="tap px-3 py-2 rounded-sm bg-accent/10 hover:bg-accent/20 border border-accent/40 text-accent text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 disabled:opacity-40"
+                      title="Kết nối API chính thức và lấy danh mục model thực tế"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isDiscovering ? 'animate-spin' : ''}`} />
+                      <span>{isDiscovering ? 'Đang khám phá...' : 'Khám phá Model (Live)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className="block text-[11px] font-mono text-foreground mb-1">
+                    Model dự phòng (Backup Failover)
+                  </label>
+                  <select
+                    value={backupModel}
+                    onChange={(e) => setBackupModel(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                  >
+                    <option value="">-- Không dùng model dự phòng --</option>
+                    {availableModelsForProvider
+                      .filter((m) => m.id !== selectedModel)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name || m.id} {m.pricing?.isFree ? '(Free)' : ''}
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
 
@@ -562,56 +909,96 @@ export function AdminPage() {
                 </div>
               )}
 
-              {/* Model Suggestions Grid (Matching Image 2) */}
+              {/* Dynamic Discovery Status Bar & Catalog Opener */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-sm border border-border/80 bg-background/60">
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  {discoveryMeta ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="text-foreground">
+                        Đã tải <strong className="text-accent">{discoveryMeta.totalCount} model</strong> thực tế từ API chính thức ({discoveryMeta.freeCount} Free Tier)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-accent shrink-0" />
+                      <span className="text-muted-foreground">
+                        Nhập API Key và bấm <strong>"Khám phá Model (Live)"</strong> để đồng bộ model thực tế từ API chính thức.
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenCatalogModal(null)}
+                  className="tap px-3 py-1.5 rounded-sm border border-accent bg-accent/5 hover:bg-accent/15 text-accent text-xs font-mono font-bold flex items-center gap-1.5"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Xem toàn bộ danh mục & Đổi model ({availableModelsForProvider.length})</span>
+                </button>
+              </div>
+
+              {/* Smart Recommendations Grid */}
               <div className="pt-2">
                 <div className="text-[11px] font-mono text-muted-foreground mb-2 flex items-center justify-between">
-                  <span>Gợi ý model thế hệ mới 2025/2026 · Bấm để điền model và khả năng ảnh:</span>
-                  <span className="text-accent text-[10px]">Verified Modern Models</span>
+                  <span>Gợi ý model ưu tiên (Top Free-Tier & Multimodal) · Bấm để chọn làm Model chính:</span>
+                  <span className="text-accent text-[10px] font-semibold">Free Tier First Recommendations</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  {availableModelsForProvider.map((m) => {
+                  {(smartRecs.length > 0 ? smartRecs : availableModelsForProvider.slice(0, 8)).map((m) => {
                     const isSelected = selectedModel === m.id && !isCustomModelMode;
+                    const isBackup = backupModel === m.id;
+                    const isFree = m.pricing?.isFree || m.pricing?.tier === 'VERIFIED_FREE' || m.pricing?.tier === 'FREE_ELIGIBLE';
+                    const hasVisionFlag = m.capabilities?.vision || m.hasVision;
+
                     return (
                       <button
                         key={m.id}
                         type="button"
                         onClick={() => handleSelectSuggestedModel(m)}
-                        className={`tap p-2.5 rounded-sm border text-left transition-all flex flex-col justify-between ${
+                        className={`tap p-3 rounded-sm border text-left transition-all flex flex-col justify-between ${
                           isSelected
                             ? 'border-accent bg-accent/10 ring-1 ring-accent'
+                            : isBackup
+                            ? 'border-blue-500/50 bg-blue-50/20'
                             : 'border-border bg-card hover:bg-muted/60'
                         }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1 gap-1">
                             <span className="font-mono text-xs font-bold text-foreground truncate">
-                              {m.name}
+                              {m.name || m.id}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
-                              {m.isNew && (
-                                <span className="px-1 py-0.2 rounded-sm bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-mono font-bold">
-                                  MỚI
+                              {isFree ? (
+                                <span className="px-1.5 py-0.2 rounded-sm bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[9px] font-mono font-bold">
+                                  FREE
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded-sm bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-mono font-bold">
+                                  PAID
                                 </span>
                               )}
-                              {m.hasVision && (
+                              {hasVisionFlag && (
                                 <span className="px-1.5 py-0.2 rounded-sm bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-[9px] font-mono font-bold">
-                                  📷 Ảnh/PDF
+                                  📷 Vision
                                 </span>
                               )}
                             </div>
                           </div>
                           <div className="text-[10px] font-mono text-accent truncate">
-                            {m.alias || m.id}
+                            {m.rawId || m.id}
                           </div>
                           <p className="text-[11px] font-body text-muted-foreground line-clamp-2 mt-1">
-                            {m.desc}
+                            {m.desc || `${m.provider.toUpperCase()} AI Model`}
                           </p>
                         </div>
 
                         <div className="pt-2 mt-2 border-t border-border/80 text-[10px] font-mono text-muted-foreground flex items-center justify-between">
-                          <span>{m.speed}</span>
-                          <span className="text-accent font-semibold">{m.badge}</span>
+                          <span>{m.contextWindow || '128k context'}</span>
+                          {isSelected && <span className="text-accent font-bold">✓ ĐANG CHỌN</span>}
                         </div>
                       </button>
                     );
@@ -619,23 +1006,8 @@ export function AdminPage() {
                 </div>
               </div>
 
-              {/* API Key & Priority */}
+              {/* Priority & Vision & Actions */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
-                <div className="sm:col-span-8">
-                  <label className="block text-[11px] font-mono text-foreground mb-1">
-                    API Key ({providerType.toUpperCase()})
-                  </label>
-                  <input
-                    type="password"
-                    name="elio_custom_ai_secret_key"
-                    autoComplete="new-password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={`Dán mã key ${providerType.toUpperCase()} của bạn...`}
-                    className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
-                  />
-                </div>
-
                 <div className="sm:col-span-4">
                   <label className="block text-[11px] font-mono text-foreground mb-1">
                     Mức ưu tiên gọi (1 = cao nhất)
@@ -649,58 +1021,68 @@ export function AdminPage() {
                     className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
                   />
                 </div>
+
+                <div className="sm:col-span-8 flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-foreground pb-2">
+                    <input
+                      type="checkbox"
+                      checked={hasVision}
+                      onChange={(e) => setHasVision(e.target.checked)}
+                      className="rounded-sm border-border text-accent focus:ring-accent"
+                    />
+                    <span>Hỗ trợ đọc ảnh (Multimodal Vision: Gemini / Claude / GPT-4o / Groq Vision / OpenRouter)</span>
+                  </label>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={hasVision}
-                    onChange={(e) => setHasVision(e.target.checked)}
-                    className="rounded-sm border-border text-accent focus:ring-accent"
-                  />
-                  <span>Hỗ trợ đọc ảnh (Gemini / Claude / GPT-4o / Groq Vision / OpenRouter)</span>
-                </label>
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-border/80">
+                <button
+                  type="button"
+                  disabled={testingAi || (!apiKey.trim() && providerType !== 'custom')}
+                  onClick={handleTestDraftConfig}
+                  className="tap px-3.5 py-2 rounded-sm border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>{testingAi ? 'Đang kiểm tra...' : 'Kiểm tra kết nối (Test Key)'}</span>
+                </button>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={testingAi}
-                    onClick={handleTestDraftConfig}
-                    className="tap px-3.5 py-2 rounded-sm border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>{testingAi ? 'Đang kiểm tra...' : 'Kiểm tra kết nối (Test Key)'}</span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="tap px-4 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Thêm API</span>
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className="tap px-5 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Thêm API AI</span>
+                </button>
               </div>
             </form>
 
             {/* Configured AI List */}
-            <div className="space-y-2 pt-2">
-              <div className="text-xs font-mono font-bold text-foreground">
-                Danh sách API AI đang hoạt động ({aiConfigs.length}):
+            <div className="space-y-3 pt-2">
+              <div className="text-xs font-mono font-bold text-foreground flex items-center justify-between">
+                <span>Danh sách API AI đang hoạt động ({aiConfigs.length}):</span>
+                <span className="text-[11px] text-muted-foreground font-normal">
+                  Khóa được bảo vệ · Click "Đổi model" để chọn từ danh mục khám phá
+                </span>
               </div>
-              <div className="grid grid-cols-1 gap-2">
+
+              <div className="grid grid-cols-1 gap-2.5">
                 {aiConfigs.map((cfg) => {
                   const testRes = testResults[cfg.id];
+                  const cooldown = db.aiConfig?.getKeyCooldown?.(cfg.id);
+                  const inCooldown = cooldown && cooldown.until > Date.now();
+                  const cooldownSec = inCooldown ? Math.ceil((cooldown.until - Date.now()) / 1000) : 0;
+
                   return (
                     <div
                       key={cfg.id}
-                      className="p-3 rounded-sm border border-border bg-card flex flex-wrap items-center justify-between gap-3 text-xs font-mono"
+                      className="p-3.5 rounded-sm border border-border bg-card flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-xs"
                     >
                       <div className="flex items-center gap-3">
                         <span
                           className={`w-2.5 h-2.5 rounded-full ${
-                            testRes
+                            inCooldown
+                              ? 'bg-amber-500 ring-2 ring-amber-300 animate-pulse'
+                              : testRes
                               ? testRes.success
                                 ? 'bg-emerald-500 ring-2 ring-emerald-300'
                                 : 'bg-rose-500 ring-2 ring-rose-300'
@@ -708,22 +1090,37 @@ export function AdminPage() {
                           }`}
                         />
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-foreground">{cfg.name}</span>
                             <span className="px-1.5 py-0.5 rounded-sm bg-accent/10 text-accent font-bold text-[10px]">
                               {cfg.provider.toUpperCase()}
                             </span>
-                            <span className="text-accent font-semibold">({cfg.model})</span>
+                            <span className="px-1.5 py-0.5 rounded-sm bg-muted text-foreground font-bold text-[10px]">
+                              {cfg.model}
+                            </span>
+                            {cfg.backupModel && (
+                              <span className="px-1.5 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px]">
+                                Backup: {cfg.backupModel}
+                              </span>
+                            )}
                             {cfg.hasVision && (
-                              <span className="text-[10px] text-blue-600 font-bold">
+                              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
                                 📷 Vision
                               </span>
                             )}
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              ({cfg.maskedKey || maskApiKey(cfg.apiKey)})
+                            </span>
                           </div>
+                          {inCooldown && (
+                            <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-bold">
+                              ⏸️ Đang giãn cách Cooldown 429 ({cooldownSec}s còn lại) · Tự động dùng key dự phòng
+                            </div>
+                          )}
                           {testRes && (
                             <div
                               className={`text-[10px] mt-0.5 ${
-                                testRes.success ? 'text-emerald-600' : 'text-rose-600'
+                                testRes.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                               }`}
                             >
                               {testRes.message}
@@ -739,8 +1136,28 @@ export function AdminPage() {
 
                         <button
                           type="button"
+                          onClick={() => handleOpenCatalogModal(cfg)}
+                          className="tap px-2.5 py-1.5 rounded-sm bg-accent/10 hover:bg-accent/20 text-accent font-bold text-[11px] flex items-center gap-1 border border-accent/30"
+                          title="Mở danh mục để đổi model chính hoặc dự phòng"
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>Đổi model</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSyncConfigModels(cfg)}
+                          className="tap px-2 py-1.5 rounded-sm bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] flex items-center gap-1 border border-border"
+                          title="Đồng bộ danh mục model thực tế từ API"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Đồng bộ</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleTestActiveConfig(cfg)}
-                          className="tap px-2 py-1 rounded bg-muted/50 hover:bg-muted text-accent font-semibold text-[11px] flex items-center gap-1 border border-border"
+                          className="tap px-2.5 py-1.5 rounded-sm bg-muted/50 hover:bg-muted text-foreground font-semibold text-[11px] flex items-center gap-1 border border-border"
                           title="Kiểm tra tín hiệu kết nối tới model này"
                         >
                           <Zap className="w-3 h-3" />
@@ -2116,6 +2533,21 @@ export function AdminPage() {
           </div>
         </div>
       )}
+      {/* Dynamic Model Catalog Modal */}
+      <ModelCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        providerName={
+          AI_PROVIDERS.find((p) => p.id === activeCatalogProvider)?.name || activeCatalogProvider.toUpperCase()
+        }
+        providerId={activeCatalogProvider}
+        models={activeCatalogModels}
+        currentModelId={activeCatalogConfig ? activeCatalogConfig.model : selectedModel}
+        backupModelId={activeCatalogConfig ? activeCatalogConfig.backupModel : backupModel}
+        onSelectPrimary={handleSelectPrimaryFromModal}
+        onSelectBackup={handleSelectBackupFromModal}
+        lastSyncedAt={discoveryMeta?.syncedAt}
+      />
     </div>
   );
 }

@@ -33,6 +33,17 @@ function loadDatabase() {
       if (!parsed.studyPlans) parsed.studyPlans = {};
       if (!parsed.aiTaskPools) parsed.aiTaskPools = {};
       if (!parsed.aiCooldowns) parsed.aiCooldowns = {};
+      if (!parsed.aiModelCatalogs) parsed.aiModelCatalogs = {};
+      if (!parsed.aiPolicies) {
+        parsed.aiPolicies = {
+          FREE_ONLY: true,
+          FREE_FIRST_SORT: true,
+          ALLOW_PAID_MODELS: false,
+          AUTO_PAID_FALLBACK: false,
+          REQUIRE_ADMIN_APPROVAL_FOR_PAID: true,
+        };
+      }
+      if (!parsed.aiAuditLogs) parsed.aiAuditLogs = [];
       if (!parsed.deletedGrammarIds) parsed.deletedGrammarIds = [];
       if (!parsed.grammarOverrides) parsed.grammarOverrides = {};
       if (!parsed.deletedExamIds) parsed.deletedExamIds = [];
@@ -1209,6 +1220,60 @@ export const db = {
         reason: cd.reason,
       };
     },
+    getPolicies: () => ({
+      FREE_ONLY: true,
+      FREE_FIRST_SORT: true,
+      ALLOW_PAID_MODELS: false,
+      AUTO_PAID_FALLBACK: false,
+      REQUIRE_ADMIN_APPROVAL_FOR_PAID: true,
+      ...(state.aiPolicies || {}),
+    }),
+    updatePolicies: (updates) => {
+      state.aiPolicies = { ...(state.aiPolicies || {}), ...updates };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_ai_policy_change', { detail: state.aiPolicies }));
+      return state.aiPolicies;
+    },
+    addAuditLog: (action, provider, details = {}) => {
+      if (!state.aiAuditLogs) state.aiAuditLogs = [];
+      const curUser = db.auth.getUser();
+      const logEntry = {
+        id: `audit_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: new Date().toISOString(),
+        userId: curUser?.id || 'admin',
+        userName: curUser?.name || 'Super Admin',
+        action,
+        provider,
+        details: typeof details === 'string' ? details : JSON.stringify(details),
+      };
+      state.aiAuditLogs.unshift(logEntry);
+      if (state.aiAuditLogs.length > 200) state.aiAuditLogs = state.aiAuditLogs.slice(0, 200);
+      saveDatabase(state);
+      return logEntry;
+    },
+    getAuditLogs: () => [...(state.aiAuditLogs || [])],
+  },
+
+  // Dynamic AI Model Catalogs Cache (Discovered Live from Provider APIs)
+  aiModelCatalogs: {
+    getCatalog: (providerId) => {
+      return state.aiModelCatalogs?.[providerId] || null;
+    },
+    saveCatalog: (providerId, models = [], baseUrl = '') => {
+      if (!state.aiModelCatalogs) state.aiModelCatalogs = {};
+      state.aiModelCatalogs[providerId] = {
+        provider: providerId,
+        baseUrl,
+        models,
+        count: models.length,
+        freeCount: models.filter((m) => m.pricing?.isFree).length,
+        lastSyncedAt: new Date().toISOString(),
+      };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_model_catalog_change', { detail: { providerId } }));
+      return state.aiModelCatalogs[providerId];
+    },
+    getAllCatalogs: () => ({ ...(state.aiModelCatalogs || {}) }),
   },
 
   // UI & Voice Customization

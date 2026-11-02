@@ -61,7 +61,7 @@ export async function executeSingleAiCall(
     return jsonMode ? JSON.parse(text) : text;
   }
 
-  if (provider === 'anthropic') {
+  if (provider === 'anthropic' || provider === 'claude') {
     const endpoint = 'https://api.anthropic.com/v1/messages';
     let userMsgContent = userPrompt;
     if (imageBase64) {
@@ -106,7 +106,7 @@ export async function executeSingleAiCall(
     return jsonMode ? JSON.parse(text) : text;
   }
 
-  // All OpenAI-compatible Providers: DeepSeek, Groq, OpenRouter, OpenAI, Custom
+  // All OpenAI-compatible Providers: DeepSeek, Groq, OpenRouter, OpenAI, Mistral, Cerebras, Together, Custom
   let endpoint = '';
   if (provider === 'deepseek') {
     endpoint = 'https://api.deepseek.com/chat/completions';
@@ -116,6 +116,12 @@ export async function executeSingleAiCall(
     endpoint = 'https://openrouter.ai/api/v1/chat/completions';
   } else if (provider === 'openai') {
     endpoint = 'https://api.openai.com/v1/chat/completions';
+  } else if (provider === 'mistral') {
+    endpoint = 'https://api.mistral.ai/v1/chat/completions';
+  } else if (provider === 'cerebras') {
+    endpoint = 'https://api.cerebras.ai/v1/chat/completions';
+  } else if (provider === 'together') {
+    endpoint = 'https://api.together.xyz/v1/chat/completions';
   } else if (provider === 'custom') {
     endpoint = baseUrl?.trim() || 'http://localhost:11434/v1/chat/completions';
     if (!endpoint.endsWith('/chat/completions') && !endpoint.includes('generate')) {
@@ -289,13 +295,22 @@ export async function executeTaskWithFallback({
 }) {
   // 1. Lấy danh sách Key được gán vào nhóm tác vụ này
   const pool = db.aiConfig?.getTaskPool?.(taskId) || [];
-  let candidates = pool.filter((c) => c.enabled && c.apiKey);
+  let candidates = pool.filter((c) => c.enabled !== false && c.apiKey);
 
   // Nếu chưa gán key nào riêng, dùng các key hoạt động toàn cục theo độ ưu tiên
   if (candidates.length === 0) {
-    const allConfigs = db.aiConfig.getConfigs().filter((c) => c.enabled && c.apiKey);
+    const allConfigs = db.aiConfig.getConfigs().filter((c) => c.enabled !== false && c.apiKey);
     allConfigs.sort((a, b) => (a.priority || 1) - (b.priority || 1));
     candidates = allConfigs;
+  }
+
+  // 1.1. Tuân thủ AI Policies: Kiểm tra chính sách Free Tier First
+  const policies = db.aiConfig?.getPolicies?.() || {};
+  if (policies.FREE_ONLY && !policies.ALLOW_PAID_MODELS) {
+    const freeOnlyCandidates = candidates.filter((c) => c.tier !== 'PAID' && c.isPaid !== true);
+    if (freeOnlyCandidates.length > 0) {
+      candidates = freeOnlyCandidates;
+    }
   }
 
   // 2. Bảo vệ nghiêm ngặt tác vụ ảnh: Tác vụ ảnh chỉ chuyển sang model hỗ trợ ảnh
@@ -338,6 +353,7 @@ Rules:
     }
 
     try {
+      // 1. Thử gọi Primary Model
       const result = await executeSingleAiCall(config, {
         fullSystemPrompt,
         userPrompt,
@@ -350,6 +366,29 @@ Rules:
     } catch (err) {
       lastError = err;
       const msg = err.message || '';
+      console.warn(`[TaskPool: ${taskId}] Model chính "${config.model}" của Key "${config.name}" lỗi: ${msg}`);
+
+      // 2. Nếu có Backup Model trên cùng key, thử Backup Model trước khi chuyển Key
+      if (config.backupModel && config.backupModel !== config.model) {
+        try {
+          console.info(`[TaskPool: ${taskId}] Đang thử Backup Model "${config.backupModel}" của Key "${config.name}"...`);
+          const backupResult = await executeSingleAiCall(
+            { ...config, model: config.backupModel },
+            {
+              fullSystemPrompt,
+              userPrompt,
+              imageBase64,
+              mimeType,
+              jsonMode,
+            }
+          );
+          if (backupResult) return backupResult;
+        } catch (backupErr) {
+          console.warn(`[TaskPool: ${taskId}] Backup Model "${config.backupModel}" cũng lỗi: ${backupErr.message}`);
+        }
+      }
+
+      // Xử lý Cooldown cho key nếu gặp 429 hoặc quá tải
       const isRateLimit =
         msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate limit');
       const isTimeoutOrOverload =
@@ -361,7 +400,7 @@ Rules:
           `[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" quá tải/hết quota (429). Đã bật cooldown 30s. Tự động chuyển sang Key dự phòng kế tiếp trong cùng nhóm...`
         );
       } else {
-        console.warn(`[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" thất bại: ${msg}. Thử key dự phòng cùng nhóm...`);
+        console.warn(`[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" thất bại. Thử key dự phòng cùng nhóm...`);
       }
     }
   }

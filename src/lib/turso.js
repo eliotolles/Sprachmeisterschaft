@@ -193,6 +193,70 @@ export async function migrateTursoSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+
+    `CREATE TABLE IF NOT EXISTS ai_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      default_base_url TEXT,
+      auth_type TEXT DEFAULT 'bearer',
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS ai_keys (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      masked_key TEXT NOT NULL,
+      encrypted_key TEXT,
+      priority INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'active',
+      rate_limit_info TEXT,
+      quota_info TEXT,
+      primary_model_assigned TEXT,
+      backup_model_assigned TEXT,
+      last_verified_at DATETIME,
+      last_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS ai_model_catalogs (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      model_name TEXT NOT NULL,
+      description TEXT,
+      context_window TEXT,
+      context_limit INTEGER DEFAULT 32768,
+      capabilities_json TEXT,
+      pricing_tier TEXT DEFAULT 'UNKNOWN',
+      pricing_json TEXT,
+      is_free INTEGER DEFAULT 0,
+      release_date TEXT,
+      last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS ai_task_assignments (
+      task_id TEXT PRIMARY KEY,
+      task_name TEXT NOT NULL,
+      primary_key_id TEXT,
+      primary_model TEXT NOT NULL,
+      backup_key_id TEXT,
+      backup_model TEXT,
+      needs_vision INTEGER DEFAULT 0,
+      timeout_ms INTEGER DEFAULT 30000,
+      max_output_tokens INTEGER DEFAULT 4000,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS ai_audit_logs (
+      id TEXT PRIMARY KEY,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      user_id TEXT,
+      action TEXT NOT NULL,
+      provider TEXT,
+      details TEXT
+    )`
   ];
 
   for (const sql of statements) {

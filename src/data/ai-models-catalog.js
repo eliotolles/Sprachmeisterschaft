@@ -6,16 +6,16 @@
 export const AI_PROVIDERS = [
   {
     id: 'gemini',
-    name: 'Gemini (Google AI Studio)',
+    name: 'Google Gemini (Google AI Studio)',
     freeTier: '15 RPM / Miễn phí 100% · Hỗ trợ Đọc Ảnh & PDF mạnh nhất',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     authType: 'query_key',
   },
   {
-    id: 'deepseek',
-    name: 'DeepSeek (Official API)',
-    freeTier: 'Tặng kèm credit dùng thử · Chi phí siêu rẻ · R1 Suy luận đỉnh cao',
-    defaultBaseUrl: 'https://api.deepseek.com',
+    id: 'openrouter',
+    name: 'OpenRouter (Multi-Model Hub)',
+    freeTier: 'Đầy đủ các model mở miễn phí (:free) · DeepSeek R1 & Qwen 2.5',
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
     authType: 'bearer',
   },
   {
@@ -26,10 +26,10 @@ export const AI_PROVIDERS = [
     authType: 'bearer',
   },
   {
-    id: 'openrouter',
-    name: 'OpenRouter (Free Tier & Hub)',
-    freeTier: 'Đầy đủ các model mở miễn phí (:free) · DeepSeek R1 & Qwen 2.5',
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    id: 'deepseek',
+    name: 'DeepSeek (Official API)',
+    freeTier: 'DeepSeek-V3 & DeepSeek-R1 · Suy luận logic & ngữ pháp chuẩn',
+    defaultBaseUrl: 'https://api.deepseek.com',
     authType: 'bearer',
   },
   {
@@ -47,8 +47,29 @@ export const AI_PROVIDERS = [
     authType: 'anthropic_header',
   },
   {
+    id: 'mistral',
+    name: 'Mistral AI (La Plateforme)',
+    freeTier: 'Mistral Small, Pixtral (Vision), Codestral · API Châu Âu',
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    authType: 'bearer',
+  },
+  {
+    id: 'cerebras',
+    name: 'Cerebras Cloud (Ultra Fast)',
+    freeTier: 'Llama 3.1 70B & 8B tốc độ cực cao · Miễn phí thử nghiệm',
+    defaultBaseUrl: 'https://api.cerebras.ai/v1',
+    authType: 'bearer',
+  },
+  {
+    id: 'together',
+    name: 'Together AI',
+    freeTier: 'Kho model mã nguồn mở hàng đầu: Llama 3, Qwen, DeepSeek',
+    defaultBaseUrl: 'https://api.together.xyz/v1',
+    authType: 'bearer',
+  },
+  {
     id: 'custom',
-    name: 'Tùy chỉnh (OpenAI-Compatible / Ollama / OneAPI)',
+    name: 'Tùy chỉnh (OpenAI-Compatible / Ollama / Local)',
     freeTier: 'Tự cấu hình Base URL và Model bất kỳ không giới hạn',
     defaultBaseUrl: 'http://localhost:11434/v1',
     authType: 'bearer',
