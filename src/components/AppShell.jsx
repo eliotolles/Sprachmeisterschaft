@@ -34,24 +34,13 @@ export function AppShell({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => db.studyPlan?.shouldShowOnboarding() || false);
 
-  // Auto-collapse / Expand State
+  // Sidebar Collapse / Expand State (Controlled explicitly by user and persisted)
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('sprach_sidebar_collapsed') === 'true';
     }
     return false;
   });
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Auto-collapse when entering immersive pages (Listening Studio / Exam detail)
-  useEffect(() => {
-    const isImmersivePage =
-      (currentPath.startsWith('/skills/listening/') && currentPath.split('/').length > 3) ||
-      (currentPath.startsWith('/exams/') && currentPath !== '/exams');
-    if (isImmersivePage) {
-      setIsCollapsed(true);
-    }
-  }, [currentPath]);
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -125,29 +114,24 @@ export function AppShell({ children }) {
     navigate('/login');
   };
 
-  // If collapsed, hovering temporarily expands the sidebar
-  const effectiveCollapsed = isCollapsed && !isHovered;
-
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background text-foreground antialiased selection:bg-accent/20 selection:text-accent">
-      {/* Desktop Sidebar with Auto-Hide / Expand & Hover Reveal */}
+      {/* Desktop Sidebar with Clean Explicit Toggle & Zero Lag */}
       <aside
-        onMouseEnter={() => isCollapsed && setIsHovered(true)}
-        onMouseLeave={() => isCollapsed && setIsHovered(false)}
-        className={`hidden md:flex flex-col border-r border-border bg-card/85 backdrop-blur-md sticky top-0 h-screen overflow-y-auto shrink-0 select-none transition-all duration-300 z-30 ${
-          effectiveCollapsed ? 'w-16' : 'w-64 lg:w-72'
+        className={`hidden md:flex flex-col border-r border-border bg-card/85 backdrop-blur-md sticky top-0 h-screen overflow-y-auto shrink-0 select-none transition-[width] duration-200 ease-in-out z-30 ${
+          isCollapsed ? 'w-16' : 'w-60 lg:w-64'
         }`}
       >
         {/* Brand / Logo + Collapse Toggle Button */}
-        <div className={`border-b border-border transition-all ${effectiveCollapsed ? 'p-3 text-center' : 'p-5'}`}>
+        <div className={`border-b border-border transition-all ${isCollapsed ? 'p-3 text-center' : 'p-4'}`}>
           <div className="flex items-center justify-between gap-2">
-            {!effectiveCollapsed ? (
+            {!isCollapsed ? (
               <Link to="/" className="block group min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-2 h-2 rounded-full bg-accent" />
                   <span className="eyebrow text-accent">Sprachplattform</span>
                 </div>
-                <h1 className="font-display text-2xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors leading-none truncate">
+                <h1 className="font-display text-xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors leading-none truncate">
                   Sprachmeisterschaft
                 </h1>
                 <p className="font-heading italic text-xs text-muted-foreground mt-0.5">
@@ -167,9 +151,9 @@ export function AppShell({ children }) {
               type="button"
               onClick={toggleCollapse}
               className="p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-              title={isCollapsed ? 'Mở rộng và ghim thanh bên' : 'Thu gọn thanh bên (Tự động ẩn)'}
+              title={isCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
             >
-              {effectiveCollapsed ? (
+              {isCollapsed ? (
                 <PanelLeftOpen className="w-4 h-4 text-accent" />
               ) : (
                 <PanelLeftClose className="w-4 h-4" />
@@ -177,20 +161,20 @@ export function AppShell({ children }) {
             </button>
           </div>
 
-          {!effectiveCollapsed && (
-            <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-xs font-mono text-accent">
-              <span>Mục tiêu hiện tại:</span>
+          {!isCollapsed && (
+            <div className="mt-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/10 border border-accent/20 text-xs font-mono text-accent">
+              <span>Mục tiêu:</span>
               <strong className="font-bold">{profile.target_level || 'B1'}</strong>
             </div>
           )}
         </div>
 
         {/* Navigation Groups */}
-        <nav className={`flex-1 py-4 space-y-6 ${effectiveCollapsed ? 'px-2' : 'px-3'}`}>
+        <nav className={`flex-1 py-3 space-y-5 ${isCollapsed ? 'px-2' : 'px-3'}`}>
           {navGroups.map((group) => (
             <div key={group.group}>
-              {!effectiveCollapsed && (
-                <div className="px-3 mb-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-semibold">
+              {!isCollapsed && (
+                <div className="px-3 mb-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-semibold">
                   {group.group}
                 </div>
               )}
@@ -205,11 +189,11 @@ export function AppShell({ children }) {
                     <li key={item.path}>
                       <Link
                         to={item.path}
-                        title={effectiveCollapsed ? `${item.label} (${item.de})` : undefined}
+                        title={isCollapsed ? item.label : undefined}
                         className={`tap flex items-center rounded-sm text-sm font-medium transition-colors ${
-                          effectiveCollapsed
+                          isCollapsed
                             ? 'justify-center p-2.5'
-                            : 'justify-between px-3 py-2'
+                            : 'px-3 py-2'
                         } ${
                           isActive
                             ? 'bg-accent text-accent-foreground shadow-sm font-semibold'
@@ -222,19 +206,10 @@ export function AppShell({ children }) {
                               isActive ? 'text-accent-foreground' : 'text-accent/80'
                             }`}
                           />
-                          {!effectiveCollapsed && (
+                          {!isCollapsed && (
                             <span className="font-heading truncate">{item.label}</span>
                           )}
                         </div>
-                        {!effectiveCollapsed && (
-                          <span
-                            className={`text-xs font-display italic font-normal ${
-                              isActive ? 'text-accent-foreground/80' : 'text-muted-foreground'
-                            }`}
-                          >
-                            {item.de}
-                          </span>
-                        )}
                       </Link>
                     </li>
                   );
@@ -245,13 +220,13 @@ export function AppShell({ children }) {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className={`border-t border-border bg-card/90 space-y-3 ${effectiveCollapsed ? 'p-2 text-center' : 'p-4'}`}>
-          <div className={`flex items-center ${effectiveCollapsed ? 'justify-center' : 'justify-between'}`}>
+        <div className={`border-t border-border bg-card/90 space-y-3 ${isCollapsed ? 'p-2 text-center' : 'p-3.5'}`}>
+          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-8 h-8 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center font-display font-bold text-accent shrink-0">
                 {(profile.display_name || 'U').charAt(0).toUpperCase()}
               </div>
-              {!effectiveCollapsed && (
+              {!isCollapsed && (
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-semibold text-foreground truncate">
@@ -292,10 +267,10 @@ export function AppShell({ children }) {
                 </div>
               )}
             </div>
-            {!effectiveCollapsed && <ThemeToggle />}
+            {!isCollapsed && <ThemeToggle />}
           </div>
 
-          {!effectiveCollapsed ? (
+          {!isCollapsed ? (
             <div className="flex items-center justify-between pt-1 text-xs font-mono text-muted-foreground">
               <Link
                 to="/landing"

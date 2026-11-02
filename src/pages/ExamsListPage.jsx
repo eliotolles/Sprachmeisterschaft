@@ -114,12 +114,12 @@ export function ExamsListPage() {
     <div className="space-y-6 animate-rise">
       <PageHeader
         eyebrow="CHUẨN KHẢO THÍ CHÂU ÂU (GER / CEFR)"
-        title={`Luyện ${allExamsList.length} đề thi mô phỏng`}
+        title={allExamsList.length > 0 ? `Luyện ${allExamsList.length} đề thi mô phỏng` : 'Luyện đề thi mô phỏng'}
         deTitle="Prüfungssimulation"
         subtitle="Bộ đề chuẩn hóa quốc tế Goethe A1–C2, telc B1, ÖSD B1 và kỳ thi hội nhập DTZ B1."
         actions={
           <div className="flex items-center gap-2">
-            {isAdmin && (
+            {isAdmin && allExamsList.length > 0 && (
               <button
                 onClick={handleResetExams}
                 className="tap px-2.5 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-foreground font-mono text-xs flex items-center gap-1.5"
@@ -147,97 +147,138 @@ export function ExamsListPage() {
         includeAll={true}
       />
 
-      {/* Exams Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredExams.map((exam) => {
-          const lastResult = latestByExam[exam.id];
+      {/* Exams Grid or Empty State */}
+      {filteredExams.length === 0 ? (
+        <div className="surface p-8 sm:p-10 border border-border rounded-sm text-center space-y-4 max-w-xl mx-auto animate-rise">
+          <div className="w-14 h-14 rounded-full bg-accent/10 border-2 border-accent/30 text-accent flex items-center justify-center mx-auto">
+            <FileCheck2 className="w-7 h-7" />
+          </div>
 
-          return (
-            <div
-              key={exam.id}
-              className="surface p-5 flex flex-col justify-between hover:border-accent/40 transition-colors relative group"
+          <div className="space-y-1.5">
+            <h3 className="font-display text-xl font-bold text-foreground">
+              {allExamsList.length === 0
+                ? 'Kho đề thi hiện đang trống'
+                : `Không có đề thi nào ở cấp độ ${selectedLevel}`}
+            </h3>
+            <p className="font-body text-xs text-muted-foreground leading-relaxed">
+              {allExamsList.length === 0
+                ? 'Toàn bộ dữ liệu đề thi mẫu đã được xóa sạch theo yêu cầu quản trị. Số lượng đề sẽ tự động nhảy số tăng lên ngay khi bạn Import bộ đề mới (PDF, DOCX, TXT hoặc JSON).'
+                : 'Hãy thử chọn "Tất cả cấp độ" hoặc Import thêm đề thi cho cấp độ này.'}
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setIsImportOpen(true)}
+              className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold rounded-sm inline-flex items-center gap-1.5 shadow-sm"
             >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span
-                    className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-sm border uppercase ${getProviderBadge(
-                      exam.provider
-                    )}`}
-                  >
-                    {exam.provider}
-                  </span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Import đề thi mới ngay</span>
+            </button>
+            {selectedLevel !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedLevel('ALL')}
+                className="tap px-3.5 py-2 border border-border bg-card hover:bg-muted text-xs font-mono rounded-sm"
+              >
+                Xem tất cả cấp độ
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredExams.map((exam) => {
+            const lastResult = latestByExam[exam.id];
 
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{exam.minutes}p</span>
-                    </div>
+            return (
+              <div
+                key={exam.id}
+                className="surface p-5 flex flex-col justify-between hover:border-accent/40 transition-colors relative group"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-sm border uppercase ${getProviderBadge(
+                        exam.provider
+                      )}`}
+                    >
+                      {exam.provider}
+                    </span>
 
-                    {/* Admin Action Buttons on Exam Card */}
-                    {isAdmin && (
-                      <div className="flex items-center gap-1 pl-2 border-l border-border">
-                        <button
-                          type="button"
-                          onClick={() => setEditingExam({ ...exam })}
-                          className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent transition-colors"
-                          title="Sửa thông số đề thi"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteExam(exam.id, exam.title)}
-                          className="tap p-1 rounded hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors"
-                          title="Xóa đề thi này"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{exam.minutes}p</span>
                       </div>
+
+                      {/* Admin Action Buttons on Exam Card */}
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 pl-2 border-l border-border">
+                          <button
+                            type="button"
+                            onClick={() => setEditingExam({ ...exam })}
+                            className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent transition-colors"
+                            title="Sửa thông số đề thi"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExam(exam.id, exam.title)}
+                            className="tap p-1 rounded hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors"
+                            title="Xóa đề thi này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="eyebrow text-[9px] mb-0.5 flex items-center gap-1.5">
+                    <span>Trình độ {exam.level}</span>
+                    {exam.isImported && (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 font-bold lowercase">
+                        import
+                      </span>
                     )}
                   </div>
-                </div>
+                  <h3 className="font-display text-xl font-bold text-foreground">
+                    {exam.title}
+                  </h3>
+                  <p className="font-body text-xs text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
+                    {exam.intro || exam.description}
+                  </p>
 
-                <div className="eyebrow text-[9px] mb-0.5 flex items-center gap-1.5">
-                  <span>Trình độ {exam.level}</span>
-                  {exam.isImported && (
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 font-bold lowercase">
-                      import
-                    </span>
+                  {lastResult && (
+                    <div className="mt-3 p-2 rounded-sm bg-accent/5 border border-accent/20 flex items-center justify-between text-xs font-mono">
+                      <span className="text-muted-foreground">Lần làm gần nhất:</span>
+                      <span className="font-bold text-accent">
+                        {lastResult.total}đ ({lastResult.passed ? 'Bestanden' : 'Chưa đạt'})
+                      </span>
+                    </div>
                   )}
                 </div>
-                <h3 className="font-display text-xl font-bold text-foreground">
-                  {exam.title}
-                </h3>
-                <p className="font-body text-xs text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
-                  {exam.intro || exam.description}
-                </p>
 
-                {lastResult && (
-                  <div className="mt-3 p-2 rounded-sm bg-accent/5 border border-accent/20 flex items-center justify-between text-xs font-mono">
-                    <span className="text-muted-foreground">Lần làm gần nhất:</span>
-                    <span className="font-bold text-accent">
-                      {lastResult.total}đ ({lastResult.passed ? 'Bestanden' : 'Chưa đạt'})
-                    </span>
-                  </div>
-                )}
+                <div className="pt-4 mt-4 border-t border-border flex items-center justify-between">
+                  <span className="text-[11px] font-mono text-muted-foreground">
+                    4 Kỹ năng (Đọc, Nghe, Viết, Nói)
+                  </span>
+                  <Link
+                    to={`/exams/${exam.id}`}
+                    className="tap px-3.5 py-1.5 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 inline-flex items-center gap-1"
+                  >
+                    <span>Làm đề</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
-
-              <div className="pt-4 mt-4 border-t border-border flex items-center justify-between">
-                <span className="text-[11px] font-mono text-muted-foreground">
-                  4 Kỹ năng (Đọc, Nghe, Viết, Nói)
-                </span>
-                <Link
-                  to={`/exams/${exam.id}`}
-                  className="tap px-3.5 py-1.5 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 inline-flex items-center gap-1"
-                >
-                  <span>Làm đề</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Admin Edit Exam Modal */}
       {isAdmin && editingExam && (
