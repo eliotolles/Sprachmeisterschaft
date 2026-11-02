@@ -12,14 +12,27 @@ import { FREE_AI_MODELS } from '@/data/ai-models-catalog';
  * Hỗ trợ toàn bộ: Gemini, DeepSeek Official, Groq, OpenRouter, OpenAI, Claude, Custom API
  * Kèm chống Prompt Injection: dữ liệu người học được cô lập trong block riêng
  */
-export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt, jsonMode = true }) {
+export async function executeSingleAiCall(
+  config,
+  { fullSystemPrompt, userPrompt, imageBase64 = null, mimeType = 'image/jpeg', jsonMode = true }
+) {
   const { provider, model, apiKey, baseUrl } = config;
 
   if (provider === 'gemini') {
     const modelName = model || 'gemini-2.0-flash';
     const cleanModel = modelName.startsWith('models/') ? modelName.replace('models/', '') : modelName;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
-    
+
+    const parts = [{ text: `${fullSystemPrompt}\n\n${userPrompt}` }];
+    if (imageBase64) {
+      parts.unshift({
+        inlineData: {
+          data: imageBase64,
+          mimeType: mimeType || 'image/jpeg',
+        },
+      });
+    }
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,7 +40,7 @@ export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt
         contents: [
           {
             role: 'user',
-            parts: [{ text: `${fullSystemPrompt}\n\n${userPrompt}` }],
+            parts,
           },
         ],
         generationConfig: {
@@ -50,6 +63,21 @@ export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt
 
   if (provider === 'anthropic') {
     const endpoint = 'https://api.anthropic.com/v1/messages';
+    let userMsgContent = userPrompt;
+    if (imageBase64) {
+      userMsgContent = [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mimeType || 'image/jpeg',
+            data: imageBase64,
+          },
+        },
+        { type: 'text', text: userPrompt },
+      ];
+    }
+
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -61,7 +89,7 @@ export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt
       body: JSON.stringify({
         model: model || 'claude-3-7-sonnet-20250219',
         system: fullSystemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
+        messages: [{ role: 'user', content: userMsgContent }],
         max_tokens: 3000,
         temperature: 0.1,
       }),
@@ -97,6 +125,14 @@ export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt
     endpoint = 'https://api.groq.com/openai/v1/chat/completions';
   }
 
+  let userContent = userPrompt;
+  if (imageBase64) {
+    userContent = [
+      { type: 'text', text: userPrompt },
+      { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}` } },
+    ];
+  }
+
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -107,7 +143,7 @@ export async function executeSingleAiCall(config, { fullSystemPrompt, userPrompt
       model: model || 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: fullSystemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.1,
       response_format: jsonMode && provider !== 'deepseek-reasoner' ? { type: 'json_object' } : undefined,
@@ -165,10 +201,113 @@ export async function testAiConnection(config) {
   }
 }
 
-export async function callAiWithFallback({ systemPrompt, userPrompt, jsonMode = true, taskType = 'general' }) {
-  const configs = db.aiConfig.getConfigs().filter((c) => c.enabled);
-  // Sort by priority (1 is highest)
-  configs.sort((a, b) => (a.priority || 1) - (b.priority || 1));
+/**
+ * Thử nghiệm AI trực tiếp theo đúng tác vụ chỉ định
+ * (Nhóm ảnh gửi ảnh Vision; nhóm giọng nói thử audio; nhóm chấm thi thử chấm)
+ */
+export async function testAiTaskSpecific(config, task) {
+  if (!config.apiKey?.trim()) {
+    return { success: false, message: 'Vui lòng điền API Key trước khi thử nghiệm!' };
+  }
+
+  const startTime = Date.now();
+
+  try {
+    if (task.needsVision) {
+      if (!config.hasVision) {
+        return {
+          success: false,
+          message: `❌ Model "${config.model}" không có cờ hỗ trợ Vision. Tác vụ "${task.name}" yêu cầu đọc ảnh chụp!`,
+        };
+      }
+      // 1x1 transparent PNG base64
+      const testImageBase64 =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+      await executeSingleAiCall(config, {
+        fullSystemPrompt:
+          'Bạn là chuyên viên OCR. Hãy kiểm tra ảnh và trả về JSON: {"status": "vision_ok", "model": "' +
+          config.model +
+          '"}',
+        userPrompt: 'Hãy phân tích nội dung bức ảnh test này.',
+        imageBase64: testImageBase64,
+        mimeType: 'image/png',
+        jsonMode: true,
+      });
+      const elapsed = Date.now() - startTime;
+      return {
+        success: true,
+        message: `✅ Thử gửi ảnh Vision thành công! Model ${config.model} phản hồi tốt (${elapsed}ms).`,
+      };
+    }
+
+    if (task.id === 'audio_subtitles' || task.id === 'speaking_eval') {
+      await executeSingleAiCall(config, {
+        fullSystemPrompt:
+          'You are a German speech evaluator. Return JSON: {"status": "audio_eval_ok"}',
+        userPrompt: 'Test Audio/Voice comprehension: "Ich lerne Deutsch mit Sprachmeisterschaft."',
+        jsonMode: true,
+      });
+      const elapsed = Date.now() - startTime;
+      return {
+        success: true,
+        message: `✅ Thử tác vụ giọng nói / âm thanh thành công! Model ${config.model} phản hồi tốt (${elapsed}ms).`,
+      };
+    }
+
+    // Default text / evaluation / chat
+    await executeSingleAiCall(config, {
+      fullSystemPrompt: `You are testing German educational task: "${task.name}". Return JSON: {"status": "task_ok", "task": "${task.id}"}`,
+      userPrompt: 'Prüfe diesen Beispielsatz: "Ich lerne jeden Tag Deutsch mit Sprachmeisterschaft."',
+      jsonMode: true,
+    });
+    const elapsed = Date.now() - startTime;
+    return {
+      success: true,
+      message: `✅ Thử tác vụ "${task.name}" thành công! Độ trễ: ${elapsed}ms.`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: `❌ Thử tác vụ "${task.name}" thất bại: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Điều phối gọi AI theo Nhóm tác vụ (Task Pool) & Fallback cùng nhóm
+ * - Tự động thử Key 1 -> Key 2 -> Key 3 trong cùng nhóm
+ * - Tự chuyển khi 429 Rate Limit, Quá tải 503 hoặc Timeout
+ * - Đặt thời gian chờ Cooldown 30s và chỉ chuyển sang model hợp lệ (Vision -> Vision)
+ */
+export async function executeTaskWithFallback({
+  taskId = 'general',
+  systemPrompt,
+  userPrompt,
+  imageBase64 = null,
+  mimeType = 'image/jpeg',
+  jsonMode = true,
+}) {
+  // 1. Lấy danh sách Key được gán vào nhóm tác vụ này
+  const pool = db.aiConfig?.getTaskPool?.(taskId) || [];
+  let candidates = pool.filter((c) => c.enabled && c.apiKey);
+
+  // Nếu chưa gán key nào riêng, dùng các key hoạt động toàn cục theo độ ưu tiên
+  if (candidates.length === 0) {
+    const allConfigs = db.aiConfig.getConfigs().filter((c) => c.enabled && c.apiKey);
+    allConfigs.sort((a, b) => (a.priority || 1) - (b.priority || 1));
+    candidates = allConfigs;
+  }
+
+  // 2. Bảo vệ nghiêm ngặt tác vụ ảnh: Tác vụ ảnh chỉ chuyển sang model hỗ trợ ảnh
+  const isVisionTask = taskId === 'ocr_image' || Boolean(imageBase64);
+  if (isVisionTask) {
+    candidates = candidates.filter((c) => c.hasVision === true);
+    if (candidates.length === 0) {
+      throw new Error(
+        'Không tìm thấy model AI nào hỗ trợ đọc ảnh (Vision) trong nhóm. Tác vụ ảnh chỉ chuyển sang model hỗ trợ ảnh!'
+      );
+    }
+  }
 
   const promptInjectionGuard = `
 [SYSTEM NOTICE: STRICT EVALUATION PROTOCOL]
@@ -181,21 +320,66 @@ Rules:
 5. If requested JSON, return pure JSON with no markdown backticks or preamble.
 `;
 
-  const fullSystemPrompt = `${promptInjectionGuard}\n\n${systemPrompt}`;
+  const fullSystemPrompt = `${promptInjectionGuard}\n\n${systemPrompt || ''}`;
 
-  for (const config of configs) {
-    if (!config.apiKey) continue;
+  let lastError = null;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const config = candidates[i];
+
+    // Kiểm tra Cooldown giãn cách
+    const cooldown = db.aiConfig?.getKeyCooldown?.(config.id);
+    if (cooldown && cooldown.until > Date.now()) {
+      const waitSec = Math.ceil((cooldown.until - Date.now()) / 1000);
+      console.warn(
+        `[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" đang trong thời gian chờ (${waitSec}s do ${cooldown.reason}). Chuyển sang key dự phòng tiếp theo...`
+      );
+      continue;
+    }
 
     try {
-      const result = await executeSingleAiCall(config, { fullSystemPrompt, userPrompt, jsonMode });
+      const result = await executeSingleAiCall(config, {
+        fullSystemPrompt,
+        userPrompt,
+        imageBase64,
+        mimeType,
+        jsonMode,
+      });
+
       if (result) return result;
     } catch (err) {
-      console.warn(`Provider ${config.provider} (${config.model}) failed: ${err.message}. Trying next fallback...`);
+      lastError = err;
+      const msg = err.message || '';
+      const isRateLimit =
+        msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate limit');
+      const isTimeoutOrOverload =
+        msg.includes('503') || msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('overloaded');
+
+      if (isRateLimit || isTimeoutOrOverload) {
+        db.aiConfig?.setKeyCooldown?.(config.id, 30000, msg);
+        console.warn(
+          `[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" quá tải/hết quota (429). Đã bật cooldown 30s. Tự động chuyển sang Key dự phòng kế tiếp trong cùng nhóm...`
+        );
+      } else {
+        console.warn(`[TaskPool: ${taskId}] Key #${i + 1} "${config.name}" thất bại: ${msg}. Thử key dự phòng cùng nhóm...`);
+      }
     }
   }
 
-  // Fallback to High-Precision Local Deterministic Engine
+  if (lastError) {
+    console.warn(`[TaskPool: ${taskId}] Tất cả các key trong nhóm đều không thể hoàn thành. Lỗi: ${lastError.message}`);
+  }
+
   return null;
+}
+
+export async function callAiWithFallback({ systemPrompt, userPrompt, jsonMode = true, taskType = 'general' }) {
+  return executeTaskWithFallback({
+    taskId: taskType,
+    systemPrompt,
+    userPrompt,
+    jsonMode,
+  });
 }
 
 /**

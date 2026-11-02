@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import { interviewTurn, interviewFeedback } from '@/lib/elio-ai';
+import { getAllExams } from '@/data/all-exams';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { StudioResult } from '@/components/ui/StudioResult';
 import {
@@ -14,17 +16,26 @@ import {
   HelpCircle,
   ArrowRight,
   RotateCcw,
+  Plus,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function InterviewStudio({ onBack }) {
   const [profile] = useState(() => db.learnerProfile.get());
+  const allExams = getAllExams();
+  const [selectedExamId, setSelectedExamId] = useState(allExams[0]?.id || 'free_mode');
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [part, setPart] = useState(1);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const chatEndRef = useRef(null);
+
+  const currentExam = allExams.find((e) => e.id === selectedExamId);
+  const speakingTasks = currentExam?.speakingTasks || (Array.isArray(currentExam?.speaking) ? currentExam.speaking : []);
+  const currentTask = speakingTasks[part - 1] || null;
 
   useEffect(() => {
     // Initial examiner turn
@@ -33,13 +44,15 @@ export function InterviewStudio({ onBack }) {
       const firstTurn = await interviewTurn({
         part,
         messages: [],
-        level: profile.target_level || 'B1',
+        level: currentExam?.level || profile.target_level || 'B1',
+        topicPrompt: currentTask?.prompt || '',
+        examTitle: currentExam?.title || '',
       });
       setMessages([{ role: 'assistant', content: firstTurn }]);
       setLoading(false);
     };
     startPart();
-  }, [part]);
+  }, [part, selectedExamId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -59,12 +72,14 @@ export function InterviewStudio({ onBack }) {
       const examinerReply = await interviewTurn({
         part,
         messages: nextMessages,
-        level: profile.target_level || 'B1',
+        level: currentExam?.level || profile.target_level || 'B1',
+        topicPrompt: currentTask?.prompt || '',
+        examTitle: currentExam?.title || '',
       });
       setMessages([...nextMessages, { role: 'assistant', content: examinerReply }]);
       db.studyLogs.recordActivity({ xp: 5, minutes: 1 });
-    } catch (err) {
-      toast.error('Lỗi kết nối giám khảo AI.');
+    } catch (e) {
+      toast.error('Lỗi kết nối AI giám khảo.');
     } finally {
       setLoading(false);
     }
@@ -104,7 +119,7 @@ export function InterviewStudio({ onBack }) {
 
   return (
     <div className="surface p-6 md:p-8 max-w-3xl mx-auto space-y-6 animate-rise">
-      <div className="flex items-center justify-between border-b border-border pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <div className="eyebrow">MÔ PHỎNG THI NÓI CHUẨN GOETHE / TELC</div>
           <h2 className="font-display text-2xl font-bold text-foreground">
@@ -132,6 +147,57 @@ export function InterviewStudio({ onBack }) {
           ))}
         </div>
       </div>
+
+      {/* Central Repository Exam Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-muted/30 border border-border rounded-sm text-xs font-mono">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <BookOpen className="w-4 h-4 text-accent shrink-0" />
+          <span className="font-bold text-foreground shrink-0">Bộ đề thi:</span>
+          <select
+            value={selectedExamId}
+            onChange={(e) => {
+              setSelectedExamId(e.target.value);
+              setFeedback(null);
+              setMessages([]);
+            }}
+            className="px-2 py-1 bg-card border border-border rounded-sm text-foreground font-mono text-xs truncate flex-1"
+          >
+            {allExams.map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.title} ({ex.provider} · {ex.level})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsImportOpen(true)}
+          className="tap px-2.5 py-1 rounded bg-accent/10 border border-accent/30 text-accent font-bold hover:bg-accent/20 flex items-center gap-1 shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>+ Import thêm đề</span>
+        </button>
+      </div>
+
+      {/* Current Speaking Task Prompt & Guidelines */}
+      {currentTask && (
+        <div className="p-4 rounded-sm border border-accent/20 bg-accent/5 space-y-2">
+          <div className="font-heading font-bold text-sm text-foreground flex items-center justify-between">
+            <span>🗣️ Đề bài: {currentTask.title}</span>
+            <span className="text-[11px] font-mono text-accent">{currentTask.teil}</span>
+          </div>
+          <p className="font-body text-xs text-foreground/90 whitespace-pre-line leading-relaxed">
+            {currentTask.prompt}
+          </p>
+          {currentTask.hints && currentTask.hints.length > 0 && (
+            <div className="text-[11px] font-body text-muted-foreground pt-1 border-t border-accent/15">
+              <strong>Gợi ý: </strong>
+              {currentTask.hints.join(' • ')}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Principle 9 Transparency Alert */}
       <div className="p-3 rounded-sm bg-muted/20 border border-border text-[11px] font-body text-muted-foreground flex items-start gap-2">
@@ -312,6 +378,13 @@ export function InterviewStudio({ onBack }) {
           </div>
         </div>
       )}
+
+      {/* Universal Import Modal */}
+      <UniversalImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultType="exam"
+      />
     </div>
   );
 }

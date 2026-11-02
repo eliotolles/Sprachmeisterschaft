@@ -26,6 +26,32 @@ export function DictationStudio({ onBack }) {
   const [sessionScores, setSessionScores] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
 
+  if (pool.length === 0) {
+    return (
+      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise">
+        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
+          <Volume2 className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="font-display text-xl font-bold text-foreground">
+            Chưa có câu chép chính tả mẫu
+          </h3>
+          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
+            Toàn bộ data mẫu đã được xóa sạch theo yêu cầu. Hãy vào mục <strong>Luyện nghe Video</strong> để luyện nghe chép chính tả theo phụ đề từng câu, hoặc import tài liệu mới.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={onBack}
+            className="tap px-4 py-2 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted"
+          >
+            ← Quay lại kỹ năng
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentItem = pool[currentIndex] || pool[0];
 
   const handleCheck = (e) => {

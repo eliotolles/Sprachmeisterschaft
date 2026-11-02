@@ -105,42 +105,66 @@ export function ListeningOverviewPage() {
                 <span className="hidden sm:inline">Khôi phục gốc</span>
               </button>
             )}
-            <button
-              onClick={() => setIsImportOpen(true)}
-              className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Import Video / Playlist</span>
-            </button>
+            {activeScopeTab === 'personal' ? (
+              <button
+                onClick={() => setIsImportOpen(true)}
+                className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
+                title="Dán link video YouTube vào kho cá nhân của bạn"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Thêm video cá nhân</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsImportOpen(true)}
+                className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
+                title="Import video YouTube vào kho chung"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAdmin ? 'Import Video vào Kho chung (Publish)' : '+ Đóng góp Video'}</span>
+              </button>
+            )}
           </div>
         }
       />
 
       {/* Scope Navigation Tabs: Kho Chung vs Video Cá Nhân */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
-        <button
-          onClick={() => setActiveScopeTab('all')}
-          className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
-            activeScopeTab === 'all'
-              ? 'bg-accent text-accent-foreground shadow-sm'
-              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Globe className="w-4 h-4" />
-          <span>Kho video chung toàn hệ thống</span>
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveScopeTab('all')}
+            className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
+              activeScopeTab === 'all'
+                ? 'bg-accent text-accent-foreground shadow-sm'
+                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            <span>Kho video chung toàn hệ thống</span>
+          </button>
 
-        <button
-          onClick={() => setActiveScopeTab('personal')}
-          className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
-            activeScopeTab === 'personal'
-              ? 'bg-accent text-accent-foreground shadow-sm'
-              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <User className="w-4 h-4" />
-          <span>Video cá nhân của tôi (My Videos)</span>
-        </button>
+          <button
+            onClick={() => setActiveScopeTab('personal')}
+            className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
+              activeScopeTab === 'personal'
+                ? 'bg-accent text-accent-foreground shadow-sm'
+                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Video cá nhân của tôi (My Videos)</span>
+          </button>
+        </div>
+
+        {activeScopeTab === 'personal' && (
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="tap px-3 py-1.5 rounded bg-accent/10 border border-accent/30 text-accent text-xs font-mono font-bold hover:bg-accent/20 flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ Bỏ video cá nhân vào đây</span>
+          </button>
+        )}
       </div>
 
       {/* Level Filter Chips */}
@@ -297,6 +321,7 @@ export function ListeningOverviewPage() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         defaultType="listening"
+        initialScope={activeScopeTab === 'personal' ? 'private' : 'public'}
         onSuccess={() => {
           setCollections(db.listening.getCollections({ level: selectedLevel }));
         }}

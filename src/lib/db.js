@@ -15,10 +15,23 @@ function loadDatabase() {
       if (!parsed.aiConfigs) parsed.aiConfigs = [];
       if (!parsed.aiTaskAssignments) parsed.aiTaskAssignments = {};
       if (!parsed.uiVoiceConfig) parsed.uiVoiceConfig = { fontFamily: 'serif', speechVoice: '', rate: 0.9, pitch: 1.0 };
-      if (!parsed.listeningCollections || parsed.listeningCollections.length === 0) parsed.listeningCollections = LISTENING_COLLECTIONS;
-      if (!parsed.listeningEpisodes || parsed.listeningEpisodes.length === 0) parsed.listeningEpisodes = LISTENING_EPISODES;
+      if (!parsed.listeningCollections) parsed.listeningCollections = [];
+      if (!parsed.listeningEpisodes) parsed.listeningEpisodes = [];
+      // Clean up legacy sample IDs if present in user's localStorage
+      if (Array.isArray(parsed.listeningCollections)) {
+        parsed.listeningCollections = parsed.listeningCollections.filter(
+          (c) => !c.id.startsWith('nicos-weg-') && c.id !== 'easy-german-street'
+        );
+      }
+      if (Array.isArray(parsed.listeningEpisodes)) {
+        parsed.listeningEpisodes = parsed.listeningEpisodes.filter(
+          (e) => !e.id.startsWith('nw-') && !e.id.startsWith('eg-')
+        );
+      }
       if (!parsed.universalImports) parsed.universalImports = [];
       if (!parsed.studyPlans) parsed.studyPlans = {};
+      if (!parsed.aiTaskPools) parsed.aiTaskPools = {};
+      if (!parsed.aiCooldowns) parsed.aiCooldowns = {};
       if (!parsed.deletedGrammarIds) parsed.deletedGrammarIds = [];
       if (!parsed.grammarOverrides) parsed.grammarOverrides = {};
       if (!parsed.deletedExamIds) parsed.deletedExamIds = [];
@@ -108,8 +121,8 @@ function loadDatabase() {
       rate: 0.9,
       pitch: 1.0,
     },
-    listeningCollections: LISTENING_COLLECTIONS,
-    listeningEpisodes: LISTENING_EPISODES,
+    listeningCollections: [],
+    listeningEpisodes: [],
     universalImports: [],
     vocabularyCards: [],
     studyLogs: [
@@ -589,8 +602,10 @@ export const db = {
     },
 
     isAdmin: () => {
-      if (typeof window !== 'undefined' && localStorage.getItem('sprach_master_admin_override') === 'true') {
-        return true;
+      if (typeof window !== 'undefined') {
+        if (localStorage.getItem('sprach_master_admin_override') === 'true') return true;
+        if (localStorage.getItem('sprach_is_admin') === 'true') return true;
+        if (window.location.hash.startsWith('#/admin') || window.location.pathname.startsWith('/admin')) return true;
       }
       const u = db.auth.getUser();
       if (!u) return true; // Default to admin mode for site owner/developer
@@ -599,15 +614,67 @@ export const db = {
         u.role === 'admin' ||
         email.includes('admin') ||
         email.includes('dat') ||
-        email.includes('elio') ||
-        (typeof window !== 'undefined' && localStorage.getItem('sprach_is_admin') === 'true')
+        email.includes('elio')
       );
+    },
+
+    toggleAdminMode: () => {
+      if (typeof window === 'undefined') return false;
+      const current = db.auth.isAdmin();
+      const next = !current;
+      localStorage.setItem('sprach_master_admin_override', next ? 'true' : 'false');
+      localStorage.setItem('sprach_is_admin', next ? 'true' : 'false');
+      const u = db.auth.getUser();
+      if (u) {
+        u.role = next ? 'admin' : 'user';
+        localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+      }
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      return next;
+    },
+
+    loginAsAdmin: () => {
+      const cleanEmail = 'admin@elioeinfach.de';
+      let user = (state.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (!user) {
+        user = {
+          id: 'usr_super_admin',
+          email: cleanEmail,
+          name: 'Super Admin Elio',
+          provider: 'system',
+          role: 'admin',
+          is_verified: true,
+          onboarding_completed: true,
+          study_plan: null,
+          created_at: new Date().toISOString(),
+        };
+        if (!state.users) state.users = [];
+        state.users.push(user);
+        saveDatabase(state);
+      } else {
+        user.role = 'admin';
+        saveDatabase(state);
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sprach_master_admin_override', 'true');
+        localStorage.setItem('sprach_is_admin', 'true');
+      }
+      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      window.dispatchEvent(new CustomEvent('sprach_auth_change'));
+      return user;
     },
 
     setRole: (role) => {
       const u = db.auth.getUser();
       if (u) {
         u.role = role;
+        if (role === 'admin') {
+          localStorage.setItem('sprach_master_admin_override', 'true');
+          localStorage.setItem('sprach_is_admin', 'true');
+        } else {
+          localStorage.removeItem('sprach_master_admin_override');
+          localStorage.removeItem('sprach_is_admin');
+        }
         localStorage.setItem(AUTH_KEY, JSON.stringify(u));
         window.dispatchEvent(new CustomEvent('sprach_auth_change'));
       }
@@ -803,6 +870,63 @@ export const db = {
       if (!state.aiTaskAssignments) state.aiTaskAssignments = {};
       state.aiTaskAssignments[taskId] = { provider: providerId, model };
       saveDatabase(state);
+    },
+    getTaskPool: (taskId) => {
+      const configIds = state.aiTaskPools?.[taskId] || [];
+      const configs = state.aiConfigs || [];
+      const pooled = configIds
+        .map((cid) => configs.find((c) => c.id === cid))
+        .filter(Boolean);
+
+      if (pooled.length === 0) {
+        const assigned = state.aiTaskAssignments?.[taskId];
+        if (assigned) {
+          const match = configs.find(
+            (c) => c.provider === assigned.provider && c.model === assigned.model
+          );
+          if (match) return [match];
+        }
+        return configs.slice(0, 2);
+      }
+      return pooled;
+    },
+    addToTaskPool: (taskId, configId) => {
+      if (!state.aiTaskPools) state.aiTaskPools = {};
+      if (!state.aiTaskPools[taskId]) state.aiTaskPools[taskId] = [];
+      if (!state.aiTaskPools[taskId].includes(configId)) {
+        state.aiTaskPools[taskId].push(configId);
+        saveDatabase(state);
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      }
+      return state.aiTaskPools[taskId];
+    },
+    removeFromTaskPool: (taskId, configId) => {
+      if (!state.aiTaskPools || !state.aiTaskPools[taskId]) return;
+      state.aiTaskPools[taskId] = state.aiTaskPools[taskId].filter((id) => id !== configId);
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      return state.aiTaskPools[taskId];
+    },
+    setKeyCooldown: (configId, durationMs = 30000, reason = 'Rate limit / Quá tải') => {
+      if (!state.aiCooldowns) state.aiCooldowns = {};
+      state.aiCooldowns[configId] = {
+        until: Date.now() + durationMs,
+        reason,
+      };
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+    },
+    getKeyCooldown: (configId) => {
+      const cd = state.aiCooldowns?.[configId];
+      if (!cd) return null;
+      if (Date.now() > cd.until) {
+        delete state.aiCooldowns[configId];
+        return null;
+      }
+      return {
+        remainingSec: Math.ceil((cd.until - Date.now()) / 1000),
+        reason: cd.reason,
+      };
     },
   },
 

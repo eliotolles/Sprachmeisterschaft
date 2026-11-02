@@ -155,12 +155,15 @@ export async function gradeWriting({ task = '', text = '', level = 'B1' }) {
 /**
  * 3. interviewTurn: Giám khảo Sprechen nói tiếng Đức đúng trình độ, <=60 từ, chỉ đặt câu hỏi tiếp nối
  */
-export async function interviewTurn({ part = 1, messages = [], level = 'B1' }) {
+export async function interviewTurn({ part = 1, messages = [], level = 'B1', topicPrompt = '', examTitle = '' }) {
   await new Promise((r) => setTimeout(r, 700));
 
   const turnCount = messages.filter((m) => m.role === 'user').length;
 
   if (turnCount === 0) {
+    if (topicPrompt) {
+      return `Guten Tag! Willkommen zur mündlichen Prüfung ${examTitle ? `(${examTitle}) ` : ''}— Teil ${part}. Ihre Aufgabe lautet: „${topicPrompt.slice(0, 100)}...“ Bitte beginnen Sie mit Ihren Ausführungen!`;
+    }
     if (part === 1) {
       return `Guten Tag! Willkommen zur mündlichen Prüfung. Bitte stellen Sie sich kurz vor: Woher kommen Sie und seit wann lernen Sie Deutsch?`;
     } else if (part === 2) {

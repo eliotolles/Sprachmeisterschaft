@@ -27,6 +27,14 @@ export function LoginPage() {
     }, 300);
   };
 
+  const handleAdminLogin = () => {
+    setLoading(true);
+    setTimeout(() => {
+      db.auth.loginAsAdmin();
+      navigate('/admin');
+    }, 300);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background relative overflow-hidden grain">
       {/* Background classical ornament circles */}
@@ -75,6 +83,15 @@ export function LoginPage() {
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Dùng thử tức thì với Tài khoản Khách (Demo)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAdminLogin}
+            className="tap w-full py-2.5 px-3 rounded-sm border border-amber-600/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-colors"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+            <span>Đăng nhập Quản trị viên (Super Admin)</span>
           </button>
         </div>
 

@@ -251,8 +251,31 @@ export function AppShell({ children }) {
               </div>
               {!effectiveCollapsed && (
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-foreground truncate">
-                    {profile.display_name || user?.name || 'Học viên'}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-foreground truncate">
+                      {profile.display_name || user?.name || 'Học viên'}
+                    </span>
+                    {db.auth.isAdmin() ? (
+                      <button
+                        onClick={() => {
+                          db.auth.toggleAdminMode();
+                        }}
+                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold hover:bg-amber-500/25 shrink-0"
+                        title="Bấm để chuyển sang vai trò Học viên"
+                      >
+                        👑 Admin
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          db.auth.toggleAdminMode();
+                        }}
+                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-muted border border-border text-muted-foreground hover:text-foreground shrink-0"
+                        title="Bấm để bật chế độ Quản trị viên (Super Admin)"
+                      >
+                        🎓 Học viên
+                      </button>
+                    )}
                   </div>
                   <div className="text-[10px] font-mono text-muted-foreground truncate">
                     {profile.target_level || 'B1'} • D-

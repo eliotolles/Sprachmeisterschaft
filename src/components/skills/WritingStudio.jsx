@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { evaluateWritingFull } from '@/lib/ai-evaluator';
 import { SKILL_POOLS } from '@/data/skills';
+import { getAllExams } from '@/data/all-exams';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import {
   PenTool,
   Sparkles,
@@ -17,18 +19,80 @@ import {
   FileCheck,
   ChevronDown,
   ChevronUp,
+  Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function WritingStudio({ onBack }) {
-  const tasks = SKILL_POOLS.writing_tasks || [];
-  const [selectedTaskIndex, setSelectedTaskIndex] = useState(1); // Default B1 email
+  const [isImportOpen, setIsImportOpen] = useState(false);
+
+  const defaultCustomTask = {
+    id: 'custom_writing',
+    title: 'Luyện viết theo chủ đề tùy chọn',
+    level: 'B1',
+    prompt: 'Nhập nội dung bài viết, email hoặc thư từ tiếng Đức bạn muốn luyện tập vào khung bên dưới. Hệ thống AI sẽ chấm điểm 4 tiêu chí CEFR và phân tích chi tiết từng lỗi sai.',
+    hints: ['Diễn đạt rõ ràng, mạch lạc', 'Chú ý cấu trúc câu và vị trí động từ', 'Sử dụng Redemittel phù hợp'],
+  };
+
+  // Trích xuất toàn bộ các bài viết từ Kho đề dùng chung (Exams & Universal)
+  const allExams = getAllExams();
+  const examWritingTasks = allExams.flatMap((exam) => {
+    let tasksList = [];
+    if (Array.isArray(exam.writingTasks) && exam.writingTasks.length > 0) {
+      tasksList = exam.writingTasks;
+    } else if (Array.isArray(exam.writing?.tasks) && exam.writing.tasks.length > 0) {
+      tasksList = exam.writing.tasks;
+    } else if (exam.writing?.task) {
+      tasksList = [
+        {
+          teil: 'Schreiben',
+          title: 'Bài thi viết',
+          prompt: exam.writing.task,
+          hints: exam.writing.hints || [],
+          wordCount: exam.level === 'B2' ? 100 : 80,
+        },
+      ];
+    }
+    return tasksList.map((t, idx) => ({
+      id: `${exam.id}-schreiben-${idx}`,
+      examId: exam.id,
+      examTitle: exam.title,
+      teil: t.teil || `Teil ${idx + 1}`,
+      title: `[${exam.title}] ${t.teil || `Teil ${idx + 1}`}: ${t.title || 'Bài viết'}`,
+      level: exam.level || 'B1',
+      provider: exam.provider || 'Goethe',
+      prompt: t.prompt,
+      hints: t.hints || [],
+      targetLength: t.wordCount || 80,
+    }));
+  });
+
+  let universalTasks = [];
+  try {
+    universalTasks = db.universal.findMany({ type: 'writing' }).map((u) => ({
+      id: u.id,
+      title: u.title,
+      level: u.level || 'B1',
+      prompt: u.data?.rawText || u.title,
+      hints: ['Viết câu mạch lạc', 'Đúng ngữ pháp CEFR'],
+      targetLength: 80,
+    }));
+  } catch (e) {}
+
+  const combinedTasks = [
+    ...examWritingTasks,
+    ...universalTasks,
+    ...(SKILL_POOLS.writing_tasks || []),
+  ];
+
+  const tasks = combinedTasks.length > 0 ? combinedTasks : [defaultCustomTask];
+  const [selectedTaskIndex, setSelectedTaskIndex] = useState(0);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [activeSectionTab, setActiveSectionTab] = useState('overview'); // 'overview' | 'sentences' | 'errors' | 'rewrite' | 'model'
 
-  const task = tasks[selectedTaskIndex] || tasks[0];
+  const task = tasks[selectedTaskIndex] || tasks[0] || defaultCustomTask;
   const words = text.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
 
@@ -102,7 +166,7 @@ export function WritingStudio({ onBack }) {
         </div>
       </div>
 
-      {/* Task selector */}
+      {/* Task selector & Import action */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         {tasks.map((t, idx) => (
           <button
@@ -121,6 +185,15 @@ export function WritingStudio({ onBack }) {
             {t.title}
           </button>
         ))}
+
+        <button
+          type="button"
+          onClick={() => setIsImportOpen(true)}
+          className="tap px-3 py-1.5 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/15 text-accent text-xs font-mono font-bold whitespace-nowrap flex items-center gap-1 shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>+ Import thêm đề thi</span>
+        </button>
       </div>
 
       {/* Task Prompt Card */}
@@ -598,6 +671,13 @@ export function WritingStudio({ onBack }) {
           </div>
         </div>
       )}
+
+      {/* Universal Import Modal */}
+      <UniversalImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultType="exam"
+      />
     </div>
   );
 }

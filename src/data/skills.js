@@ -44,7 +44,7 @@ export const SKILLS = [
     "de": "Grammatik",
     "vi": "Xưởng ngữ pháp",
     "icon": "FileText",
-    "tagline": "Hệ thống 100 chủ đề ngữ pháp từ cơ bản A1 đến nâng cao C2.",
+    "tagline": "Hệ thống chủ đề ngữ pháp từ cơ bản A1 đến nâng cao C2.",
     "desc": "Học quy tắc trực quan, ví dụ song ngữ Đức-Việt và làm bài tập chấm điểm ngay."
   },
   {
@@ -64,126 +64,10 @@ export const SKILLS = [
     "desc": "Tích lũy combo, cộng điểm kinh nghiệm XP và khắc sâu mạo từ vào trí nhớ dài hạn."
   }
 ];
+
 export const SKILL_POOLS = {
-  "dictation": [
-    {
-      "de": "Guten Tag, wie kann ich Ihnen heute helfen?",
-      "vi": "Xin chào, hôm nay tôi có thể giúp gì cho bạn?",
-      "level": "A1"
-    },
-    {
-      "de": "Ich möchte mich für den B1-Deutschkurs anmelden.",
-      "vi": "Tôi muốn đăng ký khóa học tiếng Đức B1.",
-      "level": "A2"
-    },
-    {
-      "de": "Der Zug nach Frankfurt hat heute leider fünfzehn Minuten Verspätung.",
-      "vi": "Tàu đi Frankfurt hôm nay tiếc là bị trễ mười lăm phút.",
-      "level": "B1"
-    },
-    {
-      "de": "Pünktlichkeit und Zuverlässigkeit spielen im deutschen Berufsleben eine zentrale Rolle.",
-      "vi": "Sự đúng giờ và đáng tin cậy đóng vai trò chủ chốt trong công việc tại Đức.",
-      "level": "B1"
-    },
-    {
-      "de": "Nachhaltige Entwicklungen erfordern ein Umdenken in unserer gesamten Gesellschaft.",
-      "vi": "Sự phát triển bền vững đòi hỏi một sự thay đổi tư duy trong toàn xã hội chúng ta.",
-      "level": "B2"
-    }
-  ],
-  "shadowing": [
-    {
-      "de": "Es freut mich sehr, Sie persönlich kennenzulernen.",
-      "vi": "Tôi rất vui mừng được làm quen trực tiếp với bạn.",
-      "level": "A1"
-    },
-    {
-      "de": "Könnten Sie mir bitte sagen, wo der nächste Bahnhof liegt?",
-      "vi": "Bạn có thể vui lòng chỉ giúp tôi nhà ga gần nhất nằm ở đâu không?",
-      "level": "A2"
-    },
-    {
-      "de": "Meiner Meinung nach ist die Vereinbarkeit von Familie und Beruf besonders wichtig.",
-      "vi": "Theo ý kiến của tôi, sự cân bằng giữa gia đình và công việc là đặc biệt quan trọng.",
-      "level": "B1"
-    },
-    {
-      "de": "Obwohl die Aufgabe anspruchsvoll war, haben wir das Projekt erfolgreich abgeschlossen.",
-      "vi": "Mặc dù nhiệm vụ đầy thách thức, chúng tôi đã hoàn thành dự án thành công.",
-      "level": "B2"
-    }
-  ],
-  "pronunciation_words": [
-    {
-      "word": "das Mädchen",
-      "ipa": "/ˈmɛːtçən/",
-      "meaning": "cô bé",
-      "tip": "Âm /ç/ phát âm mềm như 'ich', môi hơi bè ra.",
-      "level": "A1"
-    },
-    {
-      "word": "die Übung",
-      "ipa": "/ˈyːbʊŋ/",
-      "meaning": "bài tập",
-      "tip": "Chu môi tròn như đọc 'u' nhưng phát âm 'i'.",
-      "level": "A1"
-    },
-    {
-      "word": "schön",
-      "ipa": "/ʃøːn/",
-      "meaning": "xinh đẹp",
-      "tip": "Môi tròn như đọc 'o' nhưng lưỡi phát âm 'ê'.",
-      "level": "A1"
-    },
-    {
-      "word": "der Zweck",
-      "ipa": "/tsvɛk/",
-      "meaning": "mục đích",
-      "tip": "Âm 'z' đọc dứt khoát như 'ts' không rung cổ.",
-      "level": "B1"
-    },
-    {
-      "word": "die Aussprache",
-      "ipa": "/ˈaʊ̯sˌʃpʁaːχə/",
-      "meaning": "sự phát âm",
-      "tip": "Âm 'sp' đọc là 'shp', âm 'ch' sau 'a' đọc khè sâu ở cổ họng.",
-      "level": "B1"
-    }
-  ],
-  "writing_tasks": [
-    {
-      "id": "w_a1",
-      "level": "A1",
-      "title": "Lời nhắn cho bạn bè về buổi học",
-      "prompt": "Bạn không thể đến lớp tiếng Đức hôm nay vì bị cảm cúm. Hãy viết tin nhắn ngắn (ca. 30 từ) cho bạn cùng lớp.",
-      "hints": [
-        "Nói lý do bị ốm",
-        "Hỏi bài tập về nhà",
-        "Hẹn gặp vào buổi sau"
-      ]
-    },
-    {
-      "id": "w_b1_email",
-      "level": "B1",
-      "title": "Thư xin nghỉ phép gửi cấp trên",
-      "prompt": "Viết email (khoảng 80 từ) gửi sếp của bạn (ông Schmidt) xin nghỉ phép 3 ngày vào tuần tới vì có việc gia đình quan trọng.",
-      "hints": [
-        "Lý do xin nghỉ phép",
-        "Thời gian cụ thể",
-        "Bàn giao công việc cho đồng nghiệp trong thời gian vắng mặt"
-      ]
-    },
-    {
-      "id": "w_b1_opinion",
-      "level": "B1",
-      "title": "Ý kiến diễn đàn: Học online hay học trực tiếp?",
-      "prompt": "Viết một bài đóng góp ý kiến (khoảng 80 từ) cho diễn đàn học tập về chủ đề: 'Nên học tiếng Đức trực tuyến hay đến lớp truyền thống?'",
-      "hints": [
-        "Nêu trải nghiệm cá nhân",
-        "Ưu điểm và nhược điểm của học trực tuyến",
-        "Đưa ra lời khuyên"
-      ]
-    }
-  ]
+  "dictation": [],
+  "shadowing": [],
+  "pronunciation_words": [],
+  "writing_tasks": []
 };

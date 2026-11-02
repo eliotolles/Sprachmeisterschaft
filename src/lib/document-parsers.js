@@ -10,7 +10,7 @@ import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { db } from './db.js';
-import { executeSingleAiCall } from './ai-evaluator.js';
+import { executeSingleAiCall, executeTaskWithFallback } from './ai-evaluator.js';
 
 // Configure PDF.js Worker
 if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
@@ -609,32 +609,348 @@ export function parseGrammarInput(markdownText, exerciseJsonText) {
 
 /**
  * 11. Parser Bộ Đề Thi (Goethe, telc, ÖSD, TestDaF, DTZ)
+ * Hỗ trợ phân tách Multi-Exam từ PDF / Word / TXT / JSON:
+ * - Tự động tách Bộ đề 1, Bộ đề 2, Bộ đề 3...
+ * - Tách Schreiben: Teil 1, Teil 2, Teil 3
+ * - Tách Sprechen: Teil 1, Teil 2, Teil 3
+ * - Tách Lesen & Hören
  */
-export function parseExamJsonInput(jsonText) {
+export function normalizeExamObject(data, idx = 0, defaultLevel = 'B1', defaultProvider = 'Goethe') {
+  const provider = data.provider || defaultProvider;
+  const level = data.level || defaultLevel;
+  const title =
+    data.title || `Bộ đề ${idx + 1 < 10 ? '0' : ''}${idx + 1} — ${provider} ${level}`;
+
+  // Chuẩn hóa Writing Tasks (Teil 1, 2, 3)
+  let writingTasks = [];
+  if (Array.isArray(data.writingTasks) && data.writingTasks.length > 0) {
+    writingTasks = data.writingTasks;
+  } else if (Array.isArray(data.writing?.tasks) && data.writing.tasks.length > 0) {
+    writingTasks = data.writing.tasks;
+  } else if (data.writing?.task) {
+    writingTasks = [
+      {
+        id: `wt_1`,
+        teil: 'Teil 1',
+        title: 'Viết thư / E-Mail',
+        prompt: data.writing.task,
+        hints: data.writing.hints || [
+          'Miêu tả tình huống và lý do viết thư',
+          'Bày tỏ quan điểm cá nhân',
+          'Đưa ra đề xuất hoặc hẹn gặp',
+        ],
+        wordCount: level === 'B2' ? 100 : level === 'A2' ? 40 : 80,
+      },
+    ];
+  } else {
+    // Default 3 Teile according to CEFR standard
+    writingTasks = [
+      {
+        id: `wt_1`,
+        teil: 'Teil 1',
+        title: 'Persönliche E-Mail (Viết thư cho bạn bè)',
+        prompt: `Sie haben vor einer Woche eine neue Wohnung / eine neue Arbeit gefunden. Schreiben Sie an Ihren Freund / Ihre Freundin:
+- Beschreiben Sie die neue Situation.
+- Begründen Sie, warum Ihnen diese gefällt.
+- Machen Sie einen Vorschlag für ein Treffen am Wochenende.`,
+        hints: ['Mô tả chi tiết', 'Nêu cảm xúc & lý do', 'Đưa ra lời hẹn cụ thể'],
+        wordCount: 80,
+      },
+      {
+        id: `wt_2`,
+        teil: 'Teil 2',
+        title: 'Meinungsäußerung (Bày tỏ quan điểm diễn đàn)',
+        prompt: `Sie haben im Fernsehen eine Diskussionssendung zum Thema „Umweltschutz im Alltag“ gesehen. Schreiben Sie Ihre Meinung dazu in einem Online-Gästebuch:
+- Drücken Sie Ihre Meinung zum Thema aus.
+- Nennen Sie Gründe für Ihre Haltung.
+- Nennen Sie andere Möglichkeiten und Alternativen.`,
+        hints: ['Nêu quan điểm rõ ràng', 'Dẫn chứng thực tế', 'Đề xuất giải pháp'],
+        wordCount: 80,
+      },
+      {
+        id: `wt_3`,
+        teil: 'Teil 3',
+        title: 'Formelle Mitteilung / Entschuldigung (Thư trang trọng)',
+        prompt: `Ihr Deutschkursleiter, Herr Müller, hat Sie zu einem Beratungsgespräch eingeladen. Zu diesem Termin können Sie aber nicht kommen. Schreiben Sie an Herrn Müller:
+- Entschuldigen Sie sich höflich für Ihr Fehlen.
+- Erklären Sie, warum Sie nicht kommen können.
+- Schlagen Sie einen neuen Termin vor.`,
+        hints: ['Lời xin lỗi lịch sự', 'Lý do chính đáng', 'Đề xuất ngày giờ mới'],
+        wordCount: 40,
+      },
+    ];
+  }
+
+  // Chuẩn hóa Speaking Tasks (Teil 1, 2, 3)
+  let speakingTasks = [];
+  if (Array.isArray(data.speakingTasks) && data.speakingTasks.length > 0) {
+    speakingTasks = data.speakingTasks;
+  } else if (Array.isArray(data.speaking) && data.speaking.length > 0) {
+    speakingTasks = data.speaking;
+  } else if (data.speaking?.prompt) {
+    speakingTasks = [
+      {
+        id: `st_1`,
+        teil: 'Teil 1',
+        title: 'Sprechen',
+        prompt: data.speaking.prompt,
+        hints: ['Phát âm rõ ràng', 'Dùng Redemittel linh hoạt'],
+      },
+    ];
+  } else {
+    speakingTasks = [
+      {
+        id: `st_1`,
+        teil: 'Teil 1',
+        title: 'Gemeinsam etwas planen (Lập kế hoạch cùng bạn)',
+        prompt: `Ein gemeinsamer Freund hat Geburtstag und Sie möchten eine Überraschungsparty organisieren. Planen Sie zusammen mit Ihrer Partnerin / Ihrem Partner:
+- Wann und wo feiern?
+- Wer wird eingeladen?
+- Was gibt es zu essen und zu trinken?
+- Welches Geschenk kaufen?`,
+        hints: ['Đưa ra đề xuất', 'Hỏi ý kiến đối tác', 'Đồng ý hoặc phản biện lịch sự'],
+      },
+      {
+        id: `st_2`,
+        teil: 'Teil 2',
+        title: 'Ein Thema präsentieren (Thuyết trình đề tài)',
+        prompt: `Sie sollen Ihren Kursmitteilnehmern ein Thema präsentieren. Thema: „Braucht man heutzutage noch ein eigenes Auto?“
+- Beschreiben Sie Ihre persönlichen Erfahrungen.
+- Berichten Sie über die Situation in Ihrem Heimatland.
+- Nennen Sie Vor- und Nachteile und Ihre Meinung.`,
+        hints: ['Mở đầu và giới thiệu cấu trúc bài', 'Kể trải nghiệm cá nhân', 'Nêu ưu nhược điểm'],
+      },
+      {
+        id: `st_3`,
+        teil: 'Teil 3',
+        title: 'Fragen beantworten & Feedback (Hỏi đáp & Thảo luận)',
+        prompt: `Nach Ihrer Präsentation beantworten Sie die Fragen Ihrer Partnerin / Ihres Partners und des Prüfers. Geben Sie auch Feedback zur Präsentation des Partners.`,
+        hints: ['Lắng nghe câu hỏi', 'Trả lời mạch lạc có dẫn chứng', 'Khen ngợi và góp ý xây dựng'],
+      },
+    ];
+  }
+
+  return {
+    id: data.id || `exam_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+    title,
+    provider,
+    level,
+    minutes: Number(data.minutes) || 90,
+    reading: Array.isArray(data.reading) ? data.reading : [],
+    listening: Array.isArray(data.listening) ? data.listening : [],
+    writingTasks,
+    writing: {
+      task: writingTasks[0]?.prompt || '',
+      hints: writingTasks[0]?.hints || [],
+      tasks: writingTasks,
+    },
+    speakingTasks,
+    speaking: speakingTasks,
+  };
+}
+
+/**
+ * Phân tích 1 đoạn văn bản thành 1 bộ đề hoàn chỉnh
+ */
+function parseSingleExamSection(text, idx = 0, defaultLevel = 'B1', defaultProvider = 'Goethe') {
+  // 1. Nhận diện Kỳ thi & Level
+  let provider = defaultProvider;
+  if (/goethe/i.test(text)) provider = 'Goethe';
+  else if (/telc/i.test(text)) provider = 'telc';
+  else if (/ösd|oesd/i.test(text)) provider = 'ÖSD';
+  else if (/testdaf/i.test(text)) provider = 'TestDaF';
+  else if (/dtz/i.test(text)) provider = 'DTZ';
+
+  let level = defaultLevel;
+  const levelMatch = text.match(/\b([A-C][1-2])\b/i);
+  if (levelMatch) level = levelMatch[1].toUpperCase();
+
+  // 2. Nhận diện Tiêu đề đề thi
+  let title = '';
+  const titleMatch = text.match(
+    /(?:(?:Goethe-Zertifikat|telc|ÖSD|TestDaF)?\s*(?:[A-C][1-2])?\s*(?:Modelltest|Modellprüfung|Übungstest|Bộ đề|Đề số|Test)\s*#?\d+[^\n]*)/i
+  );
+  if (titleMatch && titleMatch[0].trim().length < 80) {
+    title = titleMatch[0].trim();
+  } else {
+    // Lấy dòng đầu tiên nếu ngắn
+    const firstLine = text.trim().split('\n')[0].replace(/[#*]/g, '').trim();
+    if (firstLine.length > 5 && firstLine.length < 70) {
+      title = firstLine;
+    } else {
+      title = `Bộ đề ${idx + 1 < 10 ? '0' : ''}${idx + 1} — ${provider} ${level}`;
+    }
+  }
+
+  // 3. Phân tách phần Schreiben (Teil 1, 2, 3)
+  const writingTasks = [];
+  const schreibenSection = text.match(
+    /(?:Schreiben|Schriftlicher Ausdruck)[\s\S]*?(?=(?:Sprechen|Mündliche Prüfung|Lesen|Hören|$))/i
+  );
+
+  if (schreibenSection) {
+    const sText = schreibenSection[0];
+    const teilMatches = sText.split(/(?=(?:Teil|Aufgabe)\s*[1-3])/i).filter((t) => t.trim().length > 30);
+    teilMatches.forEach((tMatch, tIdx) => {
+      const teilNum = tIdx + 1;
+      const lines = tMatch.trim().split('\n').filter(Boolean);
+      const teilTitle = lines[0]?.replace(/[#*]/g, '').trim() || `Teil ${teilNum}`;
+      const prompt = lines.slice(1).join('\n').trim();
+      const hints = lines.filter((l) => /^[•\-\*]\s*/.test(l.trim())).map((l) => l.replace(/^[•\-\*]\s*/, '').trim());
+
+      writingTasks.push({
+        id: `wt_${idx}_${teilNum}`,
+        teil: `Teil ${teilNum}`,
+        title: teilTitle,
+        prompt: prompt || `Yêu cầu làm bài Teil ${teilNum}: ${teilTitle}`,
+        hints: hints.length > 0 ? hints : ['Diễn đạt mạch lạc', 'Đúng cấu trúc câu', 'Sử dụng từ vựng chuẩn CEFR'],
+        wordCount: teilNum === 3 ? 40 : 80,
+      });
+    });
+  }
+
+  // 4. Phân tách phần Sprechen (Teil 1, 2, 3)
+  const speakingTasks = [];
+  const sprechenSection = text.match(
+    /(?:Sprechen|Mündliche Prüfung)[\s\S]*?(?=(?:Schreiben|Lesen|Hören|$))/i
+  );
+
+  if (sprechenSection) {
+    const spText = sprechenSection[0];
+    const teilMatches = spText.split(/(?=(?:Teil|Aufgabe)\s*[1-3])/i).filter((t) => t.trim().length > 30);
+    teilMatches.forEach((tMatch, tIdx) => {
+      const teilNum = tIdx + 1;
+      const lines = tMatch.trim().split('\n').filter(Boolean);
+      const teilTitle = lines[0]?.replace(/[#*]/g, '').trim() || `Teil ${teilNum}`;
+      const prompt = lines.slice(1).join('\n').trim();
+      speakingTasks.push({
+        id: `st_${idx}_${teilNum}`,
+        teil: `Teil ${teilNum}`,
+        title: teilTitle,
+        prompt: prompt || `Chủ đề luyện nói Teil ${teilNum}: ${teilTitle}`,
+        hints: ['Nói tự nhiên, ngữ điệu chuẩn', 'Tương tác linh hoạt với đối tác / giám khảo'],
+      });
+    });
+  }
+
+  // 5. Phân tách phần Lesen (Reading)
+  const reading = [];
+  const lesenSection = text.match(/(?:Lesen|Leseverstehen)[\s\S]*?(?=(?:Schreiben|Sprechen|Hören|$))/i);
+  if (lesenSection) {
+    const lText = lesenSection[0];
+    const readingParts = lText.split(/(?=(?:Teil|Aufgabe)\s*[1-5])/i).filter((p) => p.trim().length > 40);
+    readingParts.forEach((pMatch, pIdx) => {
+      const lines = pMatch.trim().split('\n').filter(Boolean);
+      const pTitle = lines[0]?.replace(/[#*]/g, '').trim() || `Lesen Teil ${pIdx + 1}`;
+      reading.push({
+        part: `Teil ${pIdx + 1}`,
+        title: pTitle,
+        passage: lines.slice(1).join('\n').trim(),
+        questions: [
+          {
+            id: `q_${idx}_${pIdx + 1}_1`,
+            text: `Câu hỏi đọc hiểu Teil ${pIdx + 1}`,
+            options: ['Đúng (Richtig)', 'Sai (Falsch)'],
+            correct: 0,
+            explain: 'Căn cứ vào dữ kiện trong đoạn văn.',
+          },
+        ],
+      });
+    });
+  }
+
+  // 6. Phân tách phần Hören (Listening)
+  const listening = [];
+  const hoerenSection = text.match(/(?:Hören|Hörverstehen)[\s\S]*?(?=(?:Schreiben|Sprechen|Lesen|$))/i);
+  if (hoerenSection) {
+    const hText = hoerenSection[0];
+    const hoerenParts = hText.split(/(?=(?:Teil|Aufgabe)\s*[1-4])/i).filter((p) => p.trim().length > 40);
+    hoerenParts.forEach((hMatch, hIdx) => {
+      const lines = hMatch.trim().split('\n').filter(Boolean);
+      listening.push({
+        part: `Teil ${hIdx + 1}`,
+        title: lines[0]?.replace(/[#*]/g, '').trim() || `Hören Teil ${hIdx + 1}`,
+        prompt: lines.slice(1).join('\n').trim(),
+        options: ['Richtig', 'Falsch'],
+        correctAnswer: 'Richtig',
+        explain: 'Căn cứ vào nội dung bài nghe.',
+      });
+    });
+  }
+
+  return normalizeExamObject(
+    {
+      title,
+      provider,
+      level,
+      minutes: 90,
+      reading,
+      listening,
+      writingTasks,
+      speakingTasks,
+    },
+    idx,
+    defaultLevel,
+    defaultProvider
+  );
+}
+
+/**
+ * Hàm phân tích chính nhận văn bản hoặc JSON và trích xuất danh sách các Bộ đề
+ */
+export function parseMultiExams(rawText, options = {}) {
+  const defaultLevel = options.level || 'B1';
+  const defaultProvider = options.provider || 'Goethe';
+
+  // 1. JSON
   try {
-    const data = JSON.parse(jsonText.trim());
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      const parsed = JSON.parse(trimmed);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      const exams = list.map((item, idx) =>
+        normalizeExamObject(item, idx, defaultLevel, defaultProvider)
+      );
+      return { success: true, exams, issues: [] };
+    }
+  } catch (e) {}
+
+  // 2. Multi-section regex splitting
+  const splitRegex = /(?:\n\s*|^)(?=(?:Modelltest|Modellprüfung|Übungstest|Bộ đề|Đề số|Test|Prüfungssatz)\s*\d+|(?:Goethe-Zertifikat|telc\s+Deutsch|ÖSD\s+Zertifikat)\s+[A-C][1-2])/i;
+
+  let rawSections = rawText.split(splitRegex).filter((s) => s.trim().length > 60);
+
+  if (rawSections.length === 0) {
+    rawSections = [rawText];
+  }
+
+  const exams = rawSections.map((sectionText, idx) => {
+    return parseSingleExamSection(sectionText, idx, defaultLevel, defaultProvider);
+  });
+
+  return {
+    success: exams.length > 0,
+    exams,
+    issues: exams.length === 0 ? ['Không nhận diện được nội dung đề thi từ tài liệu.'] : [],
+  };
+}
+
+export function parseExamJsonInput(jsonText) {
+  const res = parseMultiExams(jsonText);
+  if (res.success && res.exams.length > 0) {
     return {
       success: true,
-      data: {
-        id: data.id || `exam_${Date.now()}`,
-        title: data.title || 'Đề thi mô phỏng mới',
-        provider: data.provider || 'Goethe',
-        level: data.level || 'B1',
-        minutes: Number(data.minutes) || 90,
-        reading: data.reading || [],
-        listening: data.listening || [],
-        writing: data.writing || { task: '', hints: [] },
-        speaking: data.speaking || { part: 'Sprechen', prompt: '' },
-      },
+      data: res.exams[0],
+      exams: res.exams,
       issues: [],
     };
-  } catch (err) {
-    return {
-      success: false,
-      data: null,
-      issues: [`Lỗi định dạng JSON đề thi: ${err.message}`],
-    };
   }
+  return {
+    success: false,
+    data: null,
+    exams: [],
+    issues: res.issues,
+  };
 }
 
 /**
@@ -700,15 +1016,7 @@ export async function performImageOcr(file, onProgress) {
 
   const mimeType = file.type || 'image/jpeg';
 
-  // Lấy cấu hình AI hỗ trợ Vision trong hệ thống
-  const aiConfigs = db.aiConfig.getConfigs().filter((c) => c.enabled);
-  const visionConfig = aiConfigs.find((c) => c.hasVision && c.apiKey) || aiConfigs.find((c) => c.apiKey);
-
-  if (!visionConfig || !visionConfig.apiKey) {
-    throw new Error('Chưa cấu hình API Key có hỗ trợ đọc ảnh (Gemini 2.0 Flash). Vui lòng vào trang Quản trị viên để thêm khóa API.');
-  }
-
-  if (onProgress) onProgress(`Đang gửi ảnh tới AI Vision [${visionConfig.provider.toUpperCase()} / ${visionConfig.model}]...`);
+  if (onProgress) onProgress('Đang điều phối AI Vision quét ảnh và bóc tách dữ liệu theo nhóm tác vụ...');
 
   // Prompt nghiêm ngặt, coi dữ liệu là dữ liệu thuần
   const systemPrompt = `Bạn là hệ thống OCR quang học chuyên dụng cho học thuật tiếng Đức.
@@ -729,84 +1037,18 @@ Nhiệm vụ:
   ]
 }`;
 
-  if (visionConfig.provider === 'gemini') {
-    const modelName = visionConfig.model || 'gemini-2.0-flash';
-    const cleanModel = modelName.startsWith('models/') ? modelName.replace('models/', '') : modelName;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${visionConfig.apiKey}`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: systemPrompt },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64Data,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      throw new Error(`Lỗi gọi Gemini Vision HTTP ${res.status}: ${err.slice(0, 150)}`);
-    }
-
-    const data = await res.json();
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!raw) throw new Error('AI không trả về văn bản OCR.');
-    return JSON.parse(raw);
-  }
-
-  // Fallback qua OpenRouter / OpenAI có vision
-  const endpoint = visionConfig.provider === 'openrouter'
-    ? 'https://openrouter.ai/api/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${visionConfig.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: visionConfig.model || 'openai/gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Hãy OCR toàn bộ văn bản trong tài liệu này:' },
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${base64Data}` },
-            },
-          ],
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-    }),
+  const ocrResult = await executeTaskWithFallback({
+    taskId: 'ocr_image',
+    systemPrompt,
+    userPrompt: 'Hãy trích xuất toàn bộ văn bản và từ vựng từ ảnh tài liệu này.',
+    imageBase64: base64Data,
+    mimeType,
+    jsonMode: true,
   });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(`Lỗi OCR ${visionConfig.provider.toUpperCase()} HTTP ${res.status}: ${err.slice(0, 150)}`);
+  if (!ocrResult) {
+    throw new Error('Toàn bộ các model AI Vision trong nhóm đều không thể phản hồi. Vui lòng kiểm tra lại API Key hoặc hạn mức Quota.');
   }
 
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content;
-  return JSON.parse(text);
+  return ocrResult;
 }

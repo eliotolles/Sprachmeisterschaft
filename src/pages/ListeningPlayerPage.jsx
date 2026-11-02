@@ -80,6 +80,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const isPauseAfterSentenceRef = useRef(true);
   const isPlayingRef = useRef(false);
   const lastTargetEndRef = useRef(null);
+  const hasPausedForIndexRef = useRef(null);
 
   activeSubIndexRef.current = activeSubIndex;
   isPauseAfterSentenceRef.current = isPauseAfterSentence;
@@ -177,14 +178,14 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       let foundIndex = -1;
       for (let i = 0; i < subtitles.length; i++) {
         const s = subtitles[i];
-        const sEnd = s.end || s.start + 4.5;
+        const sEnd = s.end || (subtitles[i + 1]?.start ? subtitles[i + 1].start : s.start + 5);
         if (currentTime >= s.start && currentTime < sEnd) {
           foundIndex = i;
           break;
         }
       }
 
-      // If between subtitles, find nearest or current
+      // If between subtitles, keep previous active or match nearest
       if (foundIndex === -1 && subtitles.length > 0) {
         for (let i = 0; i < subtitles.length; i++) {
           if (currentTime >= subtitles[i].start) {
@@ -195,6 +196,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
       if (foundIndex !== -1 && foundIndex !== activeSubIndexRef.current) {
         setActiveSubIndex(foundIndex);
+        hasPausedForIndexRef.current = null; // New sentence started
         // Scroll transcript line into view smoothly
         const el = subItemsRef.current[foundIndex];
         if (el) {
@@ -202,13 +204,16 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         }
       }
 
-      // B. Requirement 2: Auto-Pause at end of current sentence
+      // B. Auto-Pause at end of current sentence for deliberate learning
       if (isPauseAfterSentenceRef.current && isPlayingRef.current) {
         const activeSub = subtitles[activeSubIndexRef.current];
         if (activeSub) {
-          const targetEnd = activeSub.end || activeSub.start + 4.5;
-          // When playhead reaches or passes sentence end
-          if (currentTime >= targetEnd - 0.25) {
+          const nextSubStart = subtitles[activeSubIndexRef.current + 1]?.start;
+          const targetEnd = activeSub.end || (nextSubStart ? nextSubStart : activeSub.start + 4.5);
+
+          // When playhead reaches or passes sentence end and hasn't paused for this sentence yet
+          if (currentTime >= targetEnd - 0.25 && hasPausedForIndexRef.current !== activeSubIndexRef.current) {
+            hasPausedForIndexRef.current = activeSubIndexRef.current;
             playerRef.current.pauseVideo();
             setIsPlaying(false);
             setIsSentencePaused(true);
@@ -216,7 +221,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           }
         }
       }
-    }, 150);
+    }, 120);
   };
 
   const stopTimeTracking = () => {
@@ -226,9 +231,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
-  // 3. Playback Controls & Navigation (Requirement 2)
+  // 3. Playback Controls & Navigation
   const handleSeekAndPlay = (seconds, index) => {
     setActiveSubIndex(index);
+    hasPausedForIndexRef.current = null;
     setTypedInput('');
     setDictationChecked(false);
     setDictationAudit(null);
@@ -246,6 +252,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   const handleReplayCurrentSentence = () => {
+    hasPausedForIndexRef.current = null;
     handleSeekAndPlay(currentSub.start, activeSubIndex);
   };
 
@@ -253,6 +260,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     const prevIdx = Math.max(0, activeSubIndex - 1);
     const targetSub = subtitles[prevIdx];
     if (targetSub) {
+      hasPausedForIndexRef.current = null;
       handleSeekAndPlay(targetSub.start, prevIdx);
     }
   };
@@ -261,7 +269,21 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     const nextIdx = Math.min(subtitles.length - 1, activeSubIndex + 1);
     const targetSub = subtitles[nextIdx];
     if (targetSub) {
+      hasPausedForIndexRef.current = null;
       handleSeekAndPlay(targetSub.start, nextIdx);
+    }
+  };
+
+  const handleResumeAfterPause = () => {
+    setIsSentencePaused(false);
+    if (playerRef.current) {
+      // Seek slightly past the pause boundary to prevent re-triggering
+      const cur = playerRef.current.getCurrentTime();
+      if (lastTargetEndRef.current && cur >= lastTargetEndRef.current - 0.3) {
+        playerRef.current.seekTo(lastTargetEndRef.current + 0.1, true);
+      }
+      playerRef.current.playVideo();
+      setIsPlaying(true);
     }
   };
 
@@ -512,14 +534,22 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
             {/* Status Indicator */}
             {isSentencePaused && (
-              <div className="p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs font-mono text-amber-800 dark:text-amber-300 flex items-center justify-between">
-                <span>⏸️ Đã dừng ở cuối câu #{activeSubIndex + 1}. Bạn có thể nghe lại hoặc làm bài tập bên dưới!</span>
-                <button
-                  onClick={handleNextSentence}
-                  className="text-accent underline font-bold"
-                >
-                  Phát tiếp câu sau →
-                </button>
+              <div className="p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs font-mono text-amber-800 dark:text-amber-300 flex flex-wrap items-center justify-between gap-2">
+                <span>⏸️ Đã dừng ở cuối câu #{activeSubIndex + 1}. Mời bạn chép chính tả hoặc nghe lại câu này!</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleResumeAfterPause}
+                    className="tap px-2 py-1 rounded bg-accent text-accent-foreground text-xs font-mono font-bold"
+                  >
+                    ▶ Phát tiếp
+                  </button>
+                  <button
+                    onClick={handleNextSentence}
+                    className="text-accent underline font-bold"
+                  >
+                    Sang câu sau →
+                  </button>
+                </div>
               </div>
             )}
           </div>

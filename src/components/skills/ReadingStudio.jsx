@@ -1,18 +1,71 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { StudioResult } from '@/components/ui/StudioResult';
-import { ALL_EXAMS } from '@/data/all-exams';
-import { CheckCircle2, XCircle, ArrowRight, BookOpen } from 'lucide-react';
+import { getAllExams } from '@/data/all-exams';
+import { CheckCircle2, XCircle, ArrowRight, BookOpen, Plus } from 'lucide-react';
+import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { toast } from 'sonner';
 
 export function ReadingStudio({ onBack }) {
-  // Grab reading passages from the exam collection
-  const exam = ALL_EXAMS[0]; // Goethe B1 M1
-  const passage = exam.reading[0];
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [selectedPassageIdx, setSelectedPassageIdx] = useState(0);
+  const allExams = getAllExams();
+  const passages = allExams.flatMap((e) =>
+    (e.reading || []).map((p, pIdx) => ({
+      ...p,
+      examTitle: e.title,
+      level: e.level,
+      title: p.title || `[${e.title}] ${p.part || `Teil ${pIdx + 1}`}`,
+      text: p.passage || p.text || '',
+      questions: p.questions || [],
+    }))
+  );
 
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
+
+  if (passages.length === 0) {
+    return (
+      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise">
+        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
+          <BookOpen className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="font-display text-xl font-bold text-foreground">
+            Chưa có bài đọc hiểu trong hệ thống
+          </h3>
+          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
+            Toàn bộ data mẫu đã được xóa sạch. Hãy import tài liệu hoặc đề thi mới để bắt đầu luyện đọc hiểu.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="tap px-4 py-2 text-xs font-mono font-semibold rounded-sm bg-accent text-accent-foreground shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Import bài đọc / đề thi</span>
+          </button>
+          <button
+            onClick={onBack}
+            className="tap px-4 py-2 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted"
+          >
+            ← Quay lại kỹ năng
+          </button>
+        </div>
+
+        <UniversalImportModal
+          isOpen={isImportOpen}
+          onClose={() => setIsImportOpen(false)}
+          defaultType="exam"
+        />
+      </div>
+    );
+  }
+
+  const safeIdx = Math.min(selectedPassageIdx, passages.length - 1);
+  const passage = passages[safeIdx] || passages[0];
 
   const handleSelectOption = (qIdx, opt) => {
     if (submitted) return;
@@ -50,8 +103,39 @@ export function ReadingStudio({ onBack }) {
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="eyebrow">Lesesaal • Xưởng đọc hiểu</div>
         <span className="text-xs font-mono px-2 py-0.5 rounded-sm bg-accent/10 text-accent font-semibold">
-          Trình độ B1
+          Trình độ {passage.level || 'B1'}
         </span>
+      </div>
+
+      {/* Passage selector & Import button */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {passages.map((p, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => {
+              setSelectedPassageIdx(idx);
+              setSubmitted(false);
+              setSelectedAnswers({});
+            }}
+            className={`tap px-3 py-1.5 rounded-sm border text-xs font-mono whitespace-nowrap transition-all ${
+              safeIdx === idx
+                ? 'bg-accent text-accent-foreground border-accent font-semibold shadow-sm'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {p.title}
+          </button>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => setIsImportOpen(true)}
+          className="tap px-3 py-1.5 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/15 text-accent text-xs font-mono font-bold whitespace-nowrap flex items-center gap-1 shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>+ Import thêm bài đọc</span>
+        </button>
       </div>
 
       <h2 className="font-display text-2xl font-bold text-foreground">
@@ -140,6 +224,13 @@ export function ReadingStudio({ onBack }) {
           </button>
         </div>
       )}
+
+      {/* Universal Import Modal */}
+      <UniversalImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        defaultType="exam"
+      />
     </div>
   );
 }

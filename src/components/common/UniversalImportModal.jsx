@@ -49,12 +49,13 @@ import {
   extractYouTubeInfo,
   parseGrammarInput,
   parseExamJsonInput,
+  parseMultiExams,
   parseSituationInput,
   performImageOcr,
   VOCAB_14_COLUMNS,
 } from '@/lib/document-parsers';
 
-export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', onSuccess }) {
+export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, onSuccess }) {
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
 
@@ -84,6 +85,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
   const [duplicateMode, setDuplicateMode] = useState('fill_blank'); // 'skip' | 'fill_blank' | 'overwrite'
   const [grammarContent, setGrammarContent] = useState({ rule: '', exercises: [] });
   const [examContent, setExamContent] = useState(null);
+  const [detectedExams, setDetectedExams] = useState([]);
   const [situationContent, setSituationContent] = useState(null);
   const [issuesList, setIssuesList] = useState([]);
 
@@ -92,8 +94,9 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef(null);
-  const currentUser = db.auth.getUser();
-  const isAdmin = db.auth.isAdmin();
+  const [currentUser, setCurrentUser] = useState(() => db.auth.getUser());
+  const [isAdminState, setIsAdminState] = useState(() => db.auth.isAdmin());
+  const isAdmin = isAdminState;
 
   // Reset or adjust initial values when modal opens
   useEffect(() => {
@@ -101,13 +104,22 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
       setContentType(defaultType);
       setStep(1);
       setExtractedItems([]);
+      setDetectedExams([]);
+      setExamContent(null);
       setSyncReport(null);
       setSelectedFile(null);
       setProcessProgress({ message: '', percent: 0 });
+      const currentAdmin = db.auth.isAdmin();
+      setIsAdminState(currentAdmin);
+      setCurrentUser(db.auth.getUser());
       // Default scope
-      setScope(isAdmin ? 'public' : 'private');
+      if (initialScope) {
+        setScope(initialScope);
+      } else {
+        setScope(currentAdmin ? 'public' : 'private');
+      }
     }
-  }, [isOpen, defaultType, isAdmin]);
+  }, [isOpen, defaultType, initialScope]);
 
   if (!isOpen) return null;
 
@@ -213,18 +225,35 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         return;
       }
 
-      // CASE C: EXAM SIMULATION
+      // CASE C: EXAM SIMULATION (Single or Multi-Exam PDF/DOCX/TXT/JSON)
       if (contentType === 'exam') {
-        setProcessProgress({ message: 'Kiểm tra cấu trúc đề thi CEFR...', percent: 50 });
-        let jsonStr = manualText;
-        if (inputMethod === 'file' && selectedFile) {
-          jsonStr = await selectedFile.text();
+        setProcessProgress({ message: 'Đang trích xuất và phân tích cấu trúc đề thi...', percent: 30 });
+        let rawExamText = manualText;
+        if (inputMethod === 'file') {
+          if (!selectedFile) throw new Error('Vui lòng chọn tệp tin đề thi tải lên.');
+          if (fileType === 'pdf') {
+            setProcessProgress({ message: 'Đang trích xuất nội dung từ PDF đa đề thi...', percent: 45 });
+            const pdfRes = await parsePdfFile(selectedFile, (p) => {
+              setProcessProgress({ message: `Đang quét PDF trang ${p.current}/${p.total}`, percent: p.percent });
+            });
+            rawExamText = pdfRes.rawText;
+          } else if (fileType === 'docx') {
+            setProcessProgress({ message: 'Đang đọc tài liệu Word DOCX...', percent: 50 });
+            const docxRes = await parseDocxFile(selectedFile);
+            rawExamText = docxRes.rawText;
+          } else {
+            rawExamText = await selectedFile.text();
+          }
         }
-        const examRes = parseExamJsonInput(jsonStr);
-        if (!examRes.success) {
-          throw new Error(examRes.issues.join('; '));
+
+        const multiRes = parseMultiExams(rawExamText, { level, provider: 'Goethe' });
+        if (!multiRes.success || multiRes.exams.length === 0) {
+          throw new Error(multiRes.issues.join('; ') || 'Không tìm thấy cấu trúc đề thi hợp lệ.');
         }
-        setExamContent(examRes.data);
+
+        setDetectedExams(multiRes.exams);
+        setExamContent(multiRes.exams[0]);
+        setIssuesList(multiRes.issues || []);
         setStep(2);
         setIsProcessing(false);
         return;
@@ -521,16 +550,19 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         savedCount = 1;
       }
 
-      // 4. EXAM IMPORT
+      // 4. EXAM IMPORT (Saves to Universal Central Repository so it surfaces in Schreiben, Sprechen, Lesen, Hören & Exams)
       else if (contentType === 'exam') {
-        db.universal.create({
-          type: 'exam',
-          title: examContent?.title || title,
-          level: examContent?.level || level,
-          data: examContent,
-          scope: isAdmin ? scope : 'private',
+        const examsToSave = detectedExams && detectedExams.length > 0 ? detectedExams : [examContent];
+        examsToSave.forEach((ex) => {
+          db.universal.create({
+            type: 'exam',
+            title: ex.title || title,
+            level: ex.level || level,
+            data: ex,
+            scope: isAdmin ? scope : 'private',
+          });
         });
-        savedCount = 1;
+        savedCount = examsToSave.length;
       }
 
       // 5. SITUATION IMPORT
@@ -750,9 +782,23 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                   </button>
                 </div>
               ) : (
-                <div className="p-3 bg-card border border-border rounded-sm flex items-center gap-2.5 text-xs font-mono text-muted-foreground">
-                  <User className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>Bạn đang nhập nội dung vào <strong>Kho học tập cá nhân của riêng bạn</strong> (Chỉ bạn xem được).</span>
+                <div className="p-3 bg-card border border-border rounded-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs font-mono text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>Bạn đang nhập nội dung vào <strong>Kho học tập cá nhân của riêng bạn</strong> (Chỉ bạn xem được).</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      db.auth.toggleAdminMode();
+                      setIsAdminState(true);
+                      setScope('public');
+                      toast.success('Đã kích hoạt quyền Quản trị viên! Bạn có thể chọn Toàn hệ thống (Publish).');
+                    }}
+                    className="tap px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold shrink-0 hover:bg-amber-500/20"
+                  >
+                    👑 Bật quyền Admin để Publish
+                  </button>
                 </div>
               )}
             </div>
@@ -1240,32 +1286,100 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
               </div>
             )}
 
-            {/* PREVIEW: EXAM SIMULATION */}
-            {contentType === 'exam' && examContent && (
-              <div className="p-4 bg-card border border-border rounded-sm space-y-3 text-xs font-mono">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-foreground">{examContent.title}</span>
-                  <span className="px-2 py-0.5 rounded bg-accent/10 text-accent font-bold">
-                    {examContent.provider} • {examContent.level} • {examContent.minutes} Phút
+            {/* PREVIEW: EXAM SIMULATION (MULTI-EXAM SUPPORT) */}
+            {contentType === 'exam' && (detectedExams.length > 0 || examContent) && (
+              <div className="space-y-4">
+                <div className="p-3 bg-accent/10 border border-accent/20 rounded-sm text-xs font-mono text-accent flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Đã nhận diện: {detectedExams.length || 1} Bộ đề thi mô phỏng CEFR</span>
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Kho đề dùng chung: Tự xuất hiện tại Luyện viết, Luyện nói, Luyện đọc & Thi thử
                   </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-2">
-                  <div className="p-2 bg-muted/40 rounded-sm">
-                    <div className="text-[10px] text-muted-foreground">LESEN</div>
-                    <div className="font-bold">{examContent.reading?.length || 0} Phần</div>
-                  </div>
-                  <div className="p-2 bg-muted/40 rounded-sm">
-                    <div className="text-[10px] text-muted-foreground">HÖREN</div>
-                    <div className="font-bold">{examContent.listening?.length || 0} Phần</div>
-                  </div>
-                  <div className="p-2 bg-muted/40 rounded-sm">
-                    <div className="text-[10px] text-muted-foreground">SCHREIBEN</div>
-                    <div className="font-bold">{examContent.writing?.task ? 'Có đề bài' : 'Chưa có'}</div>
-                  </div>
-                  <div className="p-2 bg-muted/40 rounded-sm">
-                    <div className="text-[10px] text-muted-foreground">SPRECHEN</div>
-                    <div className="font-bold">{examContent.speaking?.prompt ? 'Có đề thi' : 'Chưa có'}</div>
-                  </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {(detectedExams.length > 0 ? detectedExams : [examContent]).map((ex, exIdx) => {
+                    const wtCount = ex.writingTasks?.length || (ex.writing?.task ? 1 : 0);
+                    const spCount = ex.speakingTasks?.length || (ex.speaking?.prompt ? 1 : 0);
+                    const rdCount = ex.reading?.length || 0;
+                    const lsCount = ex.listening?.length || 0;
+
+                    return (
+                      <div key={ex.id || exIdx} className="p-4 bg-card border border-border rounded-sm space-y-3 text-xs font-mono shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-2.5">
+                          <div className="flex-1">
+                            <label className="text-[10px] text-muted-foreground block mb-0.5 font-bold">
+                              Tiêu đề Bộ đề #{exIdx + 1} (Bạn có thể bấm sửa):
+                            </label>
+                            <input
+                              type="text"
+                              value={ex.title}
+                              onChange={(e) => {
+                                const newTitle = e.target.value;
+                                if (detectedExams.length > 0) {
+                                  const updated = [...detectedExams];
+                                  updated[exIdx] = { ...updated[exIdx], title: newTitle };
+                                  setDetectedExams(updated);
+                                } else {
+                                  setExamContent({ ...examContent, title: newTitle });
+                                }
+                              }}
+                              className="w-full px-2.5 py-1 text-xs font-bold font-heading rounded-sm border border-border bg-background text-foreground focus:ring-1 focus:ring-accent"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="px-2.5 py-1 rounded bg-accent/15 text-accent font-bold text-xs border border-accent/30">
+                              {ex.provider} • Trình độ {ex.level}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Breakdown Pills */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                          <div className="p-2 bg-muted/40 rounded-sm border border-border/50">
+                            <div className="text-[10px] text-muted-foreground font-semibold">✍️ SCHREIBEN</div>
+                            <div className="font-bold text-foreground text-xs mt-0.5">{wtCount} Phần (Viết)</div>
+                          </div>
+                          <div className="p-2 bg-muted/40 rounded-sm border border-border/50">
+                            <div className="text-[10px] text-muted-foreground font-semibold">🗣️ SPRECHEN</div>
+                            <div className="font-bold text-foreground text-xs mt-0.5">{spCount} Phần (Nói)</div>
+                          </div>
+                          <div className="p-2 bg-muted/40 rounded-sm border border-border/50">
+                            <div className="text-[10px] text-muted-foreground font-semibold">📖 LESEN</div>
+                            <div className="font-bold text-foreground text-xs mt-0.5">{rdCount} Phần (Đọc)</div>
+                          </div>
+                          <div className="p-2 bg-muted/40 rounded-sm border border-border/50">
+                            <div className="text-[10px] text-muted-foreground font-semibold">🎧 HÖREN</div>
+                            <div className="font-bold text-foreground text-xs mt-0.5">{lsCount} Phần (Nghe)</div>
+                          </div>
+                        </div>
+
+                        {/* Detail tasks list */}
+                        {ex.writingTasks && ex.writingTasks.length > 0 && (
+                          <div className="text-[11px] text-muted-foreground bg-muted/20 p-2 rounded flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-foreground">✍️ Phần viết:</span>
+                            {ex.writingTasks.map((t, idx) => (
+                              <span key={idx} className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px]">
+                                {t.teil || `Teil ${idx + 1}`}: {t.title}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {ex.speakingTasks && ex.speakingTasks.length > 0 && (
+                          <div className="text-[11px] text-muted-foreground bg-muted/20 p-2 rounded flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-foreground">🗣️ Phần nói:</span>
+                            {ex.speakingTasks.map((t, idx) => (
+                              <span key={idx} className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px]">
+                                {t.teil || `Teil ${idx + 1}`}: {t.title}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

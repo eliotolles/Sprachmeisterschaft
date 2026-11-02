@@ -11,9 +11,12 @@ import { toast } from 'sonner';
 export function GamePage() {
   const { navigate } = useRouter();
 
-  // Filter only nouns with valid article der/die/das
-  const nounPool = WORDS.filter(
-    (w) => w.word_type === 'noun' && ['der', 'die', 'das'].includes((w.article || '').toLowerCase())
+  // Combine static words and user imported cards
+  const userNouns = db.vocabulary.findMany().filter(
+    (w) => ['der', 'die', 'das'].includes((w.article || '').toLowerCase())
+  );
+  const nounPool = [...WORDS, ...userNouns].filter(
+    (w) => ['der', 'die', 'das'].includes((w.article || '').toLowerCase())
   );
 
   const [questions, setQuestions] = useState([]);
@@ -27,6 +30,7 @@ export function GamePage() {
 
   // Initialize 15 random nouns
   const initGame = () => {
+    if (nounPool.length === 0) return;
     const shuffled = [...nounPool].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 15);
     setQuestions(selected);
@@ -42,6 +46,32 @@ export function GamePage() {
   useEffect(() => {
     initGame();
   }, []);
+
+  if (nounPool.length === 0) {
+    return (
+      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise my-8">
+        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
+          <Gamepad2 className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="font-display text-xl font-bold text-foreground">
+            Chưa có danh từ nào để chơi game Der / Die / Das
+          </h3>
+          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
+            Toàn bộ data mẫu đã được xóa sạch. Hãy import bộ từ vựng (chứa mạo từ der/die/das) vào hệ thống để bắt đầu trò chơi phản xạ mạo từ.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => navigate('/vocabulary')}
+            className="tap px-4 py-2 text-xs font-mono font-semibold rounded-sm bg-accent text-accent-foreground shadow-sm"
+          >
+            Đến Quản lý Từ vựng
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentIndex];
 

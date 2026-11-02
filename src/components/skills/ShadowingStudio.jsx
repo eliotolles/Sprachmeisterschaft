@@ -16,6 +16,32 @@ export function ShadowingStudio({ onBack }) {
   const [scores, setScores] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
 
+  if (pool.length === 0) {
+    return (
+      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise">
+        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
+          <Mic className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="font-display text-xl font-bold text-foreground">
+            Chưa có câu luyện nói đuổi (Shadowing)
+          </h3>
+          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
+            Dữ liệu mẫu đã được xóa sạch. Hãy import tài liệu luyện nói hoặc vào mục <strong>Luyện nghe Video</strong> để nhại giọng theo phụ đề YouTube.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={onBack}
+            className="tap px-4 py-2 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted"
+          >
+            ← Quay lại kỹ năng
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentItem = pool[currentIndex] || pool[0];
 
   const handleStartRecording = () => {
