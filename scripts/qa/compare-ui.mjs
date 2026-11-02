@@ -11,18 +11,18 @@ for(let i=0;i<roots.length;i++){
  await new Promise(r=>server.listen(ports[i],'127.0.0.1',r));servers.push(server);
 }
 await mkdir('ui-artifacts',{recursive:true});const browser=await chromium.launch({headless:true,args:['--disable-gpu','--disable-lcd-text','--force-color-profile=srgb','--font-render-hinting=none']});const report=[];
-const routes=['/landing','/register','/','/vocabulary','/review','/skills','/skills/grammar','/skills/writing','/exams','/elio','/progress'];
+const routes=['/landing','/register','/','/vocabulary','/review','/skills','/skills/grammar','/skills/writing','/exams','/elio','/progress','/admin'];
 try{
  for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const colorScheme of ['light','dark'])for(const route of routes){
   const images=[],errors=[],dom=[];const label=(route==='/'?'home':route.slice(1).replaceAll('/','-'))+'-'+viewport.width+'-'+colorScheme;
   for(let i=0;i<2;i++){
    const context=await browser.newContext({viewport,colorScheme,locale:'vi-VN',timezoneId:'UTC',reducedMotion:'reduce'});
-   await context.addInitScript(({theme})=>{
+   await context.addInitScript(({theme,admin})=>{
     const OriginalDate=Date,fixed=1793613600000;globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[fixed]));}static now(){return fixed;}};
     let seed=42;Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
-    localStorage.setItem('sprachmeisterschaft_auth_v1',JSON.stringify({id:'qa-user',name:'Migration Fixture',email:'qa@example.invalid',role:'user',is_verified:true,onboarding_completed:true,target_level:'B1',created_at:new Date().toISOString()}));
+    localStorage.setItem('sprachmeisterschaft_auth_v1',JSON.stringify({id:'qa-user',name:'Migration Fixture',email:'qa@example.invalid',role:admin?'admin':'user',is_verified:true,onboarding_completed:true,target_level:'B1',created_at:new Date().toISOString()}));
     localStorage.setItem('theme',theme);localStorage.setItem('sprach_theme',theme);document.addEventListener('DOMContentLoaded',()=>document.documentElement.classList.toggle('dark',theme==='dark'));
-   },{theme:colorScheme});
+   },{theme:colorScheme,admin:route==='/admin'});
    await context.route('**/*',async request=>{
     const url=new URL(request.request().url());
     if(url.origin!==`http://127.0.0.1:${ports[i]}`)return request.abort();

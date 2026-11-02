@@ -130,6 +130,9 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async records(kind,{limit=200,offset=0}={}) {
       requireUser(); return (await request('/records?'+new URLSearchParams({kind,limit:String(limit),offset:String(offset)}))).items;
     },
+    async aiRouting(){requireUser();return request('/admin/ai/routing');},
+    async updateAIRouting(data){requireUser();return request('/admin/ai/routing',{method:'PATCH',data,deadlineMs:60000});},
+    async testAIConfig(data){requireUser();return request('/admin/ai/test',{method:'POST',data,deadlineMs:35000});},
     async aiConfigs(){requireUser();return request('/admin/ai/configs');},
     async addAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'POST',data:config,deadlineMs:60000});},
     async discoverAIModels(data){requireUser();return request('/admin/ai/discover',{method:'POST',data,deadlineMs:60000});},

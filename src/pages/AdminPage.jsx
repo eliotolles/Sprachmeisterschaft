@@ -1,3 +1,4 @@
+import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
 import { useRouter } from '@/lib/router';
@@ -120,7 +121,7 @@ export function AdminPage() {
   // Form New AI
   const [providerName, setProviderName] = useState('');
   const [providerType, setProviderType] = useState('gemini');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState(()=>elioAIAdmin()?.isActive()?'':'gemini-2.5-flash');
   const [backupModel, setBackupModel] = useState('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [isCustomModelMode, setIsCustomModelMode] = useState(false);
@@ -192,6 +193,7 @@ export function AdminPage() {
     }
 
     const handleDbChange = () => {
+      setAiConfigs(db.aiConfig.getConfigs());setAiAssignments(db.aiConfig.getAssignments());setAiPolicies(db.aiConfig.getPolicies());
       setUniversalItems(db.universal.findMany());
       setExamsList(getAllExams());
       setGrammarDeletedIds(db.grammar?.getDeletedIds?.() || []);
@@ -214,8 +216,11 @@ export function AdminPage() {
     .filter((s) => !situationDeletedIds.includes(s.id))
     .map((s) => (situationOverrides[s.id] ? { ...s, ...situationOverrides[s.id] } : s));
 
+  useEffect(()=>{if(!elioAIAdmin()?.isActive())return;elioAIAdmin().hydrate().catch(error=>toast.error(error.message));const timer=setInterval(()=>setAiConfigs(db.aiConfig.getConfigs()),1000);return()=>clearInterval(timer);},[]);
+
   // Sync discovered catalog when provider type changes
   useEffect(() => {
+    if(elioAIAdmin()?.isActive()){setApiKey('');setBackupModel('');}
     const cached = getCachedCatalog(providerType);
     let currentModels = [];
     if (cached && cached.models?.length > 0) {
@@ -227,7 +232,8 @@ export function AdminPage() {
       setDiscoveredModels([]);
       setSmartRecs([]);
       setDiscoveryMeta(null);
-      currentModels = FREE_AI_MODELS.filter((m) => m.provider === providerType);
+      currentModels = elioAIAdmin()?.isActive()?[]:FREE_AI_MODELS.filter((m) => m.provider === providerType);
+      if(elioAIAdmin()?.isActive())setSelectedModel('');
     }
 
     // Auto-select the top newest model for this provider if current model doesn't belong to it
@@ -248,6 +254,7 @@ export function AdminPage() {
     if (cached?.models?.length > 0) {
       return cached.models;
     }
+    if(elioAIAdmin()?.isActive())return [];
     // Safe initial seed from catalog
     return FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
       id: m.id,
@@ -268,7 +275,7 @@ export function AdminPage() {
   const handleSelectSuggestedModel = (model) => {
     setSelectedModel(model.id);
     setIsCustomModelMode(false);
-    setHasVision(Boolean(model.capabilities?.vision || model.hasVision));
+    if(!elioAIAdmin()?.isActive()||model.capabilities?.vision!==undefined||model.hasVision!==undefined)setHasVision(Boolean(model.capabilities?.vision || model.hasVision));
     if (!providerName) {
       setProviderName(`${model.name || model.id}`);
     }
@@ -302,7 +309,7 @@ export function AdminPage() {
 
       if (res.recommendations?.[0]) {
         setSelectedModel(res.recommendations[0].id);
-        setHasVision(Boolean(res.recommendations[0].capabilities?.vision));
+        if(!elioAIAdmin()?.isActive()||res.recommendations[0].capabilities?.vision!==undefined)setHasVision(Boolean(res.recommendations[0].capabilities?.vision));
         if (res.recommendations[1]) {
           setBackupModel(res.recommendations[1].id);
         }
@@ -319,7 +326,10 @@ export function AdminPage() {
     }
   };
 
-  const handleOpenCatalogModal = (config = null) => {
+  const handleOpenCatalogModal = async (config = null) => {
+    if(elioAIAdmin()?.isActive()){
+      try{const provider=config?.provider||providerType;const result=await discoverProviderModels({provider,apiKey:apiKey.trim(),configId:config?.id});setActiveCatalogConfig(config);setActiveCatalogProvider(provider);setActiveCatalogModels(result.models);setIsCatalogModalOpen(true);}catch(error){toast.error(error.message);}return;
+    }
     if (config) {
       // Existing active config
       setActiveCatalogConfig(config);
@@ -360,42 +370,45 @@ export function AdminPage() {
     setIsCatalogModalOpen(true);
   };
 
-  const handleSelectPrimaryFromModal = (modelId, modelObj) => {
+  const handleSelectPrimaryFromModal = async (modelId, modelObj) => {
     if (activeCatalogConfig) {
       const updated = {
         ...activeCatalogConfig,
         model: modelId,
-        hasVision: Boolean(modelObj?.capabilities?.vision),
+        hasVision: elioAIAdmin()?.isActive()&&modelObj?.capabilities?.vision===undefined?activeCatalogConfig.hasVision:Boolean(modelObj?.capabilities?.vision),
         tier: modelObj?.pricing?.tier || 'UNKNOWN',
       };
-      db.aiConfig.saveConfig(updated);
+      await db.aiConfig.saveConfig(updated);
+      if(elioAIAdmin()?.isActive())setTestResults(previous=>{const next={...previous};delete next[updated.id];return next;});
       setAiConfigs(db.aiConfig.getConfigs());
     } else {
       setSelectedModel(modelId);
-      setHasVision(Boolean(modelObj?.capabilities?.vision));
+      if(!elioAIAdmin()?.isActive()||modelObj?.capabilities?.vision!==undefined)setHasVision(Boolean(modelObj?.capabilities?.vision));
       if (!providerName) {
         setProviderName(modelObj?.name || modelId);
       }
     }
   };
 
-  const handleSelectBackupFromModal = (modelId, modelObj) => {
+  const handleSelectBackupFromModal = async (modelId, modelObj) => {
     if (activeCatalogConfig) {
       const updated = {
         ...activeCatalogConfig,
         backupModel: modelId,
       };
-      db.aiConfig.saveConfig(updated);
+      await db.aiConfig.saveConfig(updated);
+      if(elioAIAdmin()?.isActive())setTestResults(previous=>{const next={...previous};delete next[updated.id];return next;});
       setAiConfigs(db.aiConfig.getConfigs());
     } else {
       setBackupModel(modelId);
     }
   };
 
-  const handlePolicyToggle = (key, val) => {
-    const updated = db.aiConfig.updatePolicies({ [key]: val });
-    setAiPolicies(updated);
+  const handlePolicyToggle = async (key, val) => {
+    try {const updated = await db.aiConfig.updatePolicies({ [key]: val });
+    setAiPolicies(updated);if(elioAIAdmin()?.isActive())setSmartRecs(getSmartRecommendations(discoveredModels));
     toast.success(`Đã cập nhật chính sách AI: ${key} = ${val ? 'BẬT' : 'TẮT'}`);
+    }catch(error){toast.error(error.message);}
   };
 
   const handleSyncConfigModels = async (cfg) => {
@@ -404,6 +417,7 @@ export function AdminPage() {
       const res = await discoverProviderModels({
         provider: cfg.provider,
         apiKey: cfg.apiKey,
+        configId:cfg.id,
         baseUrl: cfg.baseUrl,
       });
       toast.success(`Đã cập nhật ${res.totalCount} model (${res.freeCount} Free Tier)!`, { id: `sync-${cfg.id}` });
@@ -463,7 +477,7 @@ export function AdminPage() {
     }
   };
 
-  const handleAddAIConfig = (e) => {
+  const handleAddAIConfig = async (e) => {
     e.preventDefault();
     const finalModel = isCustomModelMode ? customModelInput.trim() : selectedModel;
     if (!finalModel) {
@@ -492,25 +506,28 @@ export function AdminPage() {
       enabled: true,
       discoveredAt: new Date().toISOString(),
     };
-    db.aiConfig.saveConfig(newConfig);
+    try {await db.aiConfig.saveConfig(newConfig);
     setAiConfigs(db.aiConfig.getConfigs());
     setProviderName('');
     setApiKey('');
     setBackupModel('');
     setCustomModelInput('');
     toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
+    }catch(error){toast.error(error.message);}
   };
 
-  const handleDeleteAIConfig = (id) => {
-    db.aiConfig.deleteConfig(id);
+  const handleDeleteAIConfig = async (id) => {
+    try {await db.aiConfig.deleteConfig(id);
     setAiConfigs(db.aiConfig.getConfigs());
     toast.success('Đã xóa cấu hình AI!');
+    }catch(error){toast.error(error.message);}
   };
 
-  const handleAssignTask = (taskId, provId, modelId) => {
-    db.aiConfig.setAssignment(taskId, provId, modelId);
+  const handleAssignTask = async (taskId, provId, modelId) => {
+    try{await db.aiConfig.setAssignment(taskId, provId, modelId);
     setAiAssignments(db.aiConfig.getAssignments());
     toast.success('Đã cập nhật phân công AI cho tác vụ!');
+    }catch(error){toast.error(error.message);}
   };
 
   const handleAddToTaskPool = async (taskId, configId) => {
@@ -524,14 +541,14 @@ export function AdminPage() {
       return;
     }
 
-    db.aiConfig.addToTaskPool(taskId, configId);
+    try{await db.aiConfig.addToTaskPool(taskId, configId);}catch(error){toast.error(error.message);return;}
     setAiConfigs([...db.aiConfig.getConfigs()]);
     toast.success(`Đã thêm Key "${config.name}" vào nhóm tác vụ "${task.name}"!`);
     handleTestTaskKey(taskId, configId);
   };
 
-  const handleRemoveFromTaskPool = (taskId, configId) => {
-    db.aiConfig.removeFromTaskPool(taskId, configId);
+  const handleRemoveFromTaskPool = async (taskId, configId) => {
+    try{await db.aiConfig.removeFromTaskPool(taskId, configId);}catch(error){toast.error(error.message);return;}
     setAiConfigs([...db.aiConfig.getConfigs()]);
     toast.info('Đã gỡ Key khỏi nhóm tác vụ.');
   };
@@ -1162,7 +1179,7 @@ export function AdminPage() {
                           </div>
                           {inCooldown && (
                             <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-bold">
-                              ⏸️ Đang giãn cách Cooldown 429 ({cooldownSec}s còn lại) · Tự động dùng key dự phòng
+                              ⏸️ Đang giãn cách Cooldown {cooldown.status||429} ({cooldownSec}s còn lại) · Tự động dùng key dự phòng
                             </div>
                           )}
                           {testRes && (
@@ -1354,7 +1371,7 @@ export function AdminPage() {
                                   <div className="flex items-center gap-2">
                                     {inCooldown ? (
                                       <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200 text-[10px] font-bold">
-                                        ⏸️ Cooldown 429 ({cooldownSec}s)
+                                        ⏸️ Cooldown {cooldown.status||429} ({cooldownSec}s)
                                       </span>
                                     ) : (
                                       <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 text-[10px] font-bold flex items-center gap-1">

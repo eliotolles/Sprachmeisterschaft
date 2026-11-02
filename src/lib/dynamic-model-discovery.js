@@ -1,3 +1,4 @@
+import {elioAIAdmin} from './elio-ai-admin-runtime.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — DYNAMIC MODEL DISCOVERY ENGINE
 // Live API Catalog Retrieval, Metadata Normalization, Free-Tier-First Sorting
@@ -35,7 +36,8 @@ export function maskApiKey(key) {
  * Dynamically discover models from official provider API
  * Tries Edge Worker /api/ai/discover first (CORS-free), then direct client fallback
  */
-export async function discoverProviderModels({ provider, apiKey, baseUrl }) {
+export async function discoverProviderModels({ provider, apiKey, baseUrl,configId }) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().discover({provider,apiKey,configId});
   if (!apiKey?.trim() && provider !== 'custom') {
     throw new Error(`Vui lòng nhập API Key cho nhà cung cấp ${provider.toUpperCase()} trước khi khám phá danh mục model.`);
   }
@@ -138,6 +140,7 @@ export async function verifyProviderKey({ provider, apiKey, baseUrl }) {
  * 4. Largest context window models
  */
 export function getSmartRecommendations(models = []) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().recommend(models);
   if (!models || models.length === 0) return [];
 
   // Sort candidates by score
@@ -244,6 +247,7 @@ export function filterAndSortCatalog(models = [], {
  * Cache catalog in localStorage / dbState
  */
 export function saveDiscoveredCatalog(providerId, models, baseUrl = '') {
+  if(elioAIAdmin()?.isActive())return;
   try {
     db.aiModelCatalogs?.saveCatalog?.(providerId, models, baseUrl);
   } catch (e) {
@@ -255,9 +259,11 @@ export function saveDiscoveredCatalog(providerId, models, baseUrl = '') {
  * Get cached catalog for provider
  */
 export function getCachedCatalog(providerId) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().getCatalog(providerId);
   try {
     return db.aiModelCatalogs?.getCatalog?.(providerId) || null;
   } catch (e) {
     return null;
   }
 }
+

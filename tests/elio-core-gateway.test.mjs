@@ -175,3 +175,12 @@ test('failed Google callback returns to the existing login route with a safe cod
  const response=await handleElioCore(new Request('https://migration.test/api/core/auth/google/callback?state=invalid&code=private-code'),{...env,GOOGLE_CLIENT_ID:'fixture',GOOGLE_CLIENT_SECRET:'fixture'});assert.equal(response.status,303);assert.equal(response.headers.get('Location'),'https://migration.test/#/login?coreAuthError=GOOGLE_STATE');assert.match(response.headers.get('Set-Cookie'),/Max-Age=0/);assert.equal(db.prepare('SELECT count(*) n FROM sprach_core_sessions').get().n,0);assert(!response.headers.get('Location').includes('private-code'));
  }finally{db.close();}
 });
+test('Admin AI endpoints keep keys encrypted, reject User access, and archive without deleting configuration',async()=>{
+ const {db,env,call,login}=fixture(),original=globalThis.fetch;db.exec('CREATE TABLE ee_config(key TEXT PRIMARY KEY,value TEXT NOT NULL)');env.AI_ENCRYPTION_KEY='gateway-test-encryption-key-at-least-32-chars';
+ globalThis.fetch=async(url)=>String(url).endsWith('/models')?Response.json({data:[{id:'live-fixture-main'},{id:'live-fixture-backup'}]}):Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});
+ try{const before=db.prepare('SELECT * FROM ee_users ORDER BY id').all(),owner=await login('owner@example.invalid'),alice=await login('alice@example.invalid');assert.equal((await call('/admin/ai/configs','GET',undefined,alice)).status,403);
+ const added=await call('/admin/ai/configs','POST',{provider:'groq',key:'gateway-fixture-key',model:'live-fixture-main',backupModel:'live-fixture-backup',hasVision:true},owner);assert.equal(added.status,200);assert.equal(added.body.config.backupModel,'live-fixture-backup');assert(!JSON.stringify(added.body).includes('gateway-fixture-key'));assert(!db.prepare('SELECT value FROM ee_config').get().value.includes('gateway-fixture-key'));
+ const tested=await call('/admin/ai/test','POST',{id:added.body.config.id},owner);assert.equal(tested.body.testedScope,'json-generation');assert.equal((await call('/admin/ai/test','POST',{id:added.body.config.id},alice)).status,403);
+ const archived=await call('/admin/ai/configs','PATCH',{id:added.body.config.id,archived:true},owner);assert.equal(archived.body.config.enabled,false);assert.equal(db.prepare('SELECT count(*) n FROM ee_config').get().n,1);assert.deepEqual(db.prepare('SELECT * FROM ee_users ORDER BY id').all(),before);
+ }finally{db.close();globalThis.fetch=original;}
+});

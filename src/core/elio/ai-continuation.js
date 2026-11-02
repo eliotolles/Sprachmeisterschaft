@@ -3,7 +3,7 @@ const enc=new TextEncoder();
 function base64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');}
 function decode(value){return Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));}
 async function signingKey(env){if(typeof env.AI_ENCRYPTION_KEY!=='string'||env.AI_ENCRYPTION_KEY.length<32)throw Error('Missing signing key');return crypto.subtle.importKey('raw',enc.encode('elio-continuation-v1:'+env.AI_ENCRYPTION_KEY),{name:'HMAC',hash:'SHA-256'},false,['sign','verify']);}
-const context=input=>JSON.stringify({systemPrompt:input.systemPrompt,userPrompt:input.userPrompt,attachments:input.attachments||[],jsonMode:input.jsonMode!==false});
+const context=input=>JSON.stringify({systemPrompt:input.systemPrompt,userPrompt:input.userPrompt,attachments:input.attachments||[],jsonMode:input.jsonMode!==false,task:input.task||'text',purpose:input.purpose||null});
 export async function makeContinuation(env,user,row,input,text){
   const payload={user:user.id,config:row.id,fingerprint:await digest(row.model+'|'+row.secret),context:await digest(context(input)),prefix:await digest(text),expires:Date.now()+15*60000};
   const data=base64url(enc.encode(JSON.stringify(payload))),signature=base64url(await crypto.subtle.sign('HMAC',await signingKey(env),enc.encode(data)));

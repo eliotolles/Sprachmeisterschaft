@@ -1,3 +1,4 @@
+import {installAIAdminRuntime} from './elio-ai-admin-runtime.js';
 import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.js';
 import { formatDate, addDays, calculateStreak } from './algorithms';
 import { mergePersonalAndSharedVocabulary, mapSharedElioCard } from './shared-vocabulary.js';
@@ -1459,6 +1460,7 @@ export const db = {
         return null;
       }
       return {
+        until:cd.until,
         remainingSec: Math.ceil((cd.until - Date.now()) / 1000),
         reason: cd.reason,
       };
@@ -1897,3 +1899,5 @@ export const db = {
 
 
 export const initializeElioAuthentication=()=>installElioAuthentication(db).initialize();
+
+installAIAdminRuntime(db);

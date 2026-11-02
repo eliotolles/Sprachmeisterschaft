@@ -1,3 +1,4 @@
+import {getAIRouting,updateAIRouting} from './ai-routing.js';
 import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
 import {readVocabularyDeck,saveSharedWord} from './personal-vocabulary.js';
 import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
@@ -9,7 +10,7 @@ import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
 import { listGrammar, readGrammarLesson, importGrammar, submitGrammar, GRAMMAR_ATTEMPT_KEY } from './grammar.js';
-import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI,generateGermanSpeech} from './ai.js';
+import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI,generateGermanSpeech,testAIConfig} from './ai.js';
 import {gradeWriting,translateWriting,WRITING_KEY} from './writing.js';
 import {speakingReply,gradeSpeaking,transcribeGerman,SPEAKING_KEY} from './speaking.js';
 
@@ -132,7 +133,7 @@ async function state(request, env, user, url) {
 }
 export async function handleElioCore(request, env) {
   const url = new URL(request.url), path = url.pathname;
-  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true',uiWritingEnabled:env.ELIO_CORE_UI_WRITING_ENABLED==='true', version: 1 });
+  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true',uiWritingEnabled:env.ELIO_CORE_UI_WRITING_ENABLED==='true',uiAIAdminEnabled:env.ELIO_CORE_UI_AI_ADMIN_ENABLED==='true', version: 1 });
   if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
   try {
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');
@@ -199,6 +200,9 @@ export async function handleElioCore(request, env) {
       if(result.conflict)return json({code:'VERSION_CONFLICT',error:'Có lịch sử mới hơn; chưa ghi đè bài chữa.',version:result.version},409);
       return json(result,result.partial?202:200);
     }
+    if (path === '/api/core/admin/ai/routing' && request.method === 'GET') return json(await getAIRouting(env,user));
+    if (path === '/api/core/admin/ai/routing' && request.method === 'PATCH') return json(await updateAIRouting(env,user,await body(request,20000)));
+    if (path === '/api/core/admin/ai/test' && request.method === 'POST') {await throttle(env,'core-ai-test:'+user.id,10,60000);return json(await testAIConfig(env,user,await body(request,5000)));}
     if (path === '/api/core/admin/ai/configs' && request.method === 'GET') return json(await listAIConfigs(env,user));
     if (path === '/api/core/admin/ai/configs' && request.method === 'POST') return json(await addAIConfig(env,user,await body(request,4000)));
     if (path === '/api/core/admin/ai/configs' && request.method === 'PATCH') return json(await updateAIConfig(env,user,await body(request,1000)));

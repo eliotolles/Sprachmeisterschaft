@@ -5,7 +5,7 @@ async function responseJSON(url,options={},deadlineAt=Date.now()+45000){
   let response;
   try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(remaining)});}
   catch{throw coreError(503,'AI_TRANSPORT','Provider AI chưa phản hồi hoặc hết thời gian chờ.');}
-  if(!response.ok)throw coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.');
+  if(!response.ok)throw Object.assign(coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.'),{providerStatus:response.status});
   const text=await response.text();if(text.length>4000000)throw coreError(502,'AI_RESPONSE_SIZE','Provider trả dữ liệu quá lớn.');
   try{return JSON.parse(text);}catch{throw coreError(502,'AI_RESPONSE_JSON','Provider trả JSON không hợp lệ.');}
 }
@@ -27,7 +27,7 @@ export async function discoverModels(provider,key,{freeOnly=false,deadlineAt=Dat
       if(freeOnly&&provider==='openrouter'&&!free)continue;
       items.push({id,name:model.displayName||model.name||id,free,created:Number(model.created)||null,
         outputLimit:Number(model.outputTokenLimit||model.top_provider?.max_completion_tokens)||null,
-        inputModalities:model.architecture?.input_modalities||null,
+        inputModalities:model.architecture?.input_modalities||null,outputModalities:model.architecture?.output_modalities||null,contextLimit:Number(model.inputTokenLimit||model.context_length||model.context_window)||null,reasoning:Array.isArray(model.supported_parameters)?model.supported_parameters.includes('reasoning'):null,
         jsonMode:provider==='openrouter'?!!model.supported_parameters?.includes('response_format'):true});
     }
     token=provider==='gemini'?data.nextPageToken:'';if(!token)return {items,freeTierDependsOnAccount:provider!=='openrouter'};

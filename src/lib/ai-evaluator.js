@@ -1,3 +1,4 @@
+import {elioAIAdmin} from './elio-ai-admin-runtime.js';
 import {elioWriting} from './elio-writing-runtime.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — UNIFIED AI EVALUATION & CORRECTION ENGINE
@@ -182,6 +183,7 @@ export async function executeSingleAiCall(
  * Kiểm tra kết nối API Key trực tiếp (Test Key & Model Live)
  */
 export async function testAiConnection(config) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().test(config);
   if (!config.apiKey?.trim()) {
     return { success: false, message: 'Vui lòng điền API Key trước khi kiểm tra!' };
   }
@@ -213,6 +215,7 @@ export async function testAiConnection(config) {
  * (Nhóm ảnh gửi ảnh Vision; nhóm giọng nói thử audio; nhóm chấm thi thử chấm)
  */
 export async function testAiTaskSpecific(config, task) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().test(config,task);
   if (!config.apiKey?.trim()) {
     return { success: false, message: 'Vui lòng điền API Key trước khi thử nghiệm!' };
   }
@@ -294,6 +297,7 @@ export async function executeTaskWithFallback({
   mimeType = 'image/jpeg',
   jsonMode = true,
 }) {
+  if(elioAIAdmin()?.isActive())return elioAIAdmin().generate({taskId,systemPrompt,userPrompt,imageBase64,mimeType,jsonMode});
   // 1. Lấy danh sách Key được gán vào nhóm tác vụ này
   const pool = db.aiConfig?.getTaskPool?.(taskId) || [];
   let candidates = pool.filter((c) => c.enabled !== false && c.apiKey);

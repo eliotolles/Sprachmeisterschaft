@@ -1,9 +1,10 @@
+import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — FULL AI MODEL CATALOG MODAL
 // Dynamic Model Catalog Explorer with Search, Category Filters & Free-Tier First
 // ====================================================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo,useEffect } from 'react';
 import {
   X,
   Search,
@@ -41,12 +42,14 @@ export function ModelCatalogModal({
   const [sortBy, setSortBy] = useState('free_first');
   const [paidConfirmTarget, setPaidConfirmTarget] = useState(null); // { model, type: 'primary' | 'backup' }
 
+  useEffect(()=>{if(isOpen&&elioAIAdmin()?.isActive())setActiveFilter(models.some(m=>m.pricing?.isFree)?'free':'all');},[isOpen,models]);
+
   const filteredModels = useMemo(() => {
     return filterAndSortCatalog(models, {
       searchQuery,
       filter: activeFilter,
       sortBy,
-      policy: DEFAULT_AI_POLICY,
+      policy: elioAIAdmin()?.isActive()?elioAIAdmin().api.getPolicies():DEFAULT_AI_POLICY,
     });
   }, [models, searchQuery, activeFilter, sortBy]);
 
@@ -55,33 +58,37 @@ export function ModelCatalogModal({
   const freeCount = models.filter((m) => m.pricing?.isFree).length;
   const totalCount = models.length;
 
-  const handleChoose = (model, type = 'primary') => {
+  const handleChoose = async (model, type = 'primary') => {
+    try{
     // If selecting a PAID model and policy requires confirmation
-    if (!model.pricing?.isFree && model.pricing?.tier === MODEL_TIERS.PAID) {
+    if (!model.pricing?.isFree && model.pricing?.tier === MODEL_TIERS.PAID && (!elioAIAdmin()?.isActive()||elioAIAdmin().api.getPolicies().REQUIRE_ADMIN_APPROVAL_FOR_PAID)) {
       setPaidConfirmTarget({ model, type });
       return;
     }
 
     if (type === 'primary') {
-      onSelectPrimary(model.id, model);
+      await onSelectPrimary(model.id, model);
       toast.success(`Đã chọn "${model.name || model.id}" làm Model chính!`);
     } else {
-      onSelectBackup(model.id, model);
+      await onSelectBackup(model.id, model);
       toast.success(`Đã chọn "${model.name || model.id}" làm Model dự phòng!`);
     }
+    }catch(error){toast.error(error.message);}
   };
 
-  const confirmPaidSelection = () => {
+  const confirmPaidSelection = async () => {
+    try{
     if (!paidConfirmTarget) return;
     const { model, type } = paidConfirmTarget;
     if (type === 'primary') {
-      onSelectPrimary(model.id, model);
+      await onSelectPrimary(model.id, model);
       toast.warning(`Đã chọn model trả phí "${model.name || model.id}". Hãy theo dõi chi phí sử dụng!`);
     } else {
-      onSelectBackup(model.id, model);
+      await onSelectBackup(model.id, model);
       toast.warning(`Đã chọn model trả phí dự phòng "${model.name || model.id}".`);
     }
     setPaidConfirmTarget(null);
+    }catch(error){toast.error(error.message);}
   };
 
   return (
