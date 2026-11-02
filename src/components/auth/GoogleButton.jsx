@@ -1,21 +1,39 @@
 import React, { useState } from 'react';
 import { GoogleAccountModal } from './GoogleAccountModal';
+import { db, isSystemAdminEmail } from '@/lib/db';
+import { useRouter } from '@/lib/router';
+import { toast } from 'sonner';
 
 export function GoogleButton({
   label = 'Tiếp tục với Google',
   sublabel = 'Truy cập tức thì bằng tài khoản Google',
   className = '',
-  prefillEmail = '',
   onSuccess,
 }) {
+  const { navigate } = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleClick = () => {
+    const user = db.auth.getUser();
+    if (user) {
+      const isAdmin = user.role === 'admin' || isSystemAdminEmail(user.email);
+      toast.info(`Đang duy trì đăng nhập: ${user.name} (${user.email})`);
+      if (isAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
+      return;
+    }
+    setIsModalOpen(true);
+  };
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setIsModalOpen(true)}
-        className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-sm border border-border bg-card hover:bg-card/90 text-foreground font-body text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md hover:border-accent/40 active:scale-[0.985] ${className}`}
+        onClick={handleClick}
+        className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-[#2d2e31] bg-[#1a1b1e] hover:bg-[#25272b] text-white font-sans text-sm font-medium shadow-md transition-all duration-200 hover:border-[#4285F4] active:scale-[0.985] ${className}`}
       >
         {/* Google SVG Multi-color Icon */}
         <svg
@@ -41,15 +59,11 @@ export function GoogleButton({
         </svg>
 
         <span className="truncate">{label}</span>
-
-        {/* Subtle shine highlight */}
-        <span className="absolute inset-0 rounded-sm pointer-events-none border border-transparent group-hover:border-accent/20 transition-colors" />
       </button>
 
-      {/* Google Account Selector Dialog */}
+      {/* Authentic Google Account Selector Modal (Dark Mode) */}
       <GoogleAccountModal
         isOpen={isModalOpen}
-        prefillEmail={prefillEmail}
         onClose={() => setIsModalOpen(false)}
         onSuccess={onSuccess}
       />

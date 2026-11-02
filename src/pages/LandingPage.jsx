@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { db } from '@/lib/db';
+import React, { useState, useEffect } from 'react';
+import { db, isSystemAdminEmail } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
 import {
   BookOpen,
@@ -35,6 +35,15 @@ const SAMPLE_WORDS = [
 
 export function LandingPage() {
   const { navigate } = useRouter();
+  const currentUser = db.auth.getUser();
+
+  useEffect(() => {
+    // Nếu người dùng đã đăng nhập, tự động điều hướng vào app mà không bắt đăng nhập lại
+    if (currentUser) {
+      const isAdmin = currentUser.role === 'admin' || isSystemAdminEmail(currentUser.email);
+      navigate(isAdmin ? '/admin' : '/');
+    }
+  }, [currentUser, navigate]);
 
   // Interactive Mini-Demo state
   const [wordIndex, setWordIndex] = useState(0);
