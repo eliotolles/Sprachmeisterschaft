@@ -31,9 +31,9 @@ def endpoint(raw):
     url = urllib.parse.urlparse(raw.replace("libsql://", "https://", 1).replace("wss://", "https://", 1))
     if url.scheme != "https" or not url.hostname or not url.hostname.endswith(".turso.io"):
         raise ValueError("Staging endpoint must be a Turso HTTPS host")
-    if url.username or url.password or url.query or url.fragment or url.path not in ("", "/"):
+    if url.username or url.password or url.query or url.fragment or url.path not in ("", "/") or url.port is not None:
         raise ValueError("Invalid Turso staging endpoint")
-    return "https://" + url.netloc + "/v2/pipeline"
+    return "https://" + url.hostname + "/v2/pipeline"
 
 def execute(url, token, statements):
     requests = [{"type": "execute", "stmt": {"sql": sql, "args": args}} for sql, args in statements]
@@ -73,6 +73,11 @@ def main():
             "SELECT COUNT(*), COUNT(DISTINCT source_id) FROM elio_shared_vocabulary").fetchone()
         if not count or count != unique:
             raise ValueError("Empty or duplicate staging source IDs")
+        invalid = connection.execute(
+            "SELECT COUNT(*) FROM elio_shared_vocabulary WHERE trim(source_id) = '' OR trim(german) = ''"
+        ).fetchone()[0]
+        if invalid:
+            raise ValueError("Staging source contains blank IDs or German vocabulary")
         print(json.dumps({"mode": "apply" if args.apply else "dry-run",
                           "records": count, "unique_ids": unique,
                           "target": "isolated staging only"}))
