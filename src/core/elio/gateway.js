@@ -2,8 +2,9 @@ import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
 import { listGrammar, readGrammarLesson, importGrammar, submitGrammar, GRAMMAR_ATTEMPT_KEY } from './grammar.js';
-import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI} from './ai.js';
+import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI,generateGermanSpeech} from './ai.js';
 import {gradeWriting,translateWriting,WRITING_KEY} from './writing.js';
+import {speakingReply,gradeSpeaking,transcribeGerman,SPEAKING_KEY} from './speaking.js';
 
 // Elio's per-account records and optimistic revisions, mapped to the existing ee_* schema.
 // No bootstrap account, schema initialization, password rewrite, or bulk migration runs here.
@@ -12,7 +13,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
   'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
-  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY]);
+  'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -108,7 +109,7 @@ async function state(request, env, user, url) {
   if (request.method !== 'PUT') throw coreError(405, 'METHOD', 'Phương thức không được hỗ trợ.');
   const data = await body(request, 1500000);
   if (Object.keys(data).some(key => !['name', 'value', 'version'].includes(key)) ||
-      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
+      !CORE_KEYS.has(data.name) || [REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY].includes(data.name) || !Object.hasOwn(data, 'value') || !Number.isSafeInteger(data.version) || data.version < 0) {
     throw coreError(400, 'STATE_INPUT', 'Dữ liệu hoặc phiên bản không hợp lệ.');
   }
   const value = JSON.stringify(data.value);
@@ -139,6 +140,18 @@ export async function handleElioCore(request, env) {
       return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
     }
     if (path === '/api/core/state') return await state(request, env, user, url);
+    if (['/api/core/speaking/reply','/api/core/speaking/grade'].includes(path) && request.method === 'POST') {
+      await throttle(env,'core-ai:'+user.id,20,60000);const data=await body(request,700000);
+      const result=path.endsWith('/reply')?await speakingReply(env,user,data):await gradeSpeaking(env,user,data);
+      if(result.conflict)return json({code:'VERSION_CONFLICT',error:'Có phiên nói mới hơn; chưa ghi đè.',version:result.version},409);
+      return json(result,result.partial?202:200);
+    }
+    if (path === '/api/core/speech/transcribe' && request.method === 'POST') {
+      await throttle(env,'core-stt:'+user.id,10,60000);return json(await transcribeGerman(env,user,await body(request,15000000)));
+    }
+    if (path === '/api/core/speech/tts' && request.method === 'POST') {
+      await throttle(env,'core-tts:'+user.id,20,60000);return json(await generateGermanSpeech(env,user,await body(request,10000)));
+    }
     if (['/api/core/writing/grade','/api/core/writing/translate'].includes(path) && request.method === 'POST') {
       await throttle(env,'core-ai:'+user.id,20,60000);
       const input=await body(request,700000),result=path.endsWith('/grade')?await gradeWriting(env,user,input):await translateWriting(env,user,input);

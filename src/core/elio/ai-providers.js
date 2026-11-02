@@ -57,3 +57,21 @@ export async function providerGenerate(provider,key,model,input){
   if(typeof text!=='string'||!text.trim())throw coreError(502,'AI_EMPTY','Model không trả nội dung.');
   return {text,truncated:['MAX_TOKENS','length'].includes(reason),provider,model:model.id};
 }
+export async function providerSpeech(provider,key,model,input){
+ if(provider!=='gemini')throw coreError(422,'TTS_PROVIDER','Cấu hình giọng nói hiện cần provider hỗ trợ âm thanh tiếng Đức.');
+ const data=await responseJSON(ROOTS.gemini+'/models/'+encodeURIComponent(model.id)+':generateContent',{method:'POST',headers:{...auth(provider,key),'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Read the following German text in clear natural Hochdeutsch. Do not translate or add commentary. Text: '+input.text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:input.voice||'Kore'}}}}})},input.deadlineAt);
+ const candidate=data.candidates?.[0],audio=candidate?.content?.parts?.find(x=>x.inlineData)?.inlineData;
+ if(candidate?.finishReason!=='STOP'||!audio||typeof audio.mimeType!=='string'||!audio.mimeType.startsWith('audio/')||typeof audio.data!=='string'||!audio.data||audio.data.length>10000000||!/^[A-Za-z0-9+/]+={0,2}$/.test(audio.data))throw coreError(502,'TTS_AUDIO','Provider chưa trả âm thanh hoàn chỉnh.');
+ return {mimeType:audio.mimeType,data:audio.data,provider,model:model.id};
+}
+export async function providerTranscribe(provider,key,model,input){
+ if(input.attachments?.length!==1||!input.attachments[0].mimeType.startsWith('audio/'))throw coreError(400,'STT_AUDIO','Cần một đoạn âm thanh tiếng Đức.');
+ if(provider==='gemini')return providerGenerate(provider,key,model,input);
+ if(provider!=='groq')throw coreError(422,'STT_PROVIDER','Provider này chưa có adapter nhận dạng âm thanh.');
+ const file=input.attachments[0],bytes=Uint8Array.from(atob(file.data),c=>c.charCodeAt(0)),form=new FormData();
+ form.set('file',new Blob([bytes],{type:file.mimeType}),'speech.'+({ 'audio/webm':'webm','audio/wav':'wav','audio/mpeg':'mp3','audio/ogg':'ogg','audio/mp4':'m4a'}[file.mimeType]||'bin'));
+ form.set('model',model.id);form.set('language','de');form.set('response_format','json');
+ const data=await responseJSON(ROOTS.groq+'/audio/transcriptions',{method:'POST',headers:auth(provider,key),body:form},input.deadlineAt);
+ if(typeof data.text!=='string'||!data.text.trim())throw coreError(502,'STT_EMPTY','Chưa nhận được lời nói.');
+ return {text:JSON.stringify({text:data.text,language:'de'}),provider,model:model.id,truncated:false};
+}

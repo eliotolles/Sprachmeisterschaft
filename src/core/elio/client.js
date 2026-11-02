@@ -52,6 +52,15 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     }
     throw fail('AI_CONTINUATION_LIMIT','Chưa hoàn tất sau giới hạn tự động; phần đã nhận được giữ.',{partial:result?.text,continuation:result?.continuation});
   }
+  function journalJob(path,name,data,options={}){
+    requireUser();const current=epoch,user=identity,key=user.id+':'+name,captured=structuredClone(data),prior=writes.get(key)||Promise.resolve();
+    const next=prior.catch(()=>{}).then(async()=>{
+      if(current!==epoch)throw fail('ACCOUNT_CHANGED','Không gửi dữ liệu của tài khoản trước.');
+      if(!versions.has(name))await loadState([name],current,user);
+      const result=await continueJob(path,{...captured,version:versions.get(name)},{...options,current,user});
+      if(result.userId!==user.id||!Number.isSafeInteger(result.version))throw fail('INVALID_RESPONSE','Xác nhận dữ liệu không hợp lệ.');versions.set(name,result.version);return result;
+    });writes.set(key,next);next.then(()=>{if(writes.get(key)===next)writes.delete(key);},()=>{if(writes.get(key)===next)writes.delete(key);});return next;
+  }
   return {
     getUser: () => identity,
     config: () => request('/config'),
@@ -126,6 +135,10 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
     async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    speakingReply(data,options){return journalJob('/speaking/reply','sprach_speaking_results',data,options);},
+    gradeSpeaking(sessionId,language='vi',options){return journalJob('/speaking/grade','sprach_speaking_results',{sessionId,language},options);},
+    async transcribeGerman(audio){requireUser();return request('/speech/transcribe',{method:'POST',data:audio,deadlineMs:180000});},
+    async speakGerman(data){requireUser();return request('/speech/tts',{method:'POST',data,deadlineMs:180000});},
     gradeWriting(data,options={}){
       requireUser();const name='sprach_writing_results',current=epoch,user=identity,key=user.id+':'+name;
       const prior=writes.get(key)||Promise.resolve();const captured=structuredClone(data);
