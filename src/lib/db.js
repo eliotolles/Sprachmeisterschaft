@@ -493,7 +493,11 @@ export const db = {
       const idx = state.vocabularyCards.findIndex((c) => c.id === id &&
         (c.user_id === (db.auth.getUser()?.id || 'usr_student') || (!c.user_id && (db.auth.getUser()?.id || 'usr_student') === 'usr_student')));
       if (idx !== -1) {
-        state.vocabularyCards[idx] = { ...state.vocabularyCards[idx], ...updates };
+        const safeUpdates = String(id).startsWith('elio_shared_')
+          ? Object.fromEntries(Object.entries(updates || {}).filter(([key]) =>
+              !['id', 'user_id', 'source_id', 'source', 'is_shared'].includes(key)))
+          : updates;
+        state.vocabularyCards[idx] = { ...state.vocabularyCards[idx], ...safeUpdates };
         saveDatabase(state);
         return state.vocabularyCards[idx];
       }
