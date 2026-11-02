@@ -59,6 +59,24 @@ class ImporterSafetyTests(unittest.TestCase):
                         module.main()
                     remote.assert_not_called()
 
+    def test_invalid_extra_json_rejected_before_network(self):
+        for extra in ["{broken", "[]", "null"]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as directory:
+                path = os.path.join(directory, "test.db")
+                connection = sqlite3.connect(path)
+                connection.execute(module.CREATE)
+                connection.execute(
+                    "INSERT INTO elio_shared_vocabulary (source_id, german, extra_json) VALUES (?, ?, ?)",
+                    ("a", "Haus", extra))
+                connection.commit()
+                connection.close()
+                with patch.object(sys, "argv", ["importer", path, "--apply",
+                      "--acknowledge-isolated-database", "--expected-staging-host", "isolated.turso.io"]), \
+                     patch.object(module, "execute") as remote:
+                    with redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "extra_json"):
+                        module.main()
+                    remote.assert_not_called()
+
     def test_apply_without_explicit_host_never_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "test.db")
