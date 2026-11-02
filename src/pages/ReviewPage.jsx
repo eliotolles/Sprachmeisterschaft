@@ -91,8 +91,8 @@ export function ReviewPage() {
         <EmptyState
           icon={BookOpen}
           title="Không có thẻ nào cần ôn hôm nay!"
-          description="Bạn đã ôn tập hoàn tất tất cả thẻ đến hạn. Bạn có thể thêm từ vựng mới từ thư viện 950 từ hoặc luyện các kỹ năng khác."
-          actionLabel="Khám phá Thư viện 950 từ"
+          description="Bạn đã ôn tập hoàn tất tất cả thẻ đến hạn. Bạn có thể thêm từ vựng mới từ Thư viện từ vựng hoặc luyện các kỹ năng khác."
+          actionLabel="Khám phá Thư viện từ vựng"
           onAction={() => navigate('/vocabulary/library')}
         />
       </div>

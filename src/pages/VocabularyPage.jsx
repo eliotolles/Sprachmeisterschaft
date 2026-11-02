@@ -197,10 +197,10 @@ export function VocabularyPage() {
           title="Không tìm thấy thẻ từ nào"
           description={
             cards.length === 0
-              ? 'Bộ thẻ của bạn chưa có từ nào. Hãy khám phá Thư viện 950 từ hoặc bấm "Thêm từ mới" ở góc trên.'
+              ? 'Bộ thẻ của bạn chưa có từ nào. Hãy khám phá Thư viện từ vựng hoặc bấm "Thêm từ mới" ở góc trên.'
               : 'Không có từ nào phù hợp với bộ lọc tìm kiếm hiện tại.'
           }
-          actionLabel="Khám phá Thư viện 950 từ"
+          actionLabel="Khám phá Thư viện từ vựng"
           onAction={() => navigate('/vocabulary/library')}
         />
       ) : (

@@ -79,7 +79,7 @@ export function VocabLibraryPage() {
     <div className="space-y-6 animate-rise">
       <PageHeader
         eyebrow="KHO NGUYÊN LIỆU CHUẨN HOÁ"
-        title="Thư viện 950 từ vựng"
+        title="Thư viện từ vựng"
         deTitle="Wortschatz-Bibliothek"
         subtitle="Kho từ vựng tinh chọn 20 chủ đề bám sát đề thi Goethe, telc, ÖSD và DTZ."
         actions={
@@ -109,7 +109,7 @@ export function VocabLibraryPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm trong thư viện 950 từ..."
+            placeholder="Tìm trong thư viện từ vựng..."
             className="w-full pl-9 pr-4 py-1.5 text-xs rounded-sm border border-border bg-card text-foreground"
           />
         </div>

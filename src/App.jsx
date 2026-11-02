@@ -13,6 +13,7 @@ import { VocabLibraryPage } from '@/pages/VocabLibraryPage';
 import { VocabDictionaryPage } from '@/pages/VocabDictionaryPage';
 import { VocabSituationsPage } from '@/pages/VocabSituationsPage';
 import { VocabLevelsPage } from '@/pages/VocabLevelsPage';
+import { VocabSpecialtiesPage } from '@/pages/VocabSpecialtiesPage';
 import { SkillsOverviewPage } from '@/pages/SkillsOverviewPage';
 import { SkillStudioPage } from '@/pages/SkillStudioPage';
 import { ListeningOverviewPage } from '@/pages/ListeningOverviewPage';
@@ -52,6 +53,7 @@ export function App() {
     if (currentPath === '/vocabulary') return <VocabularyPage />;
     if (currentPath === '/vocabulary/levels') return <VocabLevelsPage />;
     if (currentPath === '/vocabulary/library') return <VocabLibraryPage />;
+    if (currentPath === '/vocabulary/specialties' || currentPath === '/vocabulary/professions') return <VocabSpecialtiesPage />;
     if (currentPath === '/vocabulary/dictionary') return <VocabDictionaryPage />;
     if (currentPath === '/vocabulary/situations') return <VocabSituationsPage />;
     if (currentPath === '/skills') return <SkillsOverviewPage />;
