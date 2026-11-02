@@ -529,6 +529,8 @@ export const db = {
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {
         if (c.topic === topic) {
+          if (String(c.id).startsWith('elio_shared_') &&
+              c.user_id !== (currentUserId || 'usr_student')) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true;
           }
@@ -545,6 +547,8 @@ export const db = {
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {
         if (c.level === level) {
+          if (String(c.id).startsWith('elio_shared_') &&
+              c.user_id !== (currentUserId || 'usr_student')) return true;
           if (currentUserId && c.user_id && c.user_id !== currentUserId && !db.auth.isAdmin()) {
             return true;
           }
@@ -560,11 +564,17 @@ export const db = {
       const curUser = db.auth.getUser();
       const currentUserId = curUser?.id;
       if (!currentUserId) {
-        state.vocabularyCards = [];
-      } else {
-        // Only clear current user's cards
+        // Preserve Elio review forks belonging to signed-in accounts.
         state.vocabularyCards = state.vocabularyCards.filter(
-          (c) => c.user_id && c.user_id !== currentUserId
+          (c) => String(c.id).startsWith('elio_shared_') &&
+            c.user_id && c.user_id !== 'usr_student'
+        );
+      } else {
+        // Only clear current user's cards; never clear another Elio review fork.
+        state.vocabularyCards = state.vocabularyCards.filter(
+          (c) => String(c.id).startsWith('elio_shared_')
+            ? c.user_id !== currentUserId
+            : c.user_id && c.user_id !== currentUserId
         );
       }
       saveDatabase(state);
