@@ -7,6 +7,7 @@ let binding=null,vocabulary=null;
 export function installElioAuthentication(db){
  if(binding)return binding;
  binding=createAuthBinding({client:elioClient,legacy:{...db.auth},notify:()=>{vocabulary?.reset();if(vocabulary&&binding?.configuration().uiVocabularyEnabled)vocabulary.hydrate().catch(e=>toast.error(e.message));window.dispatchEvent(new CustomEvent('sprach_auth_change'));window.dispatchEvent(new CustomEvent('sprach_db_change'));}});
+ window.addEventListener('sprach_core_imported',()=>{if(vocabulary&&binding?.isActive()&&binding.configuration().uiVocabularyEnabled)vocabulary.hydrate().catch(error=>toast.error(error.message));});
  db.auth=binding.auth;vocabulary=createVocabularyBinding({client:elioClient,legacy:{...db.vocabulary},isActive:()=>binding.isActive()&&binding.configuration().uiVocabularyEnabled===true,notify:({warnings=[]}={})=>{if(warnings.length)toast.warning(`${warnings.length} từ cũ thiếu ID nguồn; chỉ đọc, chưa ghi lịch ôn.`);window.dispatchEvent(new CustomEvent('sprach_db_change'));}});db.vocabulary=vocabulary.api;return binding;
 }
 export function elioAuthentication(){return binding;}

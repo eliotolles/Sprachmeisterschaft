@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {elioImport} from '@/lib/elio-import-runtime';
 import {listeningCoreActive} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -130,7 +131,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
             )}
             {activeScopeTab === 'personal' ? (
               <button
-                onClick={() => listeningCoreActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
+                onClick={() => listeningCoreActive()&&!elioImport.isActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
                 className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
                 title="Dán link video YouTube vào kho cá nhân của bạn"
               >
@@ -139,7 +140,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
               </button>
             ) : (
               <button
-                onClick={() => listeningCoreActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
+                onClick={() => listeningCoreActive()&&!elioImport.isActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
                 className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
                 title="Import video YouTube vào kho chung"
               >
@@ -181,7 +182,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
 
         {activeScopeTab === 'personal' && (
           <button
-            onClick={() => listeningCoreActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
+            onClick={() => listeningCoreActive()&&!elioImport.isActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
             className="tap px-3 py-1.5 rounded bg-accent/10 border border-accent/30 text-accent text-xs font-mono font-bold hover:bg-accent/20 flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -232,7 +233,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
             </p>
           </div>
           <button
-            onClick={() => listeningCoreActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
+            onClick={() => listeningCoreActive()&&!elioImport.isActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
             className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold shadow-sm inline-flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />

@@ -10,6 +10,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
+import {elioImport} from '@/lib/elio-import-runtime';
+import {importVocabularyJSON} from '@/core/elio/import-binding';
 import {
   X,
   UploadCloud,
@@ -58,6 +60,8 @@ import {
 export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, onSuccess }) {
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
+  const draftOwner=useRef(null);
+  useEffect(()=>{const reset=()=>{if(elioImport.isActive()){draftOwner.current=null;setExtractedItems([]);setSelectedFile(null);setManualText('');setTitle('');setYoutubeUrl('');setYoutubeSubtitles('');setIssuesList([]);setSyncReport(null);setExcelSheets([]);setDetectedExams([]);setExamContent(null);setSituationContent(null);setGrammarContent({rule:'',exercises:[]});setCurrentUser(db.auth.getUser());setIsAdminState(db.auth.isAdmin());setScope(db.auth.isAdmin()?'public':'private');setStep(1);}};window.addEventListener('sprach_auth_change',reset);return()=>window.removeEventListener('sprach_auth_change',reset);},[]);
 
   // General Settings
   const [contentType, setContentType] = useState(defaultType);
@@ -102,6 +106,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
   useEffect(() => {
     if (isOpen) {
       setContentType(defaultType);
+      if(elioImport.isActive()){setDuplicateMode('skip');draftOwner.current=db.auth.getUser()?.id;}
       setStep(1);
       setExtractedItems([]);
       setDetectedExams([]);
@@ -172,16 +177,20 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
   // Step 1 -> Step 2: Trigger Extraction Process
   const handleStartExtraction = async () => {
+    const extractionOwner=db.auth.getUser()?.id;
+    const assertCurrentDraft=()=>{if(elioImport.isActive()&&(draftOwner.current!==extractionOwner||db.auth.getUser()?.id!==extractionOwner))throw Error('Tài khoản đã thay đổi; không hiển thị tài liệu của tài khoản trước.');};
     if (!title.trim()) {
       toast.error('Vui lòng nhập tiêu đề cho bộ tài liệu!');
       return;
     }
 
+    if(elioImport.isActive())draftOwner.current=db.auth.getUser()?.id;
     setIsProcessing(true);
     setProcessProgress({ message: 'Bắt đầu đọc và phân tích cấu trúc...', percent: 10 });
     setIssuesList([]);
 
     try {
+      if(elioImport.isActive()&&!['vocabulary','listening'].includes(contentType))throw Error('Loại tài liệu này chưa nối màn xem trước với server.');
       // CASE A: LISTENING (YouTube)
       if (contentType === 'listening') {
         const info = extractYouTubeInfo(youtubeUrl);
@@ -190,9 +199,9 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         }
 
         setProcessProgress({ message: 'Đang phân tích phụ đề và mốc thời gian...', percent: 60 });
-        const subs = parseYouTubeSubtitles(youtubeSubtitles);
+        const subs = elioImport.isActive()&&!youtubeSubtitles.trim()?await elioImport.transcript(youtubeUrl):parseYouTubeSubtitles(youtubeSubtitles);
 
-        setExtractedItems(subs);
+        assertCurrentDraft();setExtractedItems(subs);
         setProcessProgress({ message: 'Hoàn thành trích xuất video!', percent: 100 });
         setStep(2);
         setIsProcessing(false);
@@ -280,7 +289,10 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
       if (inputMethod === 'file') {
         if (!selectedFile) throw new Error('Vui lòng chọn tệp tin cần tải lên.');
 
-        if (fileType === 'xlsx') {
+        if(elioImport.isActive()&&(fileType==='pdf'||fileType==='image')){
+          const draft=await elioImport.extractFile(selectedFile);const parsed=parseTxtVocab(draft.text);parsedVocab=parsed.items;issues=[...draft.warnings,...parsed.issues,'Bản nháp OCR: kiểm tra và sửa dữ liệu trước khi lưu.'];
+        }else if(elioImport.isActive()&&fileType==='json'){parsedVocab=importVocabularyJSON(await selectedFile.text());
+        }else if (fileType === 'xlsx') {
           setProcessProgress({ message: `Đang đọc Sheet "${selectedSheet}"...`, percent: 40 });
           const res = await parseExcelFile(selectedFile, selectedSheet);
           parsedVocab = res.items;
@@ -348,14 +360,14 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
       } else {
         // Manual Text input
         setProcessProgress({ message: 'Đang phân tích văn bản nhập tay...', percent: 50 });
-        const res = parseTxtVocab(manualText);
+        const res = elioImport.isActive()&&/^\s*[\[{]/.test(manualText)?{items:importVocabularyJSON(manualText),issues:[]}:parseTxtVocab(manualText);
         parsedVocab = res.items;
         issues = res.issues;
       }
 
       // Check duplicates for vocabulary
-      const withDuplicates = checkVocabularyDuplicates(parsedVocab);
-      setExtractedItems(withDuplicates);
+      const withDuplicates = elioImport.isActive()?parsedVocab:checkVocabularyDuplicates(parsedVocab);
+      assertCurrentDraft();setExtractedItems(withDuplicates);
       setIssuesList(issues);
 
       setProcessProgress({ message: 'Hoàn thành!', percent: 100 });
@@ -412,6 +424,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIsSubmitting(true);
 
     try {
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode});setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;

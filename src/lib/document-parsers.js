@@ -64,6 +64,7 @@ export const VOCAB_14_COLUMNS = [
 function findMatchingKey(headerName) {
   if (!headerName) return null;
   const clean = headerName.toString().trim().toLowerCase();
+  if(['id','source_id','word_id','vocabulary_id'].includes(clean))return '_sourceId';
   for (const col of VOCAB_14_COLUMNS) {
     if (col.key === clean) return col.key;
     if (col.aliases.some((alias) => clean === alias || clean.startsWith(alias) || clean.includes(alias))) {
@@ -172,7 +173,8 @@ export async function parseExcelFile(file, sheetIndexOrName = 0) {
     let hasMapped = false;
     Object.keys(headerMap).forEach((colIdx) => {
       const field = headerMap[colIdx];
-      const val = (row[colIdx] || '').toString().trim();
+      const val = (row[colIdx] ?? '').toString().trim();
+      if(field==='_sourceId'&&entry._sourceId&&val&&entry._sourceId!==val)throw Error('Các cột ID nguồn mâu thuẫn; chưa tự chọn hoặc đổi ID.');
       if (val) {
         entry[field] = val;
         hasMapped = true;
@@ -312,6 +314,7 @@ export function parseCsvTsvText(rawText) {
     Object.keys(headerMap).forEach((colIdx) => {
       const field = headerMap[colIdx];
       const val = (row[colIdx] || '').trim();
+      if(field==='_sourceId'&&entry._sourceId&&val&&entry._sourceId!==val)throw Error('Các cột ID nguồn mâu thuẫn; chưa tự chọn hoặc đổi ID.');
       if (val) {
         entry[field] = val;
         hasMapped = true;
@@ -1052,3 +1055,4 @@ Nhiệm vụ:
 
   return ocrResult;
 }
+
