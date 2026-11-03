@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -6,6 +6,7 @@ import { VocabTabs } from '@/components/vocabulary/VocabTabs';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { GenderText } from '@/components/ui/GenderText';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
+import {buildLevelDecks} from '@/lib/level-deck-adapter.js';
 import { LEVEL_DECKS } from '@/data/level-decks';
 import { LEVEL_IDS } from '@/data/levels';
 import {
@@ -30,14 +31,19 @@ export function VocabLevelsPage() {
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
 
+  const readDecks=()=>db.vocabulary.isCore?.()?buildLevelDecks(db.vocabulary.findMany()):LEVEL_DECKS;
+  const [decks,setDecks]=useState(readDecks);
+  useEffect(()=>{const refresh=()=>setDecks(readDecks());refresh();window.addEventListener('sprach_db_change',refresh);window.addEventListener('sprach_auth_change',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('sprach_auth_change',refresh);};},[]);
+
   // Filter decks
-  const filteredDecks = LEVEL_DECKS.filter((d) => {
+  const filteredDecks = decks.filter((d) => {
     if (selectedLevel !== 'ALL' && d.level !== selectedLevel) return false;
     return true;
   });
 
   const handleAddDeckToCards = async (deck) => {
     try {
+    if(deck.isCore){toast.info('Bộ từ đã có trong kho SRS của tài khoản; không tạo thẻ trùng.');navigate('/review');return;}
     const added = await db.vocabulary.createMany(deck.words.map(w=>({
         german: w.german,
         article: w.article || '',

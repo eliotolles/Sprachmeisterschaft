@@ -1,3 +1,4 @@
+import {renderLessonMarkdown} from '@/lib/lesson-markdown.js';
 import React, { useState, useEffect, useRef } from 'react';
 import {newGrammarBinding,grammarCoreActive} from '@/lib/elio-grammar-runtime';
 import { db } from '@/lib/db';
@@ -317,7 +318,7 @@ export function GrammarStudio({ onBack }) {
                 Quy tắc ngữ pháp
               </div>
               <div className="font-body text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">
-                {activeTopic.rule}
+                {renderLessonMarkdown(React,activeTopic.rule)}
               </div>
             </div>
 
