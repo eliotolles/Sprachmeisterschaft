@@ -1,5 +1,5 @@
 {
-  "scope": "Owner request 2026-11-03: handle all remaining work after proposed grammar fill/navigation/mindmap and Pomodoro controls; microphone is part of requested speaking completion. Existing presentation remains fixed outside these exact additions.",
+  "scope": "Owner request 2026-11-03: handle all remaining work after proposed grammar fill/navigation/mindmap and Pomodoro controls; microphone is part of requested speaking completion. Existing presentation remains fixed outside these exact additions. Owner explicitly requested a complete login page redesign on 2026-11-03.",
   "files": {
     "components/skills/GrammarStudio.jsx": {
       "baseline": "d87d5b2864f5d30fb4a0e86c565fbb1d0ad3d7dee65a0e2e7a15283758725171",
@@ -12,6 +12,10 @@
     "components/skills/InterviewStudio.jsx": {
       "baseline": "2904e349b7d1f9d87b6c9b61a81a93fa8f1281feaebfd6a0407d29f996090495",
       "candidate": "9a6e3f7026dba13e83444ae8cca1bc063f2d86e17ec908a14c92cf1e59624c7d"
+    },
+    "components/auth/LoginPage.jsx": {
+      "baseline": "2de4a45b4e14eba0f150bb46a265ea9e12c16d8852faca14c12e572f6733a592",
+      "candidate": "bba24d307282499b7c429cdb31ab01e84878af1de7cddcee652b14e7017b952b"
     }
   }
 }

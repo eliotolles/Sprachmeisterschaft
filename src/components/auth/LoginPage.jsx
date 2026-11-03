@@ -1,619 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { db, isSystemAdminEmail, SYSTEM_ADMIN_EMAILS } from '@/lib/db';
-import { useRouter } from '@/lib/router';
-import { toast } from 'sonner';
-import { 
-  ShieldCheck, 
-  UserPlus, 
-  ChevronDown, 
-  Lock, 
-  ArrowLeft, 
-  CheckCircle2, 
-  AlertCircle, 
-  Loader2,
-  ExternalLink,
-  Mail,
-  User,
-  KeyRound
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { db } from '@/lib/db';
+import { elioAuthentication } from '@/lib/elio-auth-runtime';
+import { useRouter, Link } from '@/lib/router';
+import { ArrowLeft, ArrowRight, BookOpen, Check, Eye, EyeOff, Loader2, LockKeyhole, Sparkles } from 'lucide-react';
 
-// Danh sách các tài khoản Google mẫu chuẩn xác theo ảnh của bạn
-export const GOOGLE_PRESET_ACCOUNTS = [
-  {
-    id: 'acc_1',
-    name: 'グエンダット',
-    email: 'dat.uneti.1999@gmail.com',
-    avatarType: 'text',
-    avatarText: 'ダ',
-    avatarBg: 'bg-purple-900 text-purple-200 border-purple-700',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_2',
-    name: 'Viết Nguyễn Đạt',
-    email: 'dat.uneti.99@gmail.com',
-    avatarType: 'photo',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-    fallbackInitial: 'V',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_3',
-    name: 'Douyin Tiktok',
-    email: 'dat.sunlife99@gmail.com',
-    avatarType: 'emoji',
-    avatarIcon: '🦊',
-    avatarBg: 'bg-amber-950/80 border-amber-600/50',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_4',
-    name: 'Đạt Nguyễn',
-    email: 'dat.nguyenviet.1999@gmail.com',
-    avatarType: 'text',
-    avatarText: 'Đ',
-    avatarBg: 'bg-neutral-800 text-neutral-200 border-neutral-600',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_5',
-    name: 'Đạt Nguyễn',
-    email: 'dat.nguyenviet.99@gmail.com',
-    avatarType: 'text',
-    avatarText: 'Đ',
-    avatarBg: 'bg-fuchsia-950 text-fuchsia-200 border-fuchsia-700',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_6',
-    name: 'Đạt Nguyễn',
-    email: 'dat.nv260399@gmail.com',
-    avatarType: 'photo',
-    avatarUrl: 'https://images.unsplash.com/photo-1550853024-fae8cd4be47f?w=100&h=100&fit=crop&crop=faces',
-    fallbackInitial: 'Đ',
-    isSuperAdmin: true,
-  },
-  {
-    id: 'acc_7',
-    name: 'Einfach Elio',
-    email: 'elio.nv260399@gmail.com',
-    avatarType: 'text',
-    avatarText: 'e',
-    avatarBg: 'bg-emerald-950 text-emerald-300 border-emerald-600',
-    isSuperAdmin: true,
-  },
-];
-
+// Account selection belongs to Google; never publish a list of personal accounts.
+export const GOOGLE_PRESET_ACCOUNTS = [];
+const callbackErrors = {
+  GOOGLE_NOT_LINKED: 'Google chưa được liên kết. Hãy đăng nhập bằng mật khẩu trước.',
+  GOOGLE_ALREADY_LINKED: 'Google đã được liên kết với tài khoản khác.',
+  GOOGLE_STATE: 'Phiên Google đã hết hạn. Vui lòng thử lại.',
+  ACCOUNT_BLOCKED: 'Tài khoản không được phép đăng nhập.',
+  GOOGLE_NOT_CONFIGURED: 'Đăng nhập Google chưa được cấu hình. Bạn có thể dùng email và mật khẩu.',
+  GOOGLE_IDENTITY: 'Chưa xác minh được tài khoản Google. Vui lòng thử lại.',
+};
 export function LoginPage() {
   const { navigate } = useRouter();
-  const [selectedEmail, setSelectedEmail] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(()=>{
-    const code=new URLSearchParams(window.location.hash.split('?')[1]||'').get('coreAuthError');
-    const messages={GOOGLE_NOT_LINKED:'Google chưa được liên kết. Hãy đăng nhập bằng mật khẩu trước.',GOOGLE_ALREADY_LINKED:'Google đã được liên kết với tài khoản khác.',GOOGLE_STATE:'Phiên Google đã hết hạn hoặc không khớp. Hãy thử lại.',ACCOUNT_BLOCKED:'Tài khoản không được phép đăng nhập.',GOOGLE_NOT_CONFIGURED:'Chưa cấu hình Google OAuth phía server.',GOOGLE_IDENTITY:'Chưa xác minh được danh tính Google. Hãy thử lại.'};
-    if(messages[code])setError(messages[code]);
-  },[]);
-
-
-  // Ghi nhớ phiên đăng nhập: Kiểm tra xem người dùng đã đăng nhập chưa
-  const [currentUser, setCurrentUser] = useState(() => db.auth.getUser());
-  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
-
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [visible, setVisible] = useState(false);
+  const [pending, setPending] = useState('');
+  const [error, setError] = useState(() => {
+    const code = new URLSearchParams(window.location.hash.split('?')[1] || '').get('coreAuthError');
+    return callbackErrors[code] || (code ? 'Đăng nhập Google chưa thành công. Vui lòng thử lại.' : '');
+  });
   useEffect(() => {
-    // Nếu người dùng đã đăng nhập trước đó và không phải đang bấm "Đăng xuất / Đổi tài khoản"
-    if (currentUser && !isSwitchingAccount) {
-      const isAdmin = currentUser.role === 'admin' || isSystemAdminEmail(currentUser.email);
-      const timer = setTimeout(() => {
-        if (isAdmin) {
-          navigate('/admin');
-        } else {
-          navigate('/');
-        }
-      }, 350);
-      return () => clearTimeout(timer);
-    }
-  }, [currentUser, isSwitchingAccount, navigate]);
-  
-  // Chế độ nhập tài khoản khác
-  const [showCustomAccountModal, setShowCustomAccountModal] = useState(false);
-  const [customEmail, setCustomEmail] = useState('');
-  const [customName, setCustomName] = useState('');
-
-  // Chế độ dự phòng đăng nhập email/mật khẩu truyền thống
-  const [showLegacyForm, setShowLegacyForm] = useState(false);
-  const [legacyPassword, setLegacyPassword] = useState('');
-
-  // Lưu lịch sử tài khoản đã thêm
-  const [accounts, setAccounts] = useState(GOOGLE_PRESET_ACCOUNTS);
-
-  useEffect(() => {
-    // Tải thêm các tài khoản đã từng đăng nhập bổ sung từ LocalStorage nếu có
+    const user = db.auth.getUser();
+    if (user) navigate(user.role === 'admin' ? '/admin' : '/');
+  }, [navigate]);
+  async function submit(event) {
+    event.preventDefault();
+    if (pending) return;
+    setError(''); setPending('password');
     try {
-      const saved = localStorage.getItem('sprach_custom_google_accounts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Gộp các tài khoản mới vào cuối danh sách trước mục "Sử dụng một tài khoản khác"
-          setAccounts([...GOOGLE_PRESET_ACCOUNTS, ...parsed]);
-        }
-      }
-    } catch (e) {
-      console.error('Lỗi đọc tài khoản đã lưu:', e);
-    }
-  }, []);
-
-  // Xử lý đăng nhập ngay khi click vào 1 tài khoản
-  const handleSelectAccount = (account) => {
-    setError('');
-    setSelectedEmail(account.email);
-    setIsSubmitting(true);
-
-    setTimeout(async () => {
-      try {
-        const isAdmin = isSystemAdminEmail(account.email);
-        const user = await db.auth.loginWithGoogle({
-          email: account.email,
-          name: account.name,
-          picture: account.avatarUrl || null,
-        });
-
-        if (isAdmin || user.role === 'admin') {
-          toast.success(`👑 Chào mừng Super Admin: ${account.name}!`, {
-            description: `Đăng nhập quyền Quản trị tối cao với email ${account.email}`,
-          });
-          navigate('/admin');
-        } else {
-          toast.success(`Đăng nhập Google thành công!`, {
-            description: `Chào mừng ${account.name} đã quay trở lại.`,
-          });
-          navigate('/');
-        }
-      } catch (err) {
-        setError(err.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
-        setIsSubmitting(false);
-        setSelectedEmail(null);
-      }
-    }, 450);
-  };
-
-  // Thêm tài khoản Google khác
-  const handleAddCustomAccount = (e) => {
-    e.preventDefault();
-    const cleanEmail = customEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('Vui lòng nhập địa chỉ email hợp lệ (ví dụ: yourname@gmail.com)');
-      return;
-    }
-
-    const cleanName = customName.trim() || cleanEmail.split('@')[0];
-    const isAdmin = isSystemAdminEmail(cleanEmail);
-
-    const newAcc = {
-      id: `acc_custom_${Date.now()}`,
-      name: cleanName,
-      email: cleanEmail,
-      avatarType: 'text',
-      avatarText: cleanName.charAt(0).toUpperCase(),
-      avatarBg: isAdmin ? 'bg-amber-950 text-amber-200 border-amber-600' : 'bg-blue-950 text-blue-200 border-blue-600',
-      isSuperAdmin: isAdmin,
-    };
-
-    // Lưu vào LocalStorage
-    try {
-      const saved = JSON.parse(localStorage.getItem('sprach_custom_google_accounts') || '[]');
-      const filtered = saved.filter(a => a.email !== cleanEmail);
-      filtered.push(newAcc);
-      localStorage.setItem('sprach_custom_google_accounts', JSON.stringify(filtered));
-    } catch (e) {}
-
-    setShowCustomAccountModal(false);
-    handleSelectAccount(newAcc);
-  };
-
-  // Đăng nhập mật khẩu truyền thống
-  const handleLegacyLogin = (e) => {
-    e.preventDefault();
-    setError('');
-    setIsSubmitting(true);
-
-    setTimeout(async () => {
-      try {
-        const cleanEmail = customEmail.trim().toLowerCase();
-        const u = await db.auth.login(cleanEmail, legacyPassword);
-        if (u.role === 'admin' || isSystemAdminEmail(cleanEmail)) {
-          toast.success(`👑 Đăng nhập thành công với quyền Super Admin!`);
-          navigate('/admin');
-        } else {
-          toast.success(`Đăng nhập thành công!`);
-          navigate('/');
-        }
-      } catch (err) {
-        setError(err.message || 'Email hoặc mật khẩu không chính xác.');
-        setIsSubmitting(false);
-      }
-    }, 350);
-  };
-
-  // Nếu người dùng đã đăng nhập và không phải bấm đổi tài khoản:
-  if (currentUser && !isSwitchingAccount) {
-    const isAdmin = currentUser.role === 'admin' || isSystemAdminEmail(currentUser.email);
-    return (
-      <div className="min-h-screen bg-[#121314] text-[#e3e3e3] flex flex-col items-center justify-center p-4 font-sans selection:bg-[#4285F4]/30 selection:text-white">
-        <div className="w-full max-w-[480px] bg-[#1a1b1e] border border-[#2d2e31] rounded-[28px] p-8 sm:p-10 text-center shadow-2xl relative animate-rise">
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-            </svg>
-            <span className="text-sm text-[#c4c7c5] font-medium">Sprachmeisterschaft</span>
-          </div>
-
-          <div className="relative w-16 h-16 rounded-full mx-auto mb-4 overflow-hidden border border-[#444746] bg-[#282a2d] flex items-center justify-center text-xl font-bold text-white shadow-lg">
-            {currentUser.picture ? (
-              <img src={currentUser.picture} alt={currentUser.name} className="w-full h-full object-cover" />
-            ) : (
-              <span>{currentUser.name?.charAt(0)?.toUpperCase() || 'U'}</span>
-            )}
-            {isAdmin && (
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-[10px] text-black font-bold border-2 border-[#1a1b1e]">
-                ★
-              </span>
-            )}
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/60 border border-blue-500/40 text-blue-300 text-xs font-medium mb-3">
-            <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-            <span>Đang ghi nhớ phiên đăng nhập</span>
-          </div>
-
-          <h2 className="text-xl font-medium text-white mb-0.5">
-            {currentUser.name}
-          </h2>
-          <p className="text-sm text-[#9aa0a6] mb-6">
-            {currentUser.email}
-          </p>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => navigate(isAdmin ? '/admin' : '/')}
-              className="w-full py-3 px-4 rounded-xl bg-[#4285F4] hover:bg-[#3367d6] text-white font-medium text-sm transition-colors shadow flex items-center justify-center gap-2"
-            >
-              <span>Vào {isAdmin ? 'Trung tâm Quản trị' : 'Giao diện Học tập'} ngay</span>
-              <ArrowLeft className="w-4 h-4 rotate-180" />
-            </button>
-            <button
-              onClick={async () => {
-                try {await db.auth.logout();setCurrentUser(null);setIsSwitchingAccount(true);}
-                catch(error){setError(error.message || 'Chưa đăng xuất được.');}
-              }}
-              className="w-full py-2.5 px-4 rounded-xl border border-[#383a3f] text-[#c4c7c5] hover:text-white hover:bg-[#282a2d] text-sm transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Đăng xuất & Đổi tài khoản khác</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+      const user = await db.auth.login(email.trim().toLowerCase(), password);
+      navigate(user.role === 'admin' ? '/admin' : '/');
+    } catch (err) { setError(err.message || 'Chưa đăng nhập được. Vui lòng thử lại.'); }
+    finally { setPending(''); }
   }
-
+  async function google() {
+    if (pending) return;
+    setError(''); setPending('google');
+    try {
+      const binding = elioAuthentication();
+      await binding?.initialize();
+      if (!binding?.isActive()) throw new Error(callbackErrors.GOOGLE_NOT_CONFIGURED);
+      await db.auth.loginWithGoogle();
+    } catch (err) { setError(err.message || 'Chưa kết nối được Google. Vui lòng thử lại.'); setPending(''); }
+  }
+  const inputClass = 'mt-2 w-full rounded-xl border border-border bg-background px-4 py-3.5 text-base text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60';
   return (
-    <div className="min-h-screen bg-[#121314] text-[#e3e3e3] flex flex-col items-center justify-between p-4 sm:p-6 md:p-10 font-sans antialiased selection:bg-[#4285F4]/30 selection:text-white">
-      {/* Thanh tiến trình khi đang đăng nhập (Google Bar) */}
-      {isSubmitting && (
-        <div className="fixed top-0 left-0 right-0 h-1 bg-transparent overflow-hidden z-50">
-          <div className="h-full bg-gradient-to-r from-[#4285F4] via-[#EA4335] via-[#FBBC05] to-[#34A853] animate-pulse w-full"></div>
+    <main className="min-h-screen bg-background text-foreground font-body lg:grid lg:grid-cols-2">
+      <section className="relative hidden overflow-hidden bg-[#153f36] p-12 text-[#f5f3e9] lg:flex lg:flex-col xl:p-16">
+        <Link to="/landing" className="relative z-10 flex items-center gap-3 text-xl font-bold"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e6eea4] text-[#153f36]"><BookOpen size={23} /></span>Elio Einfach</Link>
+        <div className="relative z-10 my-auto max-w-lg py-20">
+          <span className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-xs tracking-widest uppercase"><Sparkles size={14} /> Dein nächster Schritt</span>
+          <h1 className="font-display text-5xl font-semibold leading-tight xl:text-6xl">Mỗi ngày một chút.<br /><span className="text-[#e6eea4]">Tiếng Đức tiến xa.</span></h1>
+          <p className="mt-6 max-w-sm text-base leading-relaxed text-white/70">Trở lại với bài học, những từ mới và mục tiêu của riêng bạn.</p>
+          <div className="mt-10 space-y-4 text-sm text-white/85">{['Ôn từ vựng theo nhịp học của bạn', 'Luyện nghe, nói, đọc và viết', 'Chuẩn bị cho kỳ thi tiếng Đức'].map(text => <div key={text} className="flex items-center gap-3"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[#e6eea4]"><Check size={14} /></span>{text}</div>)}</div>
         </div>
-      )}
-
-      {/* Container chính: Bo góc, viền mờ cao cấp chuẩn Google Account Picker Dark Mode */}
-      <div className="w-full max-w-[1020px] bg-[#1a1b1e] border border-[#2d2e31] rounded-[28px] p-6 sm:p-10 md:p-14 shadow-2xl relative my-auto transition-all duration-300">
-        
-        {/* Header trên cùng: Logo Google + Chữ "Đăng nhập bằng Google" */}
-        <div className="flex items-center gap-3 mb-8 sm:mb-12">
-          {/* Logo Google đa sắc chính hãng */}
-          <svg className="w-6 h-6 flex-shrink-0" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          <span className="text-[15px] sm:text-[16px] text-[#c4c7c5] font-medium tracking-wide">
-            Đăng nhập bằng Google
-          </span>
-        </div>
-
-        {/* Thông báo lỗi nếu có */}
-        {error && (
-          <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-500/40 flex items-start gap-3 text-red-200 text-sm">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400 mt-0.5" />
-            <div className="flex-1">{error}</div>
-          </div>
-        )}
-
-        {/* Bố cục 2 cột chính: Cột trái Tiêu đề, Cột phải Danh sách tài khoản */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-14 items-start">
-          
-          {/* CỘT TRÁI: "Chọn tài khoản" + "Tiếp tục tới learnattack.de" */}
-          <div className="md:col-span-5 flex flex-col justify-between">
-            <div>
-              <h1 className="text-3xl sm:text-4xl md:text-[42px] font-normal tracking-tight text-white mb-3">
-                Chọn tài khoản
-              </h1>
-              <p className="text-[15px] sm:text-[16px] text-[#c4c7c5]">
-                Tiếp tục tới{' '}
-                <span className="text-[#a8c7fa] hover:text-[#d3e3fd] hover:underline cursor-pointer font-medium">
-                  learnattack.de
-                </span>
-              </p>
-            </div>
-
-            {/* Badge hướng dẫn & kiểm tra Super Admin */}
-            <div className="mt-8 p-4 rounded-2xl bg-[#232529] border border-[#37393e] hidden md:block">
-              <div className="flex items-center gap-2.5 text-amber-400 text-sm font-medium mb-1.5">
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>Nhận diện Super Admin tự động</span>
-              </div>
-              <p className="text-xs text-[#9aa0a6] leading-relaxed">
-                Các tài khoản của bạn (<strong className="text-white">dat.nguyenviet.1999</strong>, <strong className="text-white">elio.nv260399</strong>,...) được liên kết trực tiếp với quyền Quản trị tối cao. Chọn bất kỳ tài khoản nào để vào hệ thống ngay.
-              </p>
-            </div>
-          </div>
-
-          {/* CỘT PHẢI: Danh sách tài khoản người dùng */}
-          <div className="md:col-span-7 flex flex-col divide-y divide-[#2d2e31]">
-            <div className="flex flex-col">
-              {accounts.map((acc) => {
-                const isCurrentSuper = isSystemAdminEmail(acc.email);
-                const isSelected = selectedEmail === acc.email;
-
-                return (
-                  <button
-                    key={acc.id || acc.email}
-                    onClick={() => handleSelectAccount(acc)}
-                    disabled={isSubmitting}
-                    className={`group w-full flex items-center justify-between py-3.5 px-3 rounded-xl transition-all duration-150 text-left cursor-pointer border border-transparent
-                      hover:bg-[#282a2d] hover:border-[#383a3f] active:bg-[#333539] ${
-                        isSelected ? 'bg-[#282a2d] border-[#4285F4]' : ''
-                      }`}
-                  >
-                    <div className="flex items-center gap-4 min-w-0">
-                      {/* Avatar chuẩn xác theo từng loại hình ảnh */}
-                      <div className="relative flex-shrink-0">
-                        {acc.avatarType === 'photo' && acc.avatarUrl ? (
-                          <img
-                            src={acc.avatarUrl}
-                            alt={acc.name}
-                            className="w-10 h-10 rounded-full object-cover border border-[#444746]"
-                          />
-                        ) : acc.avatarType === 'emoji' ? (
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl border ${acc.avatarBg || 'bg-amber-900 border-amber-700'}`}>
-                            {acc.avatarIcon || '🦊'}
-                          </div>
-                        ) : (
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-[17px] font-medium border ${
-                              acc.avatarBg || 'bg-purple-900 text-purple-200 border-purple-700'
-                            }`}
-                          >
-                            {acc.avatarText || acc.name.charAt(0)}
-                          </div>
-                        )}
-
-                        {/* Huy hiệu Super Admin nhỏ góc avatar */}
-                        {isCurrentSuper && (
-                          <span
-                            title="Super Admin"
-                            className="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center text-[9px] text-black font-bold border border-[#1a1b1e]"
-                          >
-                            ★
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Tên và Email */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[15px] sm:text-[16px] text-white font-medium truncate group-hover:text-white">
-                            {acc.name}
-                          </span>
-                          {isCurrentSuper && (
-                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30">
-                              Admin
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[13px] sm:text-[14px] text-[#9aa0a6] truncate font-normal">
-                          {acc.email}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Loading spinner hoặc icon mũi tên */}
-                    <div className="flex-shrink-0 ml-3">
-                      {isSelected && isSubmitting ? (
-                        <Loader2 className="w-5 h-5 text-[#a8c7fa] animate-spin" />
-                      ) : (
-                        <div className="w-2 h-2 rounded-full bg-transparent group-hover:bg-[#4285F4] transition-colors" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-
-              {/* Tùy chọn 8: "Sử dụng một tài khoản khác" */}
-              <button
-                type="button"
-                onClick={() => setShowCustomAccountModal(true)}
-                disabled={isSubmitting}
-                className="group w-full flex items-center gap-4 py-4 px-3 rounded-xl transition-all duration-150 text-left hover:bg-[#282a2d] active:bg-[#333539] mt-1"
-              >
-                <div className="w-10 h-10 rounded-full flex items-center justify-center border border-[#444746] bg-transparent text-[#e3e3e3] group-hover:border-[#747775]">
-                  <UserPlus className="w-5 h-5 text-[#c4c7c5]" />
-                </div>
-                <div className="text-[15px] sm:text-[16px] text-white font-medium">
-                  Sử dụng một tài khoản khác
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Nút tròn cuộn xuống màu xanh đặc trưng của Google Auth ở góc phải */}
-        <div className="absolute -bottom-6 right-8 sm:right-12">
-          <button
-            type="button"
-            onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
-            aria-label="Cuộn xuống"
-            className="w-12 h-12 rounded-full bg-[#004a77] hover:bg-[#005f99] active:bg-[#003b60] text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105"
-          >
-            <ChevronDown className="w-6 h-6 text-[#c2e7ff]" />
-          </button>
-        </div>
-      </div>
-
-      {/* FOOTER: Chính sách quyền riêng tư & Điều khoản dịch vụ theo nguyên mẫu */}
-      <div className="w-full max-w-[1020px] mt-8 text-center sm:text-left text-[12px] sm:text-[13px] text-[#8e918f] leading-relaxed flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
-        <p>
-          Trước khi sử dụng learnattack.de, bạn có thể xem{' '}
-          <a href="#" className="text-[#a8c7fa] hover:underline font-medium">
-            Chính sách quyền riêng tư
-          </a>{' '}
-          và{' '}
-          <a href="#" className="text-[#a8c7fa] hover:underline font-medium">
-            Điều khoản dịch vụ
-          </a>{' '}
-          của ứng dụng.
-        </p>
-
-        {/* Nút mở đăng nhập bằng mật khẩu khi cần */}
-        <button
-          onClick={() => setShowLegacyForm(!showLegacyForm)}
-          className="text-xs text-[#9aa0a6] hover:text-white flex items-center gap-1.5 transition-colors"
-        >
-          <KeyRound className="w-3.5 h-3.5" />
-          <span>{showLegacyForm ? 'Ẩn form mật khẩu' : 'Đăng nhập mật khẩu truyền thống'}</span>
-        </button>
-      </div>
-
-      {/* MODAL 1: Nhập email tài khoản khác */}
-      {showCustomAccountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-[#1e1f22] border border-[#383a3f] rounded-2xl p-6 shadow-2xl relative">
-            <h3 className="text-xl font-medium text-white mb-2">Đăng nhập tài khoản khác</h3>
-            <p className="text-sm text-[#9aa0a6] mb-5">
-              Nhập địa chỉ email Google của bạn để truy cập ngay vào hệ thống.
-            </p>
-
-            <form onSubmit={handleAddCustomAccount} className="space-y-4">
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-[#9aa0a6] font-medium mb-1.5">
-                  Địa chỉ Email Google
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-[#9aa0a6] absolute left-3.5 top-3.5" />
-                  <input
-                    type="email"
-                    required
-                    value={customEmail}
-                    onChange={(e) => setCustomEmail(e.target.value)}
-                    placeholder="ví dụ: elio.nv260399@gmail.com"
-                    className="w-full bg-[#121314] border border-[#383a3f] rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-[#5e6166] text-sm focus:outline-none focus:border-[#4285F4]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-[#9aa0a6] font-medium mb-1.5">
-                  Tên hiển thị (Tùy chọn)
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-[#9aa0a6] absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="ví dụ: Einfach Elio"
-                    className="w-full bg-[#121314] border border-[#383a3f] rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-[#5e6166] text-sm focus:outline-none focus:border-[#4285F4]"
-                  />
-                </div>
-              </div>
-
-              {isSystemAdminEmail(customEmail.trim().toLowerCase()) && (
-                <div className="p-3 bg-amber-950/40 border border-amber-600/40 rounded-xl text-xs text-amber-200 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span>Email này được cấp quyền Super Admin hệ thống.</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCustomAccountModal(false)}
-                  className="px-4 py-2 text-sm text-[#c4c7c5] hover:text-white rounded-xl hover:bg-[#282a2d]"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-sm font-medium bg-[#4285F4] hover:bg-[#3367d6] text-white rounded-xl shadow transition-colors"
-                >
-                  Tiếp tục
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* FORM DỰ PHÒNG: Đăng nhập mật khẩu truyền thống */}
-      {showLegacyForm && (
-        <div className="w-full max-w-[1020px] mt-6 p-6 bg-[#1a1b1e] border border-[#2d2e31] rounded-2xl">
-          <h4 className="text-sm font-semibold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-            <Lock className="w-4 h-4 text-blue-400" />
-            <span>Phương thức phụ: Đăng nhập bằng Mật khẩu</span>
-          </h4>
-          <form onSubmit={handleLegacyLogin} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input
-              type="email"
-              placeholder="Email đăng nhập"
-              value={customEmail}
-              onChange={(e) => setCustomEmail(e.target.value)}
-              className="bg-[#121314] border border-[#383a3f] rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-            />
-            <input
-              type="password"
-              placeholder="Mật khẩu (ví dụ: admin123)"
-              value={legacyPassword}
-              onChange={(e) => setLegacyPassword(e.target.value)}
-              className="bg-[#121314] border border-[#383a3f] rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-            />
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors"
-            >
-              Đăng nhập bằng Mật khẩu
-            </button>
+        <p className="relative z-10 text-xs text-white/50">Lernen. Üben. Weiterkommen.</p>
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 -right-40 h-[520px] w-[520px] rounded-full border-[70px] border-white/5" />
+      </section>
+      <section className="flex min-h-screen flex-col px-6 py-7 sm:px-12 lg:px-16">
+        <Link to="/landing" className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={16} /> Về trang chủ</Link>
+        <div className="mx-auto my-auto w-full max-w-[400px] py-12">
+          <div className="mb-9 flex items-center gap-2 font-semibold lg:hidden"><BookOpen className="text-accent" size={23} /> Elio Einfach</div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-accent">Chào mừng trở lại</p>
+          <h2 className="font-display text-4xl font-semibold tracking-tight">Đăng nhập</h2>
+          <p className="mb-8 mt-3 text-sm leading-relaxed text-muted-foreground">Tiếp tục hành trình tiếng Đức của bạn.</p>
+          {error && <div role="alert" className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">{error}</div>}
+          <form onSubmit={submit} className="space-y-5" aria-busy={!!pending}>
+            <div><label htmlFor="login-email" className="text-sm font-medium">Email</label><input id="login-email" name="email" type="email" autoComplete="username" required disabled={!!pending} value={email} onChange={e => setEmail(e.target.value)} placeholder="ban@example.com" className={inputClass} /></div>
+            <div><label htmlFor="login-password" className="text-sm font-medium">Mật khẩu</label><div className="relative"><input id="login-password" name="password" type={visible ? 'text' : 'password'} autoComplete="current-password" required disabled={!!pending} value={password} onChange={e => setPassword(e.target.value)} placeholder="Nhập mật khẩu của bạn" className={`${inputClass} pr-14`} /><button type="button" onClick={() => setVisible(!visible)} aria-label={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={visible} className="absolute right-1 top-3 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-accent">{visible ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></div>
+            <div className="flex justify-end"><Link to="/forgot-password" className="text-sm font-medium text-accent hover:underline">Quên mật khẩu?</Link></div>
+            <button type="submit" disabled={!!pending} className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-accent px-5 py-3.5 font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-60">{pending === 'password' ? <><Loader2 size={18} className="animate-spin" /> Đang đăng nhập…</> : <>Đăng nhập <ArrowRight size={18} /></>}</button>
           </form>
+          <div className="my-6 flex items-center gap-4 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />hoặc<span className="h-px flex-1 bg-border" /></div>
+          <button type="button" onClick={google} disabled={!!pending} className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium transition hover:bg-muted disabled:opacity-60">{pending === 'google' ? <Loader2 size={19} className="animate-spin" /> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5"><path fill="#4285F4" d="M22.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h5.9c-.3 1.3-1 2.5-2.2 3.3v2.8h3.6c2.1-2 3.3-4.8 3.3-8.2Z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.6l-3.6-2.8c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-2-6.2-4.6H2.2v2.8C4 20.5 7.7 23 12 23Z"/><path fill="#FBBC05" d="M5.8 14.1a6.7 6.7 0 0 1 0-4.2V7.1H2.2a11 11 0 0 0 0 9.8l3.6-2.8Z"/><path fill="#EA4335" d="M12 5.3c1.6 0 3.1.6 4.2 1.7l3.2-3.2A10.5 10.5 0 0 0 12 1C7.7 1 4 3.5 2.2 7.1l3.6 2.8c.9-2.6 3.3-4.6 6.2-4.6Z"/></svg>}Tiếp tục với Google</button>
+          <p className="mt-8 text-center text-sm text-muted-foreground">Chưa có tài khoản? <Link to="/register" className="font-semibold text-accent hover:underline">Đăng ký</Link></p>
+          <p className="mt-8 flex items-center justify-center gap-2 text-xs text-muted-foreground"><LockKeyhole size={13} /> Không chia sẻ mật khẩu của bạn với bất kỳ ai.</p>
         </div>
-      )}
-    </div>
+        <p className="text-center text-xs text-muted-foreground">Elio Einfach · Học tiếng Đức theo cách của bạn</p>
+      </section>
+    </main>
   );
 }
-
 export default LoginPage;
