@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
+import {newSpeakingBinding,speakingCoreActive} from '@/lib/elio-speaking-runtime';
 import { interviewTurn, interviewFeedback } from '@/lib/elio-ai';
 import { getAllExams } from '@/data/all-exams';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
@@ -23,7 +24,13 @@ import { toast } from 'sonner';
 
 export function InterviewStudio({ onBack }) {
   const [profile] = useState(() => db.learnerProfile.get());
-  const allExams = getAllExams();
+  const [core] = useState(newSpeakingBinding);
+  const coreActive=speakingCoreActive();
+  const [coreExams,setCoreExams]=useState([]);
+  const [tasksReady,setTasksReady]=useState(!coreActive);
+  const [restart,setRestart]=useState(0);
+  const requestEpoch=useRef(0);
+  const allExams = coreActive?coreExams:getAllExams();
   const [selectedExamId, setSelectedExamId] = useState(allExams[0]?.id || 'free_mode');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [part, setPart] = useState(1);
@@ -37,22 +44,25 @@ export function InterviewStudio({ onBack }) {
   const speakingTasks = currentExam?.speakingTasks || (Array.isArray(currentExam?.speaking) ? currentExam.speaking : []);
   const currentTask = speakingTasks[part - 1] || null;
 
+  useEffect(()=>{
+    if(!coreActive)return;let cancelled=false;
+    const load=async()=>{setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams();if(!cancelled){setCoreExams(exams);setSelectedExamId(exams[0]?.id||'free_mode');setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
+    load();window.addEventListener('sprach_auth_change',load);return()=>{cancelled=true;core.reset();requestEpoch.current++;window.removeEventListener('sprach_auth_change',load);};
+  },[coreActive]);
+
+  const speakingContext=()=>({part:'Teil '+part,level:currentExam?.level||profile.target_level||'B1',examProvider:({goethe:'Goethe',telc:'telc','ösd':'ÖSD',ecl:'ECL'})[String(currentExam?.provider||'').toLowerCase()]||'practice',task:currentTask?.prompt||''});
   useEffect(() => {
-    // Initial examiner turn
+    const epoch=++requestEpoch.current;let cancelled=false;
     const startPart = async () => {
-      setLoading(true);
-      const firstTurn = await interviewTurn({
-        part,
-        messages: [],
-        level: currentExam?.level || profile.target_level || 'B1',
-        topicPrompt: currentTask?.prompt || '',
-        examTitle: currentExam?.title || '',
-      });
-      setMessages([{ role: 'assistant', content: firstTurn }]);
-      setLoading(false);
+      if(coreActive&&!tasksReady)return;
+      setLoading(true);setFeedback(null);setMessages([]);
+      try{if(coreActive){const turns=await core.start(speakingContext());if(!cancelled&&epoch===requestEpoch.current)setMessages(turns);}
+      else{const firstTurn=await interviewTurn({part,messages:[],level:currentExam?.level||profile.target_level||'B1',topicPrompt:currentTask?.prompt||'',examTitle:currentExam?.title||''});if(!cancelled)setMessages([{role:'assistant',content:firstTurn}]);}}
+      catch(error){if(!cancelled)toast.error(error.message||'Lỗi kết nối AI giám khảo.');}
+      finally{if(!cancelled&&epoch===requestEpoch.current)setLoading(false);}
     };
-    startPart();
-  }, [part, selectedExamId]);
+    startPart();return()=>{cancelled=true;if(coreActive)core.reset();};
+  }, [part, selectedExamId,tasksReady,restart,coreActive]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,6 +72,7 @@ export function InterviewStudio({ onBack }) {
     e.preventDefault();
     if (!input.trim() || loading) return;
 
+    if(coreActive){const text=input.trim(),epoch=requestEpoch.current;setLoading(true);try{const turns=await core.send(speakingContext(),text);if(epoch===requestEpoch.current){setMessages(turns);setInput('');}}catch(error){if(epoch===requestEpoch.current)toast.error(error.message);}finally{if(epoch===requestEpoch.current)setLoading(false);}return;}
     const userMsg = { role: 'user', content: input.trim() };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
@@ -86,6 +97,8 @@ export function InterviewStudio({ onBack }) {
   };
 
   const handleEndInterview = async () => {
+    if(loading)return;
+    if(coreActive){const epoch=requestEpoch.current;setLoading(true);try{const result=await core.grade();if(epoch===requestEpoch.current)setFeedback(result);}catch(error){if(epoch===requestEpoch.current)toast.error(error.message);}finally{if(epoch===requestEpoch.current)setLoading(false);}return;}
     setLoading(true);
     try {
       const result = await interviewFeedback({
@@ -172,7 +185,7 @@ export function InterviewStudio({ onBack }) {
 
         <button
           type="button"
-          onClick={() => setIsImportOpen(true)}
+          onClick={() => coreActive?toast.error('Import đề nói chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
           className="tap px-2.5 py-1 rounded bg-accent/10 border border-accent/30 text-accent font-bold hover:bg-accent/20 flex items-center gap-1 shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -303,7 +316,7 @@ export function InterviewStudio({ onBack }) {
                 </h3>
               </div>
               <span className="text-xs font-mono px-3 py-1 rounded-sm bg-accent text-accent-foreground font-semibold">
-                {feedback.passed ? 'Bestanden (Đạt)' : 'Cần rèn luyện thêm'}
+                {coreActive?'Điểm luyện tập · không phải kết quả chứng chỉ':feedback.passed ? 'Bestanden (Đạt)' : 'Cần rèn luyện thêm'}
               </span>
             </div>
 
@@ -364,6 +377,7 @@ export function InterviewStudio({ onBack }) {
               onClick={() => {
                 setFeedback(null);
                 setMessages([]);
+                if(coreActive)setRestart(n=>n+1);
               }}
               className="tap flex-1 py-2 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted"
             >
