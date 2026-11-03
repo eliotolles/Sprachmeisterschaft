@@ -21,3 +21,5 @@ Official protocol references:
 Before this change, live config confirmed auth, vocabulary, grammar and AI Admin enabled. Live grammar displayed 64 topics but raw Markdown. Level page used an empty static array. Live server AI configuration list was empty; no provider key was collected or moved. Real provider acceptance requires an owner-configured server key and is not established by fixture tests.
 
 Source backup audit: 1,819 words have no CEFR level and 137 have range labels. These remain in the All view, explicitly unclassified or range-labelled; levels are not guessed or overwritten.
+
+Set Wrangler keep_vars=true to retain owner-managed Dashboard flags across deploys (https://developers.cloudflare.com/workers/wrangler/configuration/). No secret values are read or changed.

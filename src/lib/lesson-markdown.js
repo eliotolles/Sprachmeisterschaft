@@ -29,7 +29,7 @@ export function renderLessonMarkdown(React,value) {
  const h=React.createElement,inline=text=>inlineLesson(text).map((p,i)=>p.type==='text'?p.text:h(p.type,{key:i},p.text));
  return h('div',{className:'space-y-4 whitespace-normal'},parseLessonMarkdown(value).map((b,i)=>{
   if(b.type==='heading')return h('h'+Math.min(6,b.depth+2),{key:i,className:'font-semibold text-foreground text-base pt-2'},inline(b.text));
-  if(b.type==='table')return h('div',{key:i,className:'overflow-x-auto'},h('table',{className:'w-full border-collapse text-left text-xs'},h('thead',null,h('tr',null,b.header.map((t,j)=>h('th',{key:j,className:'border border-border bg-muted/40 p-2 font-semibold'},inline(t))))),h('tbody',null,b.rows.map((row,k)=>h('tr',{key:k},b.header.map((_,j)=>h('td',{key:j,className:'border border-border p-2 align-top'},inline(row[j]||''))))))));
+  if(b.type==='table')return h('div',{key:i,className:'overflow-x-auto'},h('table',{className:'w-full border-collapse text-left text-xs'},h('thead',null,h('tr',null,b.header.map((t,j)=>h('th',{key:j,scope:'col',role:'columnheader',className:'border border-border bg-muted/40 p-2 font-semibold'},inline(t))))),h('tbody',null,b.rows.map((row,k)=>h('tr',{key:k},b.header.map((_,j)=>h('td',{key:j,className:'border border-border p-2 align-top'},inline(row[j]||''))))))));
   if(b.type==='ul'||b.type==='ol')return h(b.type,{key:i,className:(b.type==='ol'?'list-decimal':'list-disc')+' pl-5 space-y-2'},b.items.map((t,j)=>h('li',{key:j},inline(t))));
   return h('p',{key:i,className:'leading-relaxed'},inline(b.text));
  }));

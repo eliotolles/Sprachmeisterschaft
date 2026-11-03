@@ -55,3 +55,6 @@ test('uncategorized and range-level source words remain visible without inventin
  assert.deepEqual(decks.find(d=>d.words[0].id==='unknown').levels,[]);
  assert.equal(rows[0].level,'');
 });
+
+import {readFileSync} from 'node:fs';
+test('deploy retains owner-managed Dashboard variables',()=>{const config=JSON.parse(readFileSync(new URL('../wrangler.json',import.meta.url),'utf8'));assert.equal(config.keep_vars,true);});
