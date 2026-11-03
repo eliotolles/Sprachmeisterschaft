@@ -35,7 +35,7 @@ function fixture() {
 test('core is disabled by default before database or assets are accessed',async()=>{
   let calls=0;const response=await worker.fetch(new Request('https://migration.test/api/core/auth/login',{method:'POST'}),{TEST_CORE_DB:()=>{calls++;throw Error('not allowed');}});
   assert.equal(response.status,503);assert.equal(calls,0);
-  const config=await worker.fetch(new Request('https://migration.test/api/core/config'),{});const flags=await config.json();assert.equal(flags.enabled,false);assert.equal(flags.uiPersonalEnabled,false);
+  const config=await worker.fetch(new Request('https://migration.test/api/core/config'),{});const flags=await config.json();assert.equal(flags.enabled,false);assert.equal(flags.uiPersonalEnabled,false);assert.equal(flags.uiGrammarEnabled,false);assert.equal(flags.uiFocusEnabled,false);
 });
 test('Turso endpoint is pinned to the approved database',()=>{
   assert.equal(databaseEndpoint('libsql://'+APPROVED_HOST),'https://'+APPROVED_HOST+'/v2/pipeline');

@@ -1,11 +1,11 @@
 import {getAIRouting,updateAIRouting} from './ai-routing.js';
 import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
-import {readVocabularyDeck,saveSharedWord} from './personal-vocabulary.js';
+import {readVocabularyDeck,saveSharedWord,editVocabulary} from './personal-vocabulary.js';
 import {focusTimer,studyStatistics,STUDY_KEY} from './study.js';
 import {tutorReply,newTutorThread,TUTOR_KEY} from './tutor.js';
 import {importCollection,extractDocument} from './importer.js';
 import {examFormats,startExam,answerExam,readExams,examCatalogData} from './examination.js';
-import {getTranscript,submitDictation,LISTENING_KEY} from './listening.js';
+import {getTranscript,submitDictation,saveListeningCue,LISTENING_KEY} from './listening.js';
 import { coreError, query } from './database.js';
 import { digest, passwordHash, passwordMatches, randomToken } from './passwords.js';
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
@@ -20,7 +20,7 @@ export const CORE_KEYS = new Set(['wc', 'drafts', 'vocab', 'history', 'settings'
   'grammarAttempts', 'materials', 'conversations', 'srs', 'examAttempts', 'activeExam', 'writingFeedback',
   'vocabSession', 'grammarSession', 'chatDrafts', 'examMediaIndex', 'reviewHistory', 'listening',
   'listeningLibrary', 'listeningV2', 'listeningLibraryV2', 'studyPlan', 'studyPlanProgress',
-  'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
+  'sprach_core_writing_drafts', 'sprach_profile', 'sprach_vocabulary', 'sprach_study_logs', 'sprach_skill_sessions',
   'sprach_exam_results', 'sprach_notes', 'sprach_study_plan', REVIEW_KEY, GRAMMAR_ATTEMPT_KEY, WRITING_KEY, SPEAKING_KEY, LISTENING_KEY, STUDY_KEY, TUTOR_KEY]);
 const COOKIE = '__Host-sprach_core';
 const SESSION_MS = 7 * 86400000;
@@ -133,7 +133,7 @@ async function state(request, env, user, url) {
 }
 export async function handleElioCore(request, env) {
   const url = new URL(request.url), path = url.pathname;
-  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true',uiWritingEnabled:env.ELIO_CORE_UI_WRITING_ENABLED==='true',uiAIAdminEnabled:env.ELIO_CORE_UI_AI_ADMIN_ENABLED==='true',uiSpeakingEnabled:env.ELIO_CORE_UI_SPEAKING_ENABLED==='true',uiListeningEnabled:env.ELIO_CORE_UI_LISTENING_ENABLED==='true',uiImportEnabled:env.ELIO_CORE_UI_IMPORT_ENABLED==='true',uiExamEnabled:env.ELIO_CORE_UI_EXAM_ENABLED==='true',uiPersonalEnabled:env.ELIO_CORE_UI_PERSONAL_ENABLED==='true',uiProgressEnabled:env.ELIO_CORE_UI_PROGRESS_ENABLED==='true', version: 1 });
+  if (path === '/api/core/config' && request.method === 'GET') return json({ enabled: env.ELIO_CORE_ENABLED === 'true', uiAuthEnabled:env.ELIO_CORE_UI_AUTH_ENABLED==='true',uiVocabularyEnabled:env.ELIO_CORE_UI_VOCABULARY_ENABLED==='true',uiTutorEnabled:env.ELIO_CORE_UI_TUTOR_ENABLED==='true',uiWritingEnabled:env.ELIO_CORE_UI_WRITING_ENABLED==='true',uiAIAdminEnabled:env.ELIO_CORE_UI_AI_ADMIN_ENABLED==='true',uiSpeakingEnabled:env.ELIO_CORE_UI_SPEAKING_ENABLED==='true',uiListeningEnabled:env.ELIO_CORE_UI_LISTENING_ENABLED==='true',uiImportEnabled:env.ELIO_CORE_UI_IMPORT_ENABLED==='true',uiExamEnabled:env.ELIO_CORE_UI_EXAM_ENABLED==='true',uiGrammarEnabled:env.ELIO_CORE_UI_GRAMMAR_ENABLED==='true',uiFocusEnabled:env.ELIO_CORE_UI_FOCUS_ENABLED==='true',uiPersonalEnabled:env.ELIO_CORE_UI_PERSONAL_ENABLED==='true',uiProgressEnabled:env.ELIO_CORE_UI_PROGRESS_ENABLED==='true', version: 1 });
   if (env.ELIO_CORE_ENABLED !== 'true') return json({ code: 'CORE_DISABLED', error: 'Core migration chưa được kích hoạt.' }, 503);
   try {
     if (!['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw coreError(403, 'ORIGIN', 'Origin không hợp lệ.');
@@ -158,6 +158,8 @@ export async function handleElioCore(request, env) {
       await query(env, 'DELETE FROM sprach_core_sessions WHERE token_hash=? AND user_id=?', [await digest(cookieValue(request)), user.id]);
       return json({ ok: true }, 200, { 'Set-Cookie': cookieHeader('', 0) });
     }
+    if(path==='/api/core/vocabulary/edit'&&request.method==='POST')return json(await editVocabulary(env,user,await body(request,1500000)));
+    if(path==='/api/core/listening/save-cue'&&request.method==='POST')return json(await saveListeningCue(env,user,await body(request,3000)));
     if (path === '/api/core/listening/transcript' && request.method === 'POST') {
       await throttle(env,'core-caption:'+user.id,10,60000);const result=await getTranscript(env,await body(request,3000));return json(result,result.available?200:503);
     }

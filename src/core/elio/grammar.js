@@ -59,10 +59,13 @@ export async function importGrammar(env, user, data) {
   let collection;
   try { collection = validateGrammarCollection(data.collection); } catch { throw invalid(); }
   if (new TextEncoder().encode(JSON.stringify(collection)).byteLength > 1400000) throw coreError(413, 'GRAMMAR_SIZE', 'Bộ ngữ pháp quá lớn.');
-  const recordId = crypto.randomUUID(), title = String(collection.name || collection.id).slice(0, 500);
+  const duplicate=(await query(env,"SELECT data FROM ee_records WHERE owner=? AND kind='grammar'",[user.id])).rows.some(row=>{try{return JSON.parse(row.data).id===collection.id;}catch{return false;}});
+  if(duplicate)throw coreError(409,'IMPORT_EXISTS','ID bộ ngữ pháp đã có; chưa ghi đè hoặc nhân đôi.');
+  const recordId = 'grammar-import-'+await digest(JSON.stringify([user.id,collection.id])), title = String(collection.name || collection.id).slice(0, 500);
   // Create-only: user-supplied source IDs never become an UPDATE target.
-  await query(env, 'INSERT INTO ee_records(id,owner,kind,title,level,public,data,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+  const written=await query(env, 'INSERT INTO ee_records(id,owner,kind,title,level,public,data,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id',
     [recordId, user.id, 'grammar', title, collection.items[0].level, shared ? 1 : 0, JSON.stringify(collection), new Date().toISOString()]);
+  if(!written.rows.length)throw coreError(409,'IMPORT_EXISTS','ID bộ ngữ pháp đã được nhập; chưa ghi đè.');
   return { recordId, collectionId: collection.id, lessonCount: collection.items.length, visibility: shared ? 'public' : 'private' };
 }
 export async function submitGrammar(env, user, data, now = Date.now()) {

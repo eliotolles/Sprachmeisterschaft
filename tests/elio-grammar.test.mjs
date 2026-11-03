@@ -87,3 +87,6 @@ test('changed answer keys and client-supplied correctness/owner are rejected wit
     await assert.rejects(submitGrammar(env,alice,data),e=>e.code==='EXERCISE_CHANGED');assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ee_state').get().n,0);
   }finally{db.close();}
 });
+test('create-only grammar imports reject the same source ID without changing existing content',async()=>{
+ const {db,env}=fixture();try{const c=collection();const first=await importGrammar(env,alice,{collection:c,visibility:'private'});const before=db.prepare('SELECT data FROM ee_records WHERE id=?').get(first.recordId).data;const changed=structuredClone(c);changed.items[0].content='Different body';await assert.rejects(importGrammar(env,alice,{collection:changed,visibility:'private'}),e=>e.code==='IMPORT_EXISTS');assert.equal(db.prepare('SELECT data FROM ee_records WHERE id=?').get(first.recordId).data,before);const other=await importGrammar(env,bob,{collection:c,visibility:'private'});assert.notEqual(other.recordId,first.recordId);}finally{db.close();}
+});

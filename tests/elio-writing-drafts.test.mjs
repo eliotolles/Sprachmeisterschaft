@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {createWritingDrafts} from '../src/core/elio/writing-drafts.js';
+test('writing drafts restore and save sequentially per task, preserving other drafts and metadata',async()=>{
+ const writes=[];const client={getUser:()=>({id:'a'}),loadState:async()=>({sprach_core_writing_drafts:{value:{custom:42,byTask:{other:{text:'Keep'}}}}}),saveState:async(k,value)=>writes.push(structuredClone(value))};const b=createWritingDrafts({client});await b.load();await Promise.all([b.save('task','First'),b.save('task','Second')]);assert.equal(writes[0].byTask.task.text,'First');assert.equal(writes[1].byTask.task.text,'Second');assert.equal(writes[1].custom,42);assert.equal(writes[1].byTask.other.text,'Keep');assert.equal(b.text('task'),'Second');
+});
+test('draft CAS failures preserve text and account changes reject late queued drafts',async()=>{
+ let id='a';const client={getUser:()=>({id}),loadState:async()=>({}),saveState:async()=>{throw Object.assign(Error('Conflict'),{code:'VERSION_CONFLICT'});}};const b=createWritingDrafts({client});await b.load();await assert.rejects(b.save('task','Kept in editor'),{code:'VERSION_CONFLICT'});assert.equal(b.text('task'),'');let finish;client.saveState=()=>new Promise(r=>finish=r);const pending=b.save('task','private');await new Promise(r=>setImmediate(r));id='b';assert.equal(b.text('task'),'');finish();await assert.rejects(pending,{code:'ACCOUNT_CHANGED'});
+});
