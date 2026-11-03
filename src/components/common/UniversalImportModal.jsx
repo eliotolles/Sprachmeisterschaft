@@ -1,3 +1,4 @@
+import {createPortal} from 'react-dom';
 import {reviewedGrammar,reviewedExams} from '@/core/elio/reviewed-import';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — UNIVERSAL DOCUMENT IMPORT CENTER
@@ -128,7 +129,9 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     }
   }, [isOpen, defaultType, initialScope]);
 
-  if (!isOpen) return null;
+  useEffect(()=>{if(!isOpen||typeof document==='undefined')return;const previous=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=previous;};},[isOpen]);
+
+  if (!isOpen || typeof document==='undefined') return null;
 
   // Handle File Selection
   const handleFileChange = async (e) => {
@@ -642,8 +645,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label="Trung tâm nhập tài liệu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="surface max-w-4xl w-full p-5 sm:p-7 relative border-2 border-border shadow-2xl animate-rise my-4 max-h-[92vh] flex flex-col">
         {/* Header with 3 Steps Progress */}
         <div className="flex items-start justify-between pb-4 border-b border-border shrink-0">
@@ -1598,7 +1601,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           )}
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }
 
