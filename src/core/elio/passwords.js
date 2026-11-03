@@ -13,11 +13,17 @@ export async function passwordHash(password, salt = randomToken()) {
   }, key, 256));
 }
 export function supportedPassword(hash) {
-  return typeof hash === 'string' && /^pbkdf2\$100000\$[a-f0-9]{64}\$[a-f0-9]{64}$/.test(hash);
+  return typeof hash === 'string' && (/^pbkdf2\$100000\$[a-f0-9]{64}\$[a-f0-9]{64}$/.test(hash) || /^[a-f0-9]{64}:[a-f0-9]{64}$/.test(hash));
 }
 export async function passwordMatches(password, stored) {
   if (!supportedPassword(stored)) return false;
-  const candidate = await passwordHash(password, stored.split('$')[2]);
+  // ElioEinfach worker/index.js at 423250a356f38f187b42810d4bcc98bae5a01ac2
+  // encodes the same PBKDF2-SHA256/100000 derivation as salt:hash.
+  // Verify that exact format only; never rewrite stored credentials on login.
+  const legacy = stored.includes(':');
+  const salt = legacy ? stored.split(':')[0] : stored.split('$')[2];
+  const modern = await passwordHash(password, salt);
+  const candidate = legacy ? salt + ':' + modern.split('$')[3] : modern;
   let difference = candidate.length ^ stored.length;
   for (let i = 0; i < candidate.length; i++) difference |= candidate.charCodeAt(i) ^ (stored.charCodeAt(i) || 0);
   return difference === 0;

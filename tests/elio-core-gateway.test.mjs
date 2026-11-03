@@ -184,3 +184,21 @@ test('Admin AI endpoints keep keys encrypted, reject User access, and archive wi
  const archived=await call('/admin/ai/configs','PATCH',{id:added.body.config.id,archived:true},owner);assert.equal(archived.body.config.enabled,false);assert.equal(db.prepare('SELECT count(*) n FROM ee_config').get().n,1);assert.deepEqual(db.prepare('SELECT * FROM ee_users ORDER BY id').all(),before);
  }finally{db.close();globalThis.fetch=original;}
 });
+
+// Reference format from ElioEinfach worker/index.js, commit 423250a356f38f187b42810d4bcc98bae5a01ac2.
+// A fixed synthetic salt/password is used; no database credentials or user hashes.
+test('source colon-format PBKDF2 authenticates without rewriting hashes or old sessions',async()=>{
+ const {pbkdf2Sync}=await import('node:crypto');
+ const salt='ab'.repeat(32),password='Legacy-fixture-Only-928!';
+ const stored=salt+':'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex');
+ assert.equal(await passwordMatches(password,stored),true);assert.equal(await passwordMatches('wrong',stored),false);
+ const {db,call}=fixture();db.prepare('UPDATE ee_users SET password=? WHERE id=?').run(stored,'legacy');
+ const before=db.prepare('SELECT * FROM ee_users WHERE id=?').get('legacy');
+ const result=await call('/auth/login','POST',{email:'legacy@example.invalid',password});assert.equal(result.status,200);assert.equal(result.user.id,'legacy');
+ assert.deepEqual(db.prepare('SELECT * FROM ee_users WHERE id=?').get('legacy'),before);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM ee_sessions').get().n,1);
+ assert.equal((await call('/auth/login','POST',{email:'legacy@example.invalid',password:'wrong'})).status,401);
+});
+test('legacy password verification rejects malformed and unknown encodings without guessing',async()=>{
+ for(const saved of ['a'.repeat(63)+':'+ 'b'.repeat(64),'a'.repeat(64)+':'+ 'b'.repeat(63),'a'.repeat(64)+':'+ 'b'.repeat(64)+':extra','google$subject','fnv$1234','salt:hash','pbkdf2$200000$'+'a'.repeat(64)+'$'+'b'.repeat(64)])assert.equal(await passwordMatches('fixture',saved),false);
+});

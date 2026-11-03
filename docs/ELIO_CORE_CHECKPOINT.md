@@ -4,7 +4,7 @@ Branch: migration/elio-data-preserve-ui. No main changes, production deployment,
 
 | Area | Implemented and fixture-tested | Remaining before operational acceptance |
 | --- | --- | --- |
-| Authentication | Server sessions, stored roles, PBKDF2 compatibility, existing login/register/Google controls, signed OAuth callback core | Three unknown legacy password formats; actual Google credentials/callback acceptance |
+| Authentication | Server sessions, stored roles, PBKDF2 compatibility, existing login/register/Google controls, signed OAuth callback core | Colon-format PBKDF2 added from verified local ElioEinfach source; mapping the three old hashes and actual Google credentials/callback acceptance remain unverified (see ELIO_LEGACY_PASSWORD_COMPATIBILITY.md) |
 | Vocabulary | Shared lookup, source SRS, private decks, account/deck isolation, existing flashcard review binding | Deck editing/import/quiz controls and legacy progress mapping |
 | Grammar | Source 64 lessons/494 exercises, validation, mindmap data and grading/history | UI binding; current screen lacks fill-in and mindmap surfaces, requiring an owner decision before new controls |
 | Writing | Source-evidence feedback, translation/history and existing studio grading binding | Configured-provider acceptance; draft/history/import controls |
@@ -16,7 +16,7 @@ Branch: migration/elio-data-preserve-ui. No main changes, production deployment,
 | Import | Create-only collections, existing vocabulary/YouTube import preview/save binding and server OCR review drafts | Grammar/exam preview binding, scanned-book accuracy and page batching |
 | Utilities | Private focus sessions, persisted-practice statistics and private server report bindings for Home/Progress/Me/Readiness | Legacy history reconciliation and live profile/settings/notes acceptance; existing settings/note controls now have a separate OFF-by-default server binding (see ELIO_PERSONAL_UI_BINDING.md); no existing Pomodoro/focus-sound presentation was found |
 
-Verification: CI now runs 142 JavaScript tests and 7 Python safety tests; browser coverage expanded to 24 interaction flows and visual coverage to 80 desktop/mobile/light/dark comparisons (see final CI for completion). DOM text, geometry and computed styles are compared exactly; bounded compositor raster variation is reported separately. The source guard checks unchanged tag inventory, classes and inline styles across 56 JSX components. Event handlers and data adapters were changed without redesigning the UI. See module binding documents for limitations. CI status must be checked against the final commit.
+Verification: CI now runs 144 JavaScript tests and 7 Python safety tests; browser coverage expanded to 24 interaction flows and visual coverage to 80 desktop/mobile/light/dark comparisons (see final CI for completion). DOM text, geometry and computed styles are compared exactly; bounded compositor raster variation is reported separately. The source guard checks unchanged tag inventory, classes and inline styles across 56 JSX components. Event handlers and data adapters were changed without redesigning the UI. See module binding documents for limitations. CI status must be checked against the final commit.
 
 Data: the earlier import verified 6,718 shared source IDs and unchanged original tables against saved snapshots. No new live Turso verification occurred in this checkpoint; fixture tests do not establish current production counts. Additive schema and production flags remain unapplied.
 
