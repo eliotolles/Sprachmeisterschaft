@@ -37,7 +37,7 @@ export function VocabLevelsPage() {
 
   // Filter decks
   const filteredDecks = decks.filter((d) => {
-    if (selectedLevel !== 'ALL' && d.level !== selectedLevel) return false;
+    if (selectedLevel !== 'ALL' && !(d.levels||[d.level]).includes(selectedLevel)) return false;
     return true;
   });
 

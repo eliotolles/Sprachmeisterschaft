@@ -47,3 +47,11 @@ test('OpenAI generation uses completion-token budget without unsupported fixed t
  const original=globalThis.fetch;globalThis.fetch=async(url,opts)=>{assert.equal(String(url),'https://api.openai.com/v1/chat/completions');const b=JSON.parse(opts.body);assert.equal(b.max_tokens,undefined);assert.equal(b.temperature,undefined);assert(b.max_completion_tokens);return Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});};
  try{assert.equal((await providerGenerate('openai','fixture',{id:'available-model'},{systemPrompt:'s',userPrompt:'u'})).truncated,false);}finally{globalThis.fetch=original;}
 });
+
+test('uncategorized and range-level source words remain visible without inventing a CEFR level',()=>{
+ const rows=[{id:'unknown',german:'Wort',is_shared:true,level:''},{id:'range',german:'lernen',is_shared:true,level:'A2–B1'}];
+ const decks=buildLevelDecks(rows);assert.equal(decks.reduce((n,d)=>n+d.cardsCount,0),2);
+ assert.deepEqual(decks.find(d=>d.words[0].id==='range').levels,['A2','B1']);
+ assert.deepEqual(decks.find(d=>d.words[0].id==='unknown').levels,[]);
+ assert.equal(rows[0].level,'');
+});
