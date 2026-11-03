@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import {elioAuthentication, personalCoreActive} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -27,6 +28,8 @@ import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function SettingsPage() {
+  const scope=useRef(0), saving=useRef(false), lastProfile=useRef(null), account=useRef(db.auth.getUser()?.id);
+  const coreAuth=()=>elioAuthentication()?.isActive()===true;
   const { navigate } = useRouter();
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
 
@@ -34,16 +37,28 @@ export function SettingsPage() {
   const [targetLevel, setTargetLevel] = useState(profile.target_level || 'B1');
   const [examDate, setExamDate] = useState(profile.exam_date || '');
   const [dailyGoal, setDailyGoal] = useState(profile.daily_goal || 20);
-  const [aiKey, setAiKey] = useState(getStoredAiKey());
+  const [aiKey, setAiKey] = useState(() => coreAuth()?'':getStoredAiKey());
 
   // Turso state
-  const [tursoConfig, setTursoConfigState] = useState(getTursoConfig);
+  const [tursoConfig, setTursoConfigState] = useState(() => coreAuth()?{url:'',authToken:''}:getTursoConfig());
   const [tursoStatus, setTursoStatus] = useState(null);
   const [isTestingTurso, setIsTestingTurso] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  useEffect(() => {
+    const apply = () => {
+      const p=db.learnerProfile.get();lastProfile.current=JSON.stringify(p);setProfile(p);setDisplayName(p.display_name||'');setTargetLevel(p.target_level||'B1');setExamDate(p.exam_date||'');setDailyGoal(p.daily_goal||20);
+    };
+    const changed=()=>{const id=db.auth.getUser()?.id;if(id===account.current)return;account.current=id;scope.current++;saving.current=false;setAiKey('');setTursoConfigState({url:'',authToken:''});setTursoStatus(null);apply();};
+    const loaded=()=>{if(personalCoreActive()&&!saving.current&&JSON.stringify(db.learnerProfile.get())!==lastProfile.current)apply();};
+    window.addEventListener('sprach_auth_change',changed);window.addEventListener('sprach_db_change',loaded);
+    return()=>{scope.current++;window.removeEventListener('sprach_auth_change',changed);window.removeEventListener('sprach_db_change',loaded);};
+  }, []);
+  const blockDirectDatabase=()=>{if(!coreAuth())return false;toast.error('Core sử dụng kết nối server; chưa cho phép thay cấu hình, migrate hoặc đẩy dữ liệu cục bộ từ trang này.');return true;};
+
   const handleTestTurso = async () => {
+    if(blockDirectDatabase())return;
     setIsTestingTurso(true);
     setTursoStatus(null);
     saveTursoConfig(tursoConfig);
@@ -58,6 +73,7 @@ export function SettingsPage() {
   };
 
   const handleMigrateTurso = async () => {
+    if(blockDirectDatabase())return;
     setIsMigrating(true);
     try {
       saveTursoConfig(tursoConfig);
@@ -72,6 +88,7 @@ export function SettingsPage() {
   };
 
   const handleSyncToTurso = async () => {
+    if(blockDirectDatabase())return;
     setIsSyncing(true);
     try {
       saveTursoConfig(tursoConfig);
@@ -89,20 +106,28 @@ export function SettingsPage() {
     }
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    const updated = db.learnerProfile.update({
+    if(saving.current)return;
+    if(coreAuth()&&aiKey.trim()){toast.error('Khóa AI cần được quản lý phía server trong trang quản trị; chưa lưu khóa ở trình duyệt.');return;}
+    const current=scope.current;saving.current=true;
+    try {
+    const updated = await db.learnerProfile.update({
       display_name: displayName.trim(),
       target_level: targetLevel,
       exam_date: examDate,
       daily_goal: Number(dailyGoal) || 20,
     });
-    setStoredAiKey(aiKey);
+    if(current!==scope.current)return;
+    if(!coreAuth())setStoredAiKey(aiKey);
+    lastProfile.current=JSON.stringify(updated);
     setProfile(updated);
     toast.success('Đã lưu cài đặt! Trình độ mục tiêu mới đã áp dụng toàn app.');
+    } catch(error) { if(current===scope.current)toast.error(error.message); } finally { if(current===scope.current)saving.current=false; }
   };
 
   const handleResetData = async () => {
+    if(blockDirectDatabase())return;
     const ok = await showConfirmModal({
       title: 'Đặt lại cơ sở dữ liệu',
       message: 'Bạn có chắc chắn muốn đặt lại cơ sở dữ liệu về mặc định ban đầu không? Toàn bộ dữ liệu luyện tập cục bộ sẽ được nạp lại từ đầu.',

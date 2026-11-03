@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -7,6 +7,7 @@ import { FileText, Plus, Trash2, Edit3, Save, X, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function NotesPage() {
+  const scope = useRef(0), saving = useRef(false), account = useRef(db.auth.getUser()?.id);
   const { navigate } = useRouter();
   const [notes, setNotes] = useState(() => db.notes.findMany());
   const [filterType, setFilterType] = useState('all');
@@ -20,8 +21,10 @@ export function NotesPage() {
     const handleDbChange = () => {
       setNotes(db.notes.findMany());
     };
+    const accountChanged = () => { const id=db.auth.getUser()?.id; if(id===account.current)return; account.current=id; scope.current++; saving.current=false; setEditingNote(null); setTitle(''); setContent(''); setType('note'); handleDbChange(); };
     window.addEventListener('sprach_db_change', handleDbChange);
-    return () => window.removeEventListener('sprach_db_change', handleDbChange);
+    window.addEventListener('sprach_auth_change', accountChanged);
+    return () => { scope.current++; window.removeEventListener('sprach_db_change', handleDbChange); window.removeEventListener('sprach_auth_change', accountChanged); };
   }, []);
 
   const filteredNotes = notes.filter((n) => {
@@ -43,27 +46,34 @@ export function NotesPage() {
     setEditingNote(n);
   };
 
-  const handleSaveNote = (e) => {
+  const handleSaveNote = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
       toast.error('Vui lòng nhập tiêu đề ghi chú.');
       return;
     }
 
+    if(saving.current)return;
+    const current=scope.current; saving.current=true;
+    try {
     if (editingNote === 'new') {
-      db.notes.create({ title: title.trim(), content, type });
+      await db.notes.create({ title: title.trim(), content, type });
+      if(current!==scope.current)return;
       toast.success('Đã tạo ghi chú mới.');
     } else if (editingNote?.id) {
-      db.notes.update(editingNote.id, { title: title.trim(), content, type });
+      await db.notes.update(editingNote.id, { title: title.trim(), content, type });
+      if(current!==scope.current)return;
       toast.success('Đã cập nhật ghi chú.');
     }
 
-    setEditingNote(null);
+    if(current===scope.current)setEditingNote(null);
+    } catch(error) { if(current===scope.current)toast.error(error.message); } finally { if(current===scope.current)saving.current=false; }
   };
 
-  const handleDelete = (id) => {
-    db.notes.delete(id);
-    toast.success('Đã xoá ghi chú.');
+  const handleDelete = async (id) => {
+    const current=scope.current;
+    try { await db.notes.delete(id); if(current===scope.current)toast.success('Đã xoá ghi chú.'); }
+    catch(error) { if(current===scope.current)toast.error(error.message); }
   };
 
   return (

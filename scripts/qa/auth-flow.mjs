@@ -4,7 +4,8 @@ const root=resolve('dist'),origin='http://127.0.0.1:4175';
 const server=createServer(async(req,res)=>{let path=resolve(root,'.'+new URL(req.url,origin).pathname);if(!path.startsWith(root+'/'))path=resolve(root,'index.html');let bytes;try{bytes=await readFile(path);}catch{path=resolve(root,'index.html');bytes=await readFile(path);}res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(path)]||'application/octet-stream'});res.end(bytes);});await new Promise(r=>server.listen(4175,'127.0.0.1',r));
 const browser=await chromium.launch();
 try{
- for(const action of ['login','register','google','review','review-fail','tutor','tutor-fail','writing','writing-fail','admin','speaking','speaking-fail','dictation','dictation-fail','import','import-fail','exam','exam-fail','progress','progress-fail'].filter(action=>!process.env.QA_ACTION||process.env.QA_ACTION===action)){
+ for(const action of ['login','register','google','review','review-fail','tutor','tutor-fail','writing','writing-fail','admin','speaking','speaking-fail','dictation','dictation-fail','import','import-fail','exam','exam-fail','progress','progress-fail','personal-notes','personal-notes-fail','personal-settings','personal-settings-fail'].filter(action=>!process.env.QA_ACTION||process.env.QA_ACTION===action)){
+  const personalState={sprach_profile:{value:{display_name:'Server Learner',target_level:'B2',daily_goal:25,exam_date:'',unknown:'preserved'},version:2},sprach_notes:{value:{notes:[{id:'original-note',title:'Server private note',content:'Server content',type:'note',created_at:'2026-01-01'}],unknown:'preserved'},version:3}};
   let examVersion=0,examAttempts=[];let speakingSession={id:'fixture-speaking',messages:[]},speakingVersion=0;let identity=null,adminConfigs=[],routingVersion=0,adminRouting={rules:{},policies:{FREE_ONLY:true,FREE_FIRST_SORT:true,ALLOW_PAID_MODELS:false,AUTO_PAID_FALLBACK:false,REQUIRE_ADMIN_APPROVAL_FOR_PAID:true},revision:null};const requests=[],errors=[];const context=await browser.newContext();await context.addInitScript(()=>{sessionStorage.setItem('sprach_onboarding_dismissed','true');localStorage.setItem('sprach_elio_history',JSON.stringify([{role:'user',content:'Old other-account chat'}]));localStorage.setItem('sprachmeisterschaft_auth_v1',JSON.stringify({id:'forged-local-admin',name:'Local admin',role:'admin',email:'admin@example.invalid',is_verified:true}));});
   if(action.startsWith('progress'))await context.addInitScript(()=>{const d=JSON.parse(localStorage.getItem('sprachmeisterschaft_db_v1')||'{}');d.studyLogs=[{id:'old-other-account-stat',date:'2026-11-03',xp:9999,minutes:9999}];d.skillSessions=[{id:'old-score',skill:'writing',score:9999}];d.examResults=Array.from({length:9},(_,i)=>({id:'old-exam-'+i,total:9999,passed:true}));d.notes=[{id:'old-note',content:'Old other-account note'}];localStorage.setItem('sprachmeisterschaft_db_v1',JSON.stringify(d));});
   await context.route('**/*',async route=>{
@@ -12,7 +13,7 @@ try{
    if(u.origin==='https://accounts.google.com')return route.fulfill({contentType:'text/html',body:'<h1>Isolated Google destination fixture</h1>'});
    if(u.origin!==origin)return route.abort();if(!u.pathname.startsWith('/api/'))return route.continue();
    requests.push({path:u.pathname,method:request.method()});let status=200,body={};
-   if(u.pathname==='/api/core/config')body={enabled:true,uiAuthEnabled:true,uiVocabularyEnabled:action.startsWith('review')||action.startsWith('progress'),uiTutorEnabled:action.startsWith('tutor'),uiWritingEnabled:action.startsWith('writing'),uiAIAdminEnabled:action==='admin',uiSpeakingEnabled:action.startsWith('speaking'),uiListeningEnabled:action.startsWith('dictation'),uiImportEnabled:action.startsWith('import'),uiExamEnabled:action.startsWith('exam'),uiProgressEnabled:action.startsWith('progress')};
+   if(u.pathname==='/api/core/config')body={enabled:true,uiAuthEnabled:true,uiVocabularyEnabled:action.startsWith('review')||action.startsWith('progress'),uiTutorEnabled:action.startsWith('tutor'),uiWritingEnabled:action.startsWith('writing'),uiAIAdminEnabled:action==='admin',uiSpeakingEnabled:action.startsWith('speaking'),uiListeningEnabled:action.startsWith('dictation'),uiImportEnabled:action.startsWith('import'),uiExamEnabled:action.startsWith('exam'),uiProgressEnabled:action.startsWith('progress'),uiPersonalEnabled:action.startsWith('personal')};
    else if(u.pathname==='/api/core/state'&&action.startsWith('progress')){
     if(action==='progress-fail'){status=503;body={code:'PROGRESS_UNAVAILABLE',error:'Fixture progress unavailable'};}
     else{const time=Date.now(),row=value=>({value,version:1}),all={
@@ -21,7 +22,12 @@ try{
      sprach_notes:row([{id:'server-note',content:'Only this account'}])
     };const keys=(u.searchParams.get('keys')||'').split(',');body={userId:identity.id,records:Object.fromEntries(keys.filter(k=>all[k]).map(k=>[k,all[k]]))};}
    }
-   else if(u.pathname==='/api/core/auth/me'){status=401;body={code:'AUTH_REQUIRED',error:'Fixture session absent'};}
+   else if(u.pathname==='/api/core/state'&&action.startsWith('personal')){
+    assert.equal(request.headers()['x-elio-user'],identity.id);
+    if(request.method()==='GET'){const keys=(u.searchParams.get('keys')||'').split(',');body={userId:identity.id,records:Object.fromEntries(keys.filter(k=>personalState[k]).map(k=>[k,personalState[k]]))};}
+    else{const data=request.postDataJSON();assert.equal(data.version,personalState[data.name]?.version||0);if(action.endsWith('-fail')){status=409;body={code:'VERSION_CONFLICT',error:'Fixture newer private state'};}else{personalState[data.name]={value:data.value,version:data.version+1};body={userId:identity.id,version:data.version+1};}}
+   }
+   else if(u.pathname==='/api/core/auth/me'){if(identity&&action.startsWith('personal'))body={user:identity};else{status=401;body={code:'AUTH_REQUIRED',error:'Fixture session absent'};}}
    else if(['/api/core/auth/login','/api/core/auth/register'].includes(u.pathname)){const data=request.postDataJSON();assert.equal(data.email,'qa@example.invalid');assert.equal(data.password,'Fixture-password-123!');await new Promise(r=>setTimeout(r,100));identity={id:'server-account-id',email:data.email,name:'Backend Fixture',role:action==='admin'?'admin':'user'};body={user:identity};}
    else if(u.pathname==='/api/core/auth/google/start'){assert.deepEqual(request.postDataJSON(),{link:false});body={url:'https://accounts.google.com/o/oauth2/v2/auth?state=isolated-fixture'};}
    else if(u.pathname==='/api/core/vocabulary')body={cards:[{source_id:'fixture-source-id',german:'grün',vietnamese:'xanh',level:'A1',article:'',word_type:'adjective',extra_json:'{}'}]};
@@ -51,7 +57,7 @@ try{
    return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/#/'+(action==='register'?'register':'login'),{waitUntil:'networkidle'});
-  if(action==='login'||action.startsWith('review')||action.startsWith('tutor')||action.startsWith('writing')||action.startsWith('speaking')||action.startsWith('dictation')||action.startsWith('import')||action.startsWith('exam')||action.startsWith('progress')||action==='admin'){
+  if(action==='login'||action.startsWith('review')||action.startsWith('tutor')||action.startsWith('writing')||action.startsWith('speaking')||action.startsWith('dictation')||action.startsWith('import')||action.startsWith('exam')||action.startsWith('progress')||action.startsWith('personal')||action==='admin'){
    await page.getByText('Đăng nhập mật khẩu truyền thống',{exact:true}).click();await page.getByPlaceholder('Email đăng nhập',{exact:true}).fill('qa@example.invalid');await page.getByPlaceholder('Mật khẩu (ví dụ: admin123)',{exact:true}).fill('Fixture-password-123!');await page.getByRole('button',{name:'Đăng nhập bằng Mật khẩu',exact:true}).click();
   }else if(action==='register'){
    await page.getByPlaceholder('Nguyễn Văn Đạt',{exact:true}).fill('Backend Fixture');await page.getByPlaceholder('hocvien@sprachmeisterschaft.de',{exact:true}).fill('qa@example.invalid');await page.locator('input[type=password]').fill('Fixture-password-123!');await page.getByRole('button',{name:'Đăng ký & Bắt đầu học',exact:true}).click();
@@ -62,6 +68,20 @@ try{
    await page.waitForURL(url=>url.hash===(action==='admin'?'#/admin':'#/'));assert.equal(identity?.id,'server-account-id');if(action!=='admin')assert.equal(await page.locator('body').innerText().then(s=>s.includes('Trung tâm Quản trị tối cao')),false);
    // Bundle UI must show the server identity, not the forged LocalStorage admin.
    await page.getByText('Backend Fixture',{exact:false}).first().waitFor();assert.equal(await page.locator('body').innerText().then(s=>s.includes('Local admin')),false);
+  }
+  if(action.startsWith('personal-notes')){
+   await page.goto(origin+'/#/me/notes');await page.getByText('Server private note',{exact:true}).waitFor();
+   await page.getByRole('button',{name:'Sửa',exact:true}).click();const title=page.getByPlaceholder('Ví dụ: Dàn ý thư xin lỗi cấp trên B1...',{exact:true});await title.fill('Edited private note');
+   await page.getByRole('button',{name:'Lưu ghi chú',exact:true}).click();
+   if(action.endsWith('-fail')){await page.getByText('Fixture newer private state',{exact:true}).waitFor();assert.equal(await title.inputValue(),'Edited private note');assert.equal(personalState.sprach_notes.value.notes[0].title,'Server private note');}
+   else{await page.getByText('Edited private note',{exact:true}).waitFor();assert.equal(personalState.sprach_notes.value.notes[0].id,'original-note');assert.equal(personalState.sprach_notes.value.unknown,'preserved');await page.reload();await page.getByText('Edited private note',{exact:true}).waitFor();await page.getByRole('button',{name:'Xoá',exact:true}).click();await page.getByText('Chưa có ghi chú nào',{exact:true}).waitFor();assert.deepEqual(personalState.sprach_notes.value.notes,[]);}
+  }
+  if(action.startsWith('personal-settings')){
+   await page.goto(origin+'/#/me/settings');const name=page.locator('input[type=text]').first();await page.waitForFunction(()=>document.querySelector('input[type=text]')?.value==='Server Learner');await name.fill('Saved Learner');
+   await page.getByRole('button',{name:'Lưu tất cả thay đổi',exact:true}).click();
+   if(action.endsWith('-fail')){await page.getByText('Fixture newer private state',{exact:true}).waitFor();assert.equal(await name.inputValue(),'Saved Learner');assert.equal(personalState.sprach_profile.value.display_name,'Server Learner');}
+   else{await page.getByText('Đã lưu cài đặt!',{exact:false}).waitFor();assert.equal(personalState.sprach_profile.value.display_name,'Saved Learner');assert.equal(personalState.sprach_profile.value.unknown,'preserved');await page.reload();await page.waitForFunction(()=>document.querySelector('input[type=text]')?.value==='Saved Learner');}
+   await page.getByRole('button',{name:'Đặt lại dữ liệu gốc',exact:true}).click();await page.getByText('Core sử dụng kết nối server; chưa cho phép thay cấu hình, migrate hoặc đẩy dữ liệu cục bộ từ trang này.',{exact:true}).waitFor();assert.equal(requests.some(r=>r.path.includes('/turso')),false);
   }
   if(action.startsWith('review')){
    await page.goto(origin+'/#/review');await page.getByRole('button',{name:'Lật thẻ xem đáp án',exact:true}).click();await page.getByRole('button',{name:/^Được/}).click();
