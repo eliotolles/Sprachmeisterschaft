@@ -1,0 +1,33 @@
+name: Cloudflare read-only preflight
+
+on:
+  push:
+    branches:
+      - migration/elio-data-preserve-ui
+    paths:
+      - .github/workflows/cloudflare-preflight.yml
+      - scripts/cloudflare-preflight.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-worker-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check existing Cloudflare connection without deploying or printing secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-preflight.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-read-only-preflight
+          path: cloudflare-preflight.json
+          retention-days: 7
