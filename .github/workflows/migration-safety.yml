@@ -53,10 +53,10 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright@1.56.1 pngjs@7.0.0 pixelmatch@7.1.0
           npx playwright install --with-deps chromium
-      - name: Compare desktop/mobile and light/dark screenshots
-        run: node scripts/qa/compare-ui.mjs
       - name: Exercise unchanged auth controls against server fixtures
         run: node scripts/qa/auth-flow.mjs
+      - name: Compare desktop/mobile and light/dark screenshots
+        run: node scripts/qa/compare-ui.mjs
       - name: Save screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
