@@ -1,0 +1,13 @@
+# Existing examination pages — server-owned practice
+
+Opt-in ELIO_CORE_UI_EXAM_ENABLED requires core and UI authentication. It remains off by default; no production deployment, live schema change or database write was performed.
+
+The existing exam list and detail pages now load authorized server records. Source task/question IDs are retained; answer keys stay on the server until submission. Option labels such as A/B/C preserve their separate source display text without exposing hidden fields. Tasks requiring an image are excluded from this preview because the current examination page has no image display surface. Source records are preserved.
+
+The preview is explicitly timed objective practice (30 minutes), not an official exam simulation or certificate result. The server starts/restores the account's attempt, fixes its task snapshot and deadline, and evaluates document-backed source keys. Radio answers persist through serialized revision-checked writes. A stale device is not allowed to overwrite newer answers. The browser clock displays the server deadline; the server remains authoritative on expiry. Manual submission can be retried after a server failure without losing the displayed answers.
+
+Completed attempts and old sessions remain in private server history. The list shows the latest submitted practice percentage; retry creates a new attempt and retains the old one. Account changes clear the displayed exam, answers and result. Late responses are rejected. The old client-side 70/30 mixed score, fabricated session/XP logging and local result persistence are not used in enabled mode. Writing is shown as unassessed and its input is disabled in this objective-only preview; there is no fabricated writing score or certified pass determination.
+
+Source explanations/citations are shown when present. Missing explanations or quotations are explicitly unavailable rather than generated without evidence. Full official rules, verified listening audio, writing/speaking sections, ECL content, image tasks, provider-backed answer explanations and legacy-result migration remain acceptance work; this binding does not claim these are complete.
+
+Validation: 131 JavaScript tests and 7 Python safety tests locally, including answer secrecy, option-label preservation, server-score consistency, serialized revisions and account changes. Eighteen browser flows cover normal examination submission, preserving history on retry, and retained answers when submission fails. All 56 JSX components retain tags, classes and inline styles. Visual coverage expands to 64 viewport/theme/route cases; check final CI for completed results on the final SHA.

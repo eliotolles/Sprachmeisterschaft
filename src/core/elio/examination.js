@@ -5,6 +5,8 @@ export const EXAM_KEY='sprach_core_exam_attempts';
 export const examFormats=()=>({sourceCommit:'bd5179107363ebcc19764454b08d7c94acd1a289',sourceSnapshot:true,formats});
 const invalid=()=>coreError(400,'EXAM_INPUT','Dữ liệu đề thi không hợp lệ.');
 const clean=s=>String(s).normalize('NFC').trim();
+function optionLabels(q){if(!q.optionTexts||typeof q.optionTexts!=='object'||!Array.isArray(q.options))return {};return Object.fromEntries(q.options.filter(k=>typeof q.optionTexts[k]==='string'&&q.optionTexts[k].length<=5000).map(k=>[k,q.optionTexts[k]]));}
+function optionMetadata(q){const optionTexts=optionLabels(q);return Object.keys(optionTexts).length?{optionTexts}:{};}
 function publicAttempt(a){const {key,...safe}=a;return safe;}
 async function journal(env,user,version){if(!Number.isSafeInteger(version)||version<0)throw invalid();const r=await readJournal(env,user,EXAM_KEY,version,{attempts:[]});if(!r.conflict&&!Array.isArray(r.document.attempts))throw coreError(409,'HISTORY_INVALID','Lịch sử thi chưa đọc được.');return r;}
 export async function startExam(env,user,input){
@@ -17,7 +19,7 @@ export async function startExam(env,user,input){
   if(!['reading','listening'].includes(item.skill)||!Array.isArray(item.questions)||!item.questions.length)throw coreError(409,'EXAM_OBJECTIVE_REQUIRED','Chỉ chấm tự động câu đọc/nghe có đáp án nguồn xác minh.');
   const questions=[];
   for(const q of item.questions){if(typeof q.id!=='string'||!q.id||typeof q.prompt!=='string'||!Array.isArray(q.options)||q.options.length<2||!q.options.every(x=>typeof x==='string'&&x.length<5000)||new Set(q.options.map(clean)).size!==q.options.length||typeof q.answer!=='string'||!q.options.includes(q.answer)||q.answerSource!=='document')throw coreError(409,'EXAM_KEY_REQUIRED','Câu hỏi chưa có đáp án nguồn xác minh.');
-   const qid=id+':'+q.id;if(key.some(x=>x.id===qid))throw invalid();key.push({id:qid,answer:q.answer,explanation:typeof q.explanation==='string'?q.explanation:null,sourceDocument:q.answerSourceDocument||null,sourcePages:q.answerSourcePages||[]});questions.push({id:qid,prompt:q.prompt,options:q.options});}
+   const qid=id+':'+q.id;if(key.some(x=>x.id===qid))throw invalid();key.push({id:qid,answer:q.answer,explanation:typeof q.explanation==='string'?q.explanation:null,sourceDocument:q.answerSourceDocument||null,sourcePages:q.answerSourcePages||[]});questions.push({id:qid,prompt:q.prompt,options:q.options,...optionMetadata(q)});}
   tasks.push({id,title:item.title,content:item.content,skill:item.skill,teil:item.teil,exam:item.exam,level:item.level,questions});
  }
  if(key.length>500)throw invalid();
@@ -42,5 +44,5 @@ export async function readExams(env,user){
 export function examCatalogData(raw){
  let d;try{d=JSON.parse(raw);}catch{throw coreError(409,'EXAM_INVALID','Không đọc được đề thi.');}
  const pick=(x,keys)=>Object.fromEntries(keys.filter(k=>Object.hasOwn(x,k)).map(k=>[k,x[k]]));
- return JSON.stringify({...pick(d,['id','name','type','exam','level','groupName']),items:(d.items||[]).map(t=>({...pick(t,['id','title','exam','level','skill','teil','content','setName','setKey']),questions:(t.questions||[]).map(q=>pick(q,['id','sourceNumber','prompt','options']))}))});
+ return JSON.stringify({...pick(d,['id','name','type','exam','level','groupName']),items:(d.items||[]).map(t=>({...pick(t,['id','title','exam','level','skill','teil','content','setName','setKey','requiresImage']),questions:(t.questions||[]).map(q=>({...pick(q,['id','sourceNumber','prompt','options']),...optionMetadata(q)}))}))});
 }

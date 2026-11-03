@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
+import {newExamBinding,examCoreActive} from '@/lib/elio-exam-runtime';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SpeakButton } from '@/components/ui/SpeakButton';
@@ -26,7 +27,13 @@ import { toast } from 'sonner';
 
 export function ExamDetailPage({ examId }) {
   const { navigate } = useRouter();
-  const exam = getExamById(examId);
+  const coreActive=examCoreActive();
+  const [core]=useState(newExamBinding);
+  const [coreExam,setCoreExam]=useState(null);
+  const [restart,setRestart]=useState(0);
+  const [deadline,setDeadline]=useState(null),[clockOffset,setClockOffset]=useState(0);
+  const scopeRef=useRef(0),submitRef=useRef(null),submitBusy=useRef(false),answerRef=useRef({reading:{},listening:{}});
+  const exam = coreActive?coreExam:getExamById(examId);
 
   const [activeTab, setActiveTab] = useState('reading'); // reading, listening, writing, speaking
   const [timeLeft, setTimeLeft] = useState(exam?.minutes ? exam.minutes * 60 : 3600);
@@ -49,9 +56,13 @@ export function ExamDetailPage({ examId }) {
   const [evaluatingExam, setEvaluatingExam] = useState(false);
   const [resultSubTab, setResultSubTab] = useState('summary'); // 'summary' | 'lesen' | 'hoeren' | 'schreiben'
 
+  useEffect(()=>{if(!coreActive)return;let cancelled=false;const load=async()=>{const epoch=++scopeRef.current;core.reset();setCoreExam(null);setActiveTab('reading');setDeadline(null);setReadingAnswers({});setListeningAnswers({});setWritingText('');setWritingEvaluation(null);setSubmitted(false);setAuditResult(null);answerRef.current={reading:{},listening:{}};submitBusy.current=false;setEvaluatingExam(false);try{const catalog=await core.catalog(),selected=catalog.find(e=>e.id===examId);if(!selected)throw Error('Không có đề thi được phép đọc.');const started=await core.begin(selected);if(cancelled||epoch!==scopeRef.current)return;const reading={},listening={};started.exam.reading.forEach((t,i)=>t.questions.forEach((q,j)=>{if(started.answers[q.id]!==undefined)reading[i+'_'+j]=started.answers[q.id];}));started.exam.listening.forEach((q,i)=>{if(started.answers[q.id]!==undefined)listening[i]=started.answers[q.id];});answerRef.current={reading,listening};setReadingAnswers(reading);setListeningAnswers(listening);setCoreExam(started.exam);setDeadline(started.deadline);setClockOffset(Number.isFinite(started.serverNow)?started.serverNow-Date.now():0);setTimeLeft(Math.max(0,Math.ceil((started.deadline-(started.serverNow||Date.now()))/1000)));}catch(error){if(!cancelled)toast.error(error.message);}};load();window.addEventListener('sprach_auth_change',load);return()=>{cancelled=true;scopeRef.current++;core.reset();window.removeEventListener('sprach_auth_change',load);};},[coreActive,examId,restart]);
+  const handleCoreChoice=(kind,key,value)=>{const epoch=scopeRef.current;answerRef.current={...answerRef.current,[kind]:{...answerRef.current[kind],[key]:value}};(kind==='reading'?setReadingAnswers:setListeningAnswers)(answerRef.current[kind]);core.persist(exam,answerRef.current.reading,answerRef.current.listening).catch(error=>{if(epoch===scopeRef.current)toast.error(error.message);});};
+
   // Timer countdown
   useEffect(() => {
     if (submitted) return;
+    if(coreActive){if(!deadline)return;const timer=setInterval(()=>{const remaining=Math.max(0,Math.ceil((deadline-Date.now()-clockOffset)/1000));setTimeLeft(remaining);if(!remaining){clearInterval(timer);submitRef.current?.();}},1000);return()=>clearInterval(timer);}
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -64,7 +75,7 @@ export function ExamDetailPage({ examId }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [submitted]);
+  }, [submitted,coreActive,deadline,clockOffset]);
 
   const formatTimer = (secs) => {
     const m = Math.floor(secs / 60);
@@ -75,7 +86,7 @@ export function ExamDetailPage({ examId }) {
   if (!exam) {
     return (
       <div className="surface p-8 text-center space-y-4">
-        <h3 className="font-display text-xl font-bold">Không tìm thấy đề thi</h3>
+        <h3 className="font-display text-xl font-bold">{coreActive?'Đang tải đề thi hoặc chưa có quyền truy cập':'Không tìm thấy đề thi'}</h3>
         <button
           onClick={() => navigate('/exams')}
           className="px-4 py-2 bg-accent text-accent-foreground text-xs font-mono rounded"
@@ -91,6 +102,7 @@ export function ExamDetailPage({ examId }) {
   const totalMCQuestions = allReadingQuestions.length + allListeningQuestions.length;
 
   const handleGradeWritingNow = async () => {
+    if(coreActive)return toast.error('Phiên này chỉ chấm trắc nghiệm; luyện viết dùng xưởng Schreiben.');
     if (!writingText.trim() || writingText.trim().split(/\s+/).length < 15) {
       toast.error('Vui lòng viết tối thiểu 15 từ trước khi thẩm định.');
       return;
@@ -114,6 +126,7 @@ export function ExamDetailPage({ examId }) {
   };
 
   const handleSubmitExam = async () => {
+    if(coreActive){if(submitted||submitBusy.current)return;const epoch=scopeRef.current;submitBusy.current=true;setEvaluatingExam(true);try{const result=await core.submit(exam,answerRef.current.reading,answerRef.current.listening);if(epoch===scopeRef.current){setAuditResult(result);setSubmitted(true);}}catch(error){if(epoch===scopeRef.current)toast.error(error.message);}finally{if(epoch===scopeRef.current){submitBusy.current=false;setEvaluatingExam(false);}}return;}
     if (submitted || evaluatingExam) return;
     setEvaluatingExam(true);
 
@@ -167,6 +180,7 @@ export function ExamDetailPage({ examId }) {
   };
 
   // ================= RENDER DETAILED EXAM RESULT =================
+  submitRef.current=handleSubmitExam;
   if (submitted && auditResult) {
     const readingAudits = (auditResult.questionAudits || []).filter((q) =>
       q.section.includes('Lesen')
@@ -178,14 +192,14 @@ export function ExamDetailPage({ examId }) {
     return (
       <div className="space-y-6 animate-rise max-w-4xl mx-auto">
         <PageHeader
-          eyebrow={`BÁO CÁO THẨM ĐỊNH KỲ THI ${exam.provider.toUpperCase()} ${exam.level}`}
+          eyebrow={`${coreActive?'BÁO CÁO LUYỆN TẬP':'BÁO CÁO THẨM ĐỊNH KỲ THI'} ${exam.provider.toUpperCase()} ${exam.level}`}
           title={
-            auditResult.passed
+            coreActive?'Kết quả luyện tập trắc nghiệm':auditResult.passed
               ? 'Bestanden! (Đậu chuẩn CEFR)'
               : 'Noch nicht bestanden (Cần rèn luyện thêm)'
           }
-          deTitle="Offizieller Prüfungsbericht"
-          subtitle={`Hồ sơ phân tích chi tiết từng phần, từng câu theo quy chuẩn khảo thí Đức.`}
+          deTitle={coreActive?"Übungsbericht":"Offizieller Prüfungsbericht"}
+          subtitle={coreActive?'Chấm trắc nghiệm theo đáp án nguồn đã lưu; không xác định kết quả chứng chỉ.':`Hồ sơ phân tích chi tiết từng phần, từng câu theo quy chuẩn khảo thí Đức.`}
         />
 
         {/* Top Composite Banner */}
@@ -199,7 +213,7 @@ export function ExamDetailPage({ examId }) {
                   <span className="text-xl text-muted-foreground font-mono">/ 100</span>
                 </h3>
                 <span className="text-xs font-mono text-muted-foreground">
-                  (Điểm chuẩn đạt: 60/100)
+                  {coreActive?'(Ngưỡng luyện tập: 60/100)':'(Điểm chuẩn đạt: 60/100)'}
                 </span>
               </div>
             </div>
@@ -212,10 +226,10 @@ export function ExamDetailPage({ examId }) {
                     : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                 }`}
               >
-                {auditResult.passed ? '✓ Bestanden' : '✗ Noch nicht bestanden'}
+                {coreActive?'Điểm luyện tập · không phải kết quả chứng chỉ':auditResult.passed ? '✓ Bestanden' : '✗ Noch nicht bestanden'}
               </span>
               <span className="text-[11px] font-mono text-muted-foreground">
-                Công thức: 70% Trắc nghiệm ({auditResult.mcPercent}%) + 30% Viết ({auditResult.writingScaled100}%)
+                {coreActive?`Chỉ tính trắc nghiệm (${auditResult.mcPercent}%). Phần viết chưa đánh giá.`:`Công thức: 70% Trắc nghiệm (${auditResult.mcPercent}%) + 30% Viết (${auditResult.writingScaled100}%)`}
               </span>
             </div>
           </div>
@@ -284,7 +298,7 @@ export function ExamDetailPage({ examId }) {
             <div className="surface p-5 space-y-3">
               <div className="eyebrow">Báo cáo đánh giá tổng thể</div>
               <p className="font-body text-xs text-foreground leading-relaxed">
-                Đề thi <strong>{exam.title}</strong> thuộc trình độ <strong>{exam.level}</strong> theo khung tham chiếu châu Âu CEFR. Bài làm của bạn đạt tổng <strong>{auditResult.compositeScore100}/100 điểm</strong> ({auditResult.passed ? 'Đạt chuẩn' : 'Chưa đạt chuẩn'}).
+                Đề thi <strong>{exam.title}</strong> thuộc trình độ <strong>{exam.level}</strong> theo khung tham chiếu châu Âu CEFR. Bài làm của bạn đạt tổng <strong>{auditResult.compositeScore100}/100 điểm</strong> ({coreActive?'Luyện tập, không xác định đậu chứng chỉ':auditResult.passed ? 'Đạt chuẩn' : 'Chưa đạt chuẩn'}).
               </p>
 
               <div className="space-y-2 pt-2">
@@ -357,7 +371,7 @@ export function ExamDetailPage({ examId }) {
                       </strong>
                     </div>
                     <div className="p-2 rounded bg-card border border-border">
-                      <span className="text-[10px] text-muted-foreground block">Đáp án nguồn chính thức:</span>
+                      <span className="text-[10px] text-muted-foreground block">{coreActive?'Đáp án nguồn đã lưu:':'Đáp án nguồn chính thức:'}</span>
                       <strong className="text-accent">{q.sourceAnswer}</strong>
                     </div>
                   </div>
@@ -365,7 +379,7 @@ export function ExamDetailPage({ examId }) {
                   {/* Evidence quote */}
                   <div className="p-2.5 rounded bg-muted/20 border border-border/60 text-xs font-body text-foreground/90">
                     <strong className="font-mono text-accent text-[11px] block mb-0.5">
-                      Dẫn chứng từ văn bản bài đọc:
+                      {coreActive?'Thông tin nguồn đáp án:':'Dẫn chứng từ văn bản bài đọc:'}
                     </strong>
                     <span className="italic">"{q.evidence}"</span>
                   </div>
@@ -438,7 +452,7 @@ export function ExamDetailPage({ examId }) {
                       </strong>
                     </div>
                     <div className="p-2 rounded bg-card border border-border">
-                      <span className="text-[10px] text-muted-foreground block">Đáp án nguồn chính thức:</span>
+                      <span className="text-[10px] text-muted-foreground block">{coreActive?'Đáp án nguồn đã lưu:':'Đáp án nguồn chính thức:'}</span>
                       <strong className="text-accent">{q.sourceAnswer}</strong>
                     </div>
                   </div>
@@ -446,7 +460,7 @@ export function ExamDetailPage({ examId }) {
                   {/* Transcript quote */}
                   <div className="p-2.5 rounded bg-muted/20 border border-border/60 text-xs font-body text-foreground/90">
                     <strong className="font-mono text-accent text-[11px] block mb-0.5">
-                      Trích đoạn âm thanh (Audio Transcript):
+                      {coreActive?'Thông tin nguồn đáp án:':'Trích đoạn âm thanh (Audio Transcript):'}
                     </strong>
                     <span className="italic">"{q.evidence}"</span>
                   </div>
@@ -525,6 +539,7 @@ export function ExamDetailPage({ examId }) {
         <div className="flex gap-3 pt-2">
           <button
             onClick={() => {
+              if(coreActive){setCoreExam(null);setDeadline(null);setRestart(n=>n+1);return;}
               setSubmitted(false);
               setAuditResult(null);
               setReadingAnswers({});
@@ -654,7 +669,8 @@ export function ExamDetailPage({ examId }) {
                               name={`reading_${qKey}`}
                               value={opt}
                               checked={selectedAnswer === opt}
-                              onChange={() =>
+                              disabled={evaluatingExam||(coreActive&&timeLeft<=0)}
+                              onChange={() => coreActive?handleCoreChoice('reading',qKey,opt):
                                 setReadingAnswers((prev) => ({
                                   ...prev,
                                   [qKey]: opt,
@@ -662,7 +678,7 @@ export function ExamDetailPage({ examId }) {
                               }
                               className="accent-accent"
                             />
-                            <span>{opt}</span>
+                            <span>{coreActive&&q.optionTexts?.[opt]?opt+'. '+q.optionTexts[opt]:opt}</span>
                           </label>
                         ))}
                       </div>
@@ -728,7 +744,8 @@ export function ExamDetailPage({ examId }) {
                             name={`listening_${lIdx}`}
                             value={opt}
                             checked={selectedAnswer === opt}
-                            onChange={() =>
+                            disabled={evaluatingExam||(coreActive&&timeLeft<=0)}
+                            onChange={() => coreActive?handleCoreChoice('listening',lIdx,opt):
                               setListeningAnswers((prev) => ({
                                 ...prev,
                                 [lIdx]: opt,
@@ -736,7 +753,7 @@ export function ExamDetailPage({ examId }) {
                             }
                             className="accent-accent"
                           />
-                          <span>{opt}</span>
+                          <span>{coreActive&&q.optionTexts?.[opt]?opt+'. '+q.optionTexts[opt]:opt}</span>
                         </label>
                       ))}
                     </div>
@@ -788,6 +805,7 @@ export function ExamDetailPage({ examId }) {
               <textarea
                 rows={10}
                 value={writingText}
+                disabled={coreActive}
                 onChange={(e) => setWritingText(e.target.value)}
                 placeholder="Sehr geehrte Damen und Herren, ich schreibe Ihnen, weil..."
                 className="w-full p-4 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring leading-relaxed"

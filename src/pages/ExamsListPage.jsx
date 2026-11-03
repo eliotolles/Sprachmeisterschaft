@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {newExamBinding,examCoreActive} from '@/lib/elio-exam-runtime';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
@@ -23,16 +24,19 @@ import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function ExamsListPage() {
   const { navigate } = useRouter();
+  const coreActive=examCoreActive();
+  const [core]=useState(newExamBinding);
   const isAdmin = db.auth.isAdmin();
   const [profile] = useState(() => db.learnerProfile.get());
   const [selectedLevel, setSelectedLevel] = useState('ALL');
-  const [examResults, setExamResults] = useState(() => db.examResults.findMany());
-  const [allExamsList, setAllExamsList] = useState(() => getAllExams());
+  const [examResults, setExamResults] = useState(() => coreActive?[]:db.examResults.findMany());
+  const [allExamsList, setAllExamsList] = useState(() => coreActive?[]:getAllExams());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
 
   useEffect(() => {
     const handleDbChange = () => {
+      if(examCoreActive())return;
       setExamResults(db.examResults.findMany());
       setAllExamsList(getAllExams());
     };
@@ -40,7 +44,10 @@ export function ExamsListPage() {
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
 
+  useEffect(()=>{if(!coreActive)return;let epoch=0,cancelled=false;const load=async()=>{const current=++epoch;core.reset();setAllExamsList([]);setExamResults([]);try{const [exams,history]=await Promise.all([core.catalog(),core.history()]);if(!cancelled&&current===epoch){setAllExamsList(exams);setExamResults(history.attempts.filter(a=>a.status==='submitted'&&Number.isFinite(a.percent)&&Number.isFinite(a.submittedAt)).sort((a,b)=>b.submittedAt-a.submittedAt).map(a=>({id:a.id,exam_id:encodeURIComponent(a.recordId),total:a.percent,passed:false,officialScore:false})));}}catch(error){if(!cancelled)toast.error(error.message);}};load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{cancelled=true;core.reset();window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};},[coreActive]);
+
   const handleDeleteExam = async (examId, examTitle) => {
+    if(coreActive)return toast.error('Xóa đề chưa được phép trong core mới; dữ liệu được giữ nguyên.');
     const ok = await showConfirmModal({
       title: 'Xóa đề thi',
       message: `Bạn có chắc chắn muốn xóa đề thi "${examTitle}" không?`,
@@ -55,6 +62,7 @@ export function ExamsListPage() {
   };
 
   const handleResetExams = async () => {
+    if(coreActive)return toast.error('Không reset dữ liệu đề thi cũ.');
     const ok = await showConfirmModal({
       title: 'Khôi phục đề thi gốc',
       message: 'Khôi phục lại toàn bộ danh mục đề thi mặc định gốc của hệ thống?',
@@ -71,6 +79,7 @@ export function ExamsListPage() {
   const handleSaveExamEdit = (e) => {
     e.preventDefault();
     if (!editingExam) return;
+    if(coreActive)return toast.error('Sửa đề thi chưa nối server.');
     db.exams.update(editingExam.id, {
       title: editingExam.title,
       provider: editingExam.provider,
@@ -130,7 +139,7 @@ export function ExamsListPage() {
               </button>
             )}
             <button
-              onClick={() => setIsImportOpen(true)}
+              onClick={() => coreActive?toast.error('Xem trước Import đề thi chưa nối server.'):setIsImportOpen(true)}
               className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
@@ -170,7 +179,7 @@ export function ExamsListPage() {
           <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
             <button
               type="button"
-              onClick={() => setIsImportOpen(true)}
+              onClick={() => coreActive?toast.error('Xem trước Import đề thi chưa nối server.'):setIsImportOpen(true)}
               className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold rounded-sm inline-flex items-center gap-1.5 shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -256,7 +265,7 @@ export function ExamsListPage() {
                     <div className="mt-3 p-2 rounded-sm bg-accent/5 border border-accent/20 flex items-center justify-between text-xs font-mono">
                       <span className="text-muted-foreground">Lần làm gần nhất:</span>
                       <span className="font-bold text-accent">
-                        {lastResult.total}đ ({lastResult.passed ? 'Bestanden' : 'Chưa đạt'})
+                        {lastResult.total}đ ({coreActive?'luyện tập':lastResult.passed ? 'Bestanden' : 'Chưa đạt'})
                       </span>
                     </div>
                   )}

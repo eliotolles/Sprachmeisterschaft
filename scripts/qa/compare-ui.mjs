@@ -11,7 +11,7 @@ for(let i=0;i<roots.length;i++){
  await new Promise(r=>server.listen(ports[i],'127.0.0.1',r));servers.push(server);
 }
 await mkdir('ui-artifacts',{recursive:true});const browser=await chromium.launch({headless:true,args:['--disable-gpu','--disable-lcd-text','--force-color-profile=srgb','--font-render-hinting=none']});const report=[];
-const routes=['/landing','/register','/','/vocabulary','/review','/skills','/skills/grammar','/skills/writing','/skills/interview','/skills/listening','/skills/listening/fixture/episode','/exams','/elio','/progress','/admin'].filter(route=>!process.env.QA_ROUTE||route===process.env.QA_ROUTE);
+const routes=['/landing','/register','/','/vocabulary','/review','/skills','/skills/grammar','/skills/writing','/skills/interview','/skills/listening','/skills/listening/fixture/episode','/exams','/exams/fixture-exam','/elio','/progress','/admin'].filter(route=>!process.env.QA_ROUTE||route===process.env.QA_ROUTE);
 try{
  for(const viewport of [{width:1440,height:900},{width:390,height:844}])for(const colorScheme of ['light','dark'])for(const route of routes){
   const images=[],errors=[],dom=[];const label=(route==='/'?'home':route.slice(1).replaceAll('/','-'))+'-'+viewport.width+'-'+colorScheme;
