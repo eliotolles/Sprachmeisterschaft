@@ -67,7 +67,7 @@ try{
   if(action!=='google'){
    await page.waitForURL(url=>url.hash===(action==='admin'?'#/admin':'#/'));assert.equal(identity?.id,'server-account-id');if(action!=='admin')assert.equal(await page.locator('body').innerText().then(s=>s.includes('Trung tâm Quản trị tối cao')),false);
    // Bundle UI must show the server identity, not the forged LocalStorage admin.
-   await page.getByText('Backend Fixture',{exact:false}).first().waitFor();assert.equal(await page.locator('body').innerText().then(s=>s.includes('Local admin')),false);
+   await page.getByText(action.startsWith('personal')?'Server Learner':'Backend Fixture',{exact:false}).first().waitFor();assert.equal(await page.locator('body').innerText().then(s=>s.includes('Local admin')),false);
   }
   if(action.startsWith('personal-notes')){
    await page.goto(origin+'/#/me/notes');await page.getByText('Server private note',{exact:true}).waitFor();
