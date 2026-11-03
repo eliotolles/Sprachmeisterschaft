@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
+import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { auditDictationSentence } from '@/lib/ai-evaluator';
@@ -39,17 +40,22 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const { navigate } = useRouter();
   const isAdmin = db.auth.isAdmin();
   const currentUser = db.auth.getUser();
+  const coreActive=listeningCoreActive();
+  const [,refreshCore]=useState(0);
+  const [coreSaving,setCoreSaving]=useState(false);
+  const coreEpoch=useRef(0),coreBusy=useRef(false);
+  useEffect(()=>{const update=()=>{coreEpoch.current++;coreBusy.current=false;setCoreSaving(false);setTypedInput('');setDictationAudit(null);setDictationChecked(false);setLearnedSubs(new Set());refreshCore(n=>n+1);};if(!coreActive)return;window.addEventListener('sprach_listening_change',update);return()=>{coreEpoch.current++;window.removeEventListener('sprach_listening_change',update);};},[coreActive,collectionId,videoId]);
   const [editingEpisode, setEditingEpisode] = useState(null);
 
   const collection = db.listening.getCollectionById(collectionId) || {
     id: collectionId,
-    title: 'Nicos Weg — Trình độ A1',
+    title: coreActive?'Chưa tải được bộ nghe từ server':'Nicos Weg — Trình độ A1',
   };
   const episodes = db.listening.getEpisodes(collectionId);
   const currentEpisode = db.listening.getEpisodeById(videoId) || episodes[0] || {
     id: videoId,
-    title: 'Folge 1: Meine Muttersprache',
-    youtubeId: '4-eDoThe6qo',
+    title: coreActive?'Chưa có video được phép đọc':'Folge 1: Meine Muttersprache',
+    youtubeId: coreActive?'':'4-eDoThe6qo',
     subtitles: [],
   };
 
@@ -94,11 +100,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     vi: '',
   };
 
+  useEffect(()=>{if(coreActive){coreEpoch.current++;coreBusy.current=false;setCoreSaving(false);setDictationChecked(false);setDictationAudit(null);}},[coreActive,activeSubIndex]);
+
   // 1. Initialize YouTube IFrame API
   useEffect(() => {
     let isMounted = true;
+    if(coreActive&&!currentEpisode.youtubeId)return;
 
     const initYouTubePlayer = () => {
+      if(!isMounted)return;
       if (!window.YT || !window.YT.Player) {
         setTimeout(initYouTubePlayer, 200);
         return;
@@ -306,9 +316,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   // Dictation check
-  const handleCheckDictation = (e) => {
+  const handleCheckDictation = async (e) => {
     e.preventDefault();
-    if (!typedInput.trim()) return;
+    if (!typedInput.trim()||coreBusy.current) return;
+    if(coreActive){const epoch=coreEpoch.current;coreBusy.current=true;setCoreSaving(true);try{const result=await elioListening().submit(currentSub,typedInput.trim());if(epoch===coreEpoch.current){setDictationAudit(result.audit);setDictationChecked(true);if(result.audit.isExact)setLearnedSubs(prev=>new Set(prev).add(currentSub.id||activeSubIndex));}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}finally{if(epoch===coreEpoch.current){coreBusy.current=false;setCoreSaving(false);}}return;}
 
     const audit = auditDictationSentence({
       target: currentSub.de,
@@ -332,6 +343,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   const handleSaveSentenceAsCard = (sub) => {
+    if(coreActive)return toast.error('Lưu câu vào bộ từ chưa nối server; chưa ghi dữ liệu cục bộ.');
     db.vocabulary.create({
       german: sub.de,
       vietnamese: sub.vi || 'Mẫu câu luyện nghe',
@@ -351,6 +363,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       variant: 'danger',
     });
     if (ok) {
+      if(coreActive)return toast.error('Xóa video chưa được phép; dữ liệu được giữ nguyên.');
       db.listening.deleteEpisode(currentEpisode.id);
       toast.success('Đã xóa video thành công!');
       navigate('/skills/listening');
@@ -360,6 +373,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const handleSaveEpisode = (e) => {
     e.preventDefault();
     if (!editingEpisode) return;
+    if(coreActive)return toast.error('Sửa video chưa nối server.');
     db.listening.updateEpisode(editingEpisode.id, {
       title: editingEpisode.title,
       deTitle: editingEpisode.deTitle,
@@ -587,6 +601,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 <textarea
                   rows={3}
                   value={typedInput}
+                  disabled={coreSaving}
                   onChange={(e) => setTypedInput(e.target.value)}
                   placeholder="Gõ tiếng Đức vào đây (chú ý viết hoa danh từ)..."
                   className="w-full p-3 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -642,7 +657,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   )}
                   {dictationAudit.capitalizationErrors?.length > 0 && (
                     <div className="text-[11px] font-mono text-amber-600">
-                      Lỗi viết hoa danh từ: {dictationAudit.capitalizationErrors.map((c) => `"${c.actual}" (chuẩn: ${c.expected})`).join(', ')}
+                      {coreActive?'Khác biệt viết hoa: ':'Lỗi viết hoa danh từ: '}{dictationAudit.capitalizationErrors.map((c) => `"${c.actual}" (chuẩn: ${c.expected})`).join(', ')}
                     </div>
                   )}
                 </div>

@@ -1,3 +1,4 @@
+import {installListeningRuntime} from './elio-listening-runtime.js';
 import {installAIAdminRuntime} from './elio-ai-admin-runtime.js';
 import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.js';
 import { formatDate, addDays, calculateStreak } from './algorithms';
@@ -1901,3 +1902,4 @@ export const db = {
 export const initializeElioAuthentication=()=>installElioAuthentication(db).initialize();
 
 installAIAdminRuntime(db);
+installListeningRuntime(db);

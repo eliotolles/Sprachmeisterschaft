@@ -1,3 +1,4 @@
+import {digest} from './passwords.js';
 import {coreError,query} from './database.js';
 import {fetchElioTranscript} from './transcript-backend.js';
 import {ListeningV2Core} from './listening-content.js';
@@ -17,6 +18,7 @@ export async function submitDictation(env,user,input){
  const content=input.itemId===undefined?data:data.items?.find(item=>item.id===input.itemId);
  const cue=content?.cues?.[input.cueIndex];
  if(!cue||typeof cue.text!=='string'||!cue.text.trim()||cue.text.length>5000)throw coreError(409,'CAPTION_REQUIRED','Bài nghe chưa có phụ đề để chấm.');
+ if(input.cueRevision!==undefined&&(typeof input.cueRevision!=='string'||input.cueRevision!==await digest(JSON.stringify(cue))))throw coreError(409,'CAPTION_CHANGED','Phụ đề đã thay đổi; chưa ghi bài làm vào câu khác.');
  let result;try{result=ListeningV2Core.compare(input.answer,cue.text,input.strict===true);}catch{throw coreError(400,'DICTATION_LIMIT','Chia câu thành đoạn ngắn hơn.');}
  const journal=await readJournal(env,user,LISTENING_KEY,input.version,{attempts:[]});if(journal.conflict)return journal;
  if(!Array.isArray(journal.document.attempts))throw coreError(409,'HISTORY_INVALID','Lịch sử chưa đọc được.');

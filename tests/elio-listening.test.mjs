@@ -23,3 +23,7 @@ test('dictation resolves stored captions, rejects other accounts, and uses optim
  assert.equal((await submitDictation(env,{id:'alice'},input)).conflict,true);assert.equal(db.prepare('SELECT count(*) n FROM ee_state WHERE key=?').get(LISTENING_KEY).n,1);
  }finally{db.close();}
 });
+test('stale caption fingerprints reject grading before writing private history',async()=>{
+ const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE ee_records(id TEXT,kind TEXT,owner TEXT,public INTEGER,data TEXT);CREATE TABLE ee_state(owner TEXT,key TEXT,value TEXT,revision INTEGER,PRIMARY KEY(owner,key))');db.prepare('INSERT INTO ee_records VALUES(?,?,?,?,?)').run('lesson','listening','alice',0,JSON.stringify({cues:[{text:'Neue Untertitel.'}]}));const env={TEST_CORE_DB:async(sql,args)=>{const s=db.prepare(sql);return /^SELECT/.test(sql)||/RETURNING/.test(sql)?{rows:s.all(...args)}:{rows:[],changes:Number(s.run(...args).changes)};}};
+ try{await assert.rejects(submitDictation(env,{id:'alice'},{recordId:'lesson',cueIndex:0,cueRevision:'stale',answer:'Old caption',version:0}),e=>e.code==='CAPTION_CHANGED');assert.equal(db.prepare('SELECT count(*) n FROM ee_state').get().n,0);}finally{db.close();}
+});
