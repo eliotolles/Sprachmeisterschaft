@@ -9,5 +9,27 @@ export function mapDictationAttempt(a){
 }
 export function createListeningBinding({client,isActive}){
  let generation=0;const reset=()=>{generation++;};const capture=()=>{if(!isActive()||!client.getUser())throw Error('Chưa đăng nhập core nghe.');return {id:client.getUser().id,generation};};const check=s=>{if(s.id!==client.getUser()?.id||s.generation!==generation)throw Object.assign(Error('Tài khoản hoặc bài nghe đã thay đổi.'),{code:'ACCOUNT_CHANGED'});};
- return {isActive,reset,async load(){const scope=capture(),items=[];for(let offset=0;offset<10000;offset+=200){const rows=await client.records('listening',{limit:200,offset});check(scope);for(const row of rows){let data;try{data=JSON.parse(row.data);}catch{throw Error('Bài nghe chưa đọc được; chưa dùng dữ liệu cục bộ thay thế.');}for(const content of Array.isArray(data.items)?data.items:[data]){if(!content||!Array.isArray(content.cues)||Array.isArray(data.items)&&!['string','number'].includes(typeof content.id))continue;for(let cueIndex=0;cueIndex<content.cues.length;cueIndex++){const cue=content.cues[cueIndex];if(!cue||typeof cue.text!=='string'||!cue.text.trim()||cue.text.length>5000||ListeningV2Core.tokens(cue.text).length>400)continue;items.push({id:JSON.stringify([row.id,Array.isArray(data.items)?content.id:null,cueIndex]),recordId:row.id,...(Array.isArray(data.items)?{itemId:content.id}:{}),cueIndex,cueRevision:await digest(JSON.stringify(cue)),collectionTitle:row.title||'Bài nghe',title:content.title||row.title||'Bài nghe',scope:row.public?'public':'private',owner:row.owner,youtubeId:content.youtubeId||content.videoId||ListeningV2Core.id(content.url||content.youtubeUrl||'')||'',start:cue.start,end:cue.end,de:cue.text,vi:typeof cue.vi==='string'?cue.vi:'',level:content.level||row.level||''});}}}if(rows.length<200)return items;if(offset===9800)throw Error('Quá nhiều bài nghe.');}return items;},async submit(item,answer){const scope=capture();const r=await client.submitDictation({recordId:item.recordId,...(item.itemId!==undefined?{itemId:item.itemId}:{}),cueIndex:item.cueIndex,cueRevision:item.cueRevision,answer,strict:false});check(scope);if(r.attempt?.recordId!==item.recordId||r.attempt?.cueIndex!==item.cueIndex||r.attempt?.itemId!==item.itemId||r.attempt?.answer!==answer||r.attempt?.expected!==item.de)throw Error('Kết quả không khớp câu nghe.');return mapDictationAttempt(r.attempt);}};
+ return {isActive,reset,async load(){
+  const scope=capture(),items=[],videos=[];
+  for(let offset=0;offset<10000;offset+=200){
+   const rows=await client.records('listening',{limit:200,offset});check(scope);
+   for(const row of rows){
+    let data;try{data=JSON.parse(row.data);}catch{throw Error('Bài nghe chưa đọc được; chưa dùng dữ liệu cục bộ thay thế.');}
+    for(const content of Array.isArray(data?.items)?data.items:[data]){
+     if(!content||typeof content!=='object'||Array.isArray(data?.items)&&!['string','number'].includes(typeof content.id))continue;
+     const metadata={recordId:row.id,...(Array.isArray(data.items)?{itemId:content.id}:{}),collectionTitle:row.title||'Bài nghe',title:content.title||row.title||'Bài nghe',scope:row.public?'public':'private',owner:row.owner,youtubeId:content.youtubeId||content.videoId||ListeningV2Core.id(content.url||content.youtubeUrl||'')||'',level:content.level||row.level||'',transcriptComplete:content.transcriptComplete===true};
+     const subtitles=[];
+     for(let cueIndex=0;cueIndex<(Array.isArray(content.cues)?content.cues.length:0);cueIndex++){
+      const cue=content.cues[cueIndex];if(!cue||typeof cue.text!=='string'||!cue.text.trim()||cue.text.length>5000||ListeningV2Core.tokens(cue.text).length>400)continue;
+      const item={...metadata,id:JSON.stringify([row.id,Array.isArray(data.items)?content.id:null,cueIndex]),cueIndex,cueRevision:await digest(JSON.stringify(cue)),start:cue.start,end:cue.end,de:cue.text,vi:typeof cue.vi==='string'?cue.vi:''};items.push(item);
+      if(Number.isFinite(cue.start)&&Number.isFinite(cue.end)&&cue.start>=0&&cue.end>cue.start)subtitles.push(item);
+     }
+     if(/^[\w-]{11}$/.test(metadata.youtubeId))videos.push({...metadata,subtitles:subtitles.sort((a,b)=>a.start-b.start||a.cueIndex-b.cueIndex)});
+    }
+   }
+   if(rows.length<200){check(scope);return {items,videos};}
+   if(offset===9800)throw Error('Quá nhiều bài nghe.');
+  }
+  return {items,videos};
+ },async submit(item,answer){const scope=capture();const r=await client.submitDictation({recordId:item.recordId,...(item.itemId!==undefined?{itemId:item.itemId}:{}),cueIndex:item.cueIndex,cueRevision:item.cueRevision,answer,strict:false});check(scope);if(r.attempt?.recordId!==item.recordId||r.attempt?.cueIndex!==item.cueIndex||r.attempt?.itemId!==item.itemId||r.attempt?.answer!==answer||r.attempt?.expected!==item.de)throw Error('Kết quả không khớp câu nghe.');return mapDictationAttempt(r.attempt);}};
 }
