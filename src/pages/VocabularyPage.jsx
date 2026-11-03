@@ -68,14 +68,15 @@ export function VocabularyPage() {
     mastered: cards.filter((c) => c.status === 'mastered').length,
   };
 
-  const handleCreateWord = (e) => {
+  const handleCreateWord = async (e) => {
+    try {
     e.preventDefault();
     if (!newGerman.trim() || !newVietnamese.trim()) {
       toast.error('Vui lòng nhập từ tiếng Đức và nghĩa tiếng Việt.');
       return;
     }
 
-    db.vocabulary.create({
+    await db.vocabulary.create({
       german: newGerman.trim(),
       article: newArticle,
       word_type: newType,
@@ -86,7 +87,7 @@ export function VocabularyPage() {
       level: newLevel,
     });
 
-    db.studyLogs.recordActivity({ newWords: 1 });
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: 1 });
     toast.success(`Đã thêm từ "${newGerman}" vào bộ thẻ!`);
 
     // Reset form
@@ -96,12 +97,17 @@ export function VocabularyPage() {
     setNewExampleDe('');
     setNewExampleVi('');
     setShowAddModal(false);
+
+    } catch(error) { toast.error(error.message); }
   };
 
-  const handleDeleteCard = (id) => {
-    db.vocabulary.delete(id);
+  const handleDeleteCard = async (id) => {
+    try {
+    await db.vocabulary.delete(id);
     setDeleteTargetId(null);
     toast.success('Đã xoá từ khỏi bộ thẻ.');
+
+    } catch(error) { toast.error(error.message); }
   };
 
   return (

@@ -1,3 +1,5 @@
+import {elioClient} from '@/lib/elio-auth-runtime';
+import {createWritingDrafts} from '@/core/elio/writing-drafts';
 import {elioWriting} from '@/lib/elio-writing-runtime';
 import React, { useState,useEffect,useRef } from 'react';
 import { db } from '@/lib/db';
@@ -27,7 +29,8 @@ import { toast } from 'sonner';
 export function WritingStudio({ onBack }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [coreTasks,setCoreTasks]=useState([]),[coreTasksReady,setCoreTasksReady]=useState(!elioWriting.isActive());
-  const writingGeneration=useRef(0),submitting=useRef(false);
+  const writingGeneration=useRef(0),submitting=useRef(false),draftDirty=useRef(false);
+  const [drafts]=useState(()=>createWritingDrafts({client:elioClient}));
 
   const defaultCustomTask = {
     id: 'custom_writing',
@@ -95,11 +98,13 @@ export function WritingStudio({ onBack }) {
   const [result, setResult] = useState(null);
   const [activeSectionTab, setActiveSectionTab] = useState('overview');
   useEffect(()=>{if(!elioWriting.isActive())return;let mounted=true;
-    const load=()=>{const stamp=++writingGeneration.current;setCoreTasksReady(false);setCoreTasks([]);setText('');setResult(null);setSelectedTaskIndex(0);elioWriting.loadTasks().then(rows=>{if(mounted&&stamp===writingGeneration.current){setCoreTasks(rows);setCoreTasksReady(true);}}).catch(error=>{if(mounted&&stamp===writingGeneration.current)toast.error(error.message);});};
-    load();window.addEventListener('sprach_auth_change',load);return()=>{mounted=false;writingGeneration.current++;window.removeEventListener('sprach_auth_change',load);};
+    const load=()=>{const stamp=++writingGeneration.current;setCoreTasksReady(false);setCoreTasks([]);draftDirty.current=false;drafts.reset();setText('');setResult(null);setSelectedTaskIndex(0);Promise.all([elioWriting.loadTasks(),drafts.load()]).then(([rows])=>{if(mounted&&stamp===writingGeneration.current){setCoreTasks(rows);setText(drafts.text(rows[0]?.id||'custom_writing'));setCoreTasksReady(true);}}).catch(error=>{if(mounted&&stamp===writingGeneration.current)toast.error(error.message);});};
+    load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{mounted=false;writingGeneration.current++;window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
   },[]); // 'overview' | 'sentences' | 'errors' | 'rewrite' | 'model'
 
   const task = tasks[selectedTaskIndex] || tasks[0] || defaultCustomTask;
+  const persistDraft=()=>{if(!elioWriting.isActive()||!coreTasksReady||!draftDirty.current)return;const epoch=writingGeneration.current;drafts.save(task.id,text).catch(e=>{if(epoch===writingGeneration.current&&e.code!=='ACCOUNT_CHANGED')toast.error('Chưa lưu bản nháp: '+e.message);});};
+  useEffect(()=>{if(!elioWriting.isActive()||!coreTasksReady||!draftDirty.current)return;const timer=setTimeout(persistDraft,500);return()=>clearTimeout(timer);},[text,task.id,coreTasksReady]);
   const words = text.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
 
@@ -184,6 +189,7 @@ export function WritingStudio({ onBack }) {
             key={t.id || idx}
             type="button"
             onClick={() => {
+              if(elioWriting.isActive()){persistDraft();draftDirty.current=false;setText(drafts.text(tasks[idx].id));}
               setSelectedTaskIndex(idx);
               setResult(null);
             }}
@@ -247,7 +253,8 @@ export function WritingStudio({ onBack }) {
               disabled={elioWriting.isActive()&&!coreTasksReady}
               required
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {draftDirty.current=true;setText(e.target.value);}}
+              onBlur={persistDraft}
               placeholder="Sehr geehrte Damen und Herren, ich schreibe Ihnen, weil..."
               className="w-full p-4 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring leading-relaxed"
             />

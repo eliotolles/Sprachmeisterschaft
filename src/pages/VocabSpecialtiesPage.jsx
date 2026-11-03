@@ -101,11 +101,12 @@ export function VocabSpecialtiesPage() {
     return true;
   });
 
-  const handleSaveWord = (word) => {
+  const handleSaveWord = async (word) => {
+    try {
     const key = `${(word.article || '').trim()} ${(word.german || '').trim()}`.toLowerCase();
     if (savedKeys.has(key)) return;
 
-    db.vocabulary.create({
+    await db.vocabulary.create({
       german: word.german,
       article: word.article || '',
       word_type: word.word_type || 'noun',
@@ -115,11 +116,14 @@ export function VocabSpecialtiesPage() {
       topic: currentSpecialty.id,
       level: word.level || 'B1',
     });
-    db.studyLogs.recordActivity({ newWords: 1 });
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: 1 });
     toast.success(`Đã lưu "${word.german}" vào bộ thẻ cá nhân.`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
-  const handleSaveWholeSpecialty = () => {
+  const handleSaveWholeSpecialty = async () => {
+    try {
     const unsaved = filteredWords.filter(
       (w) => !savedKeys.has(`${(w.article || '').trim()} ${(w.german || '').trim()}`.toLowerCase())
     );
@@ -128,7 +132,7 @@ export function VocabSpecialtiesPage() {
       return;
     }
 
-    const added = db.vocabulary.createMany(
+    const added = await db.vocabulary.createMany(
       unsaved.map((w) => ({
         german: w.german,
         article: w.article || '',
@@ -140,8 +144,10 @@ export function VocabSpecialtiesPage() {
         level: w.level || 'B1',
       }))
     );
-    db.studyLogs.recordActivity({ newWords: added.length });
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: added.length });
     toast.success(`Đã lưu toàn bộ ${added.length} từ chuyên ngành vào bộ thẻ!`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
   return (

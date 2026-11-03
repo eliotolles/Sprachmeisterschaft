@@ -1,3 +1,4 @@
+import {reviewedGrammar,reviewedExams} from '@/core/elio/reviewed-import';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — UNIVERSAL DOCUMENT IMPORT CENTER
 // Tuân thủ 12 nguyên tắc nghiêm ngặt:
@@ -60,8 +61,8 @@ import {
 export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, onSuccess }) {
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
-  const draftOwner=useRef(null);
-  useEffect(()=>{const reset=()=>{if(elioImport.isActive()){draftOwner.current=null;setExtractedItems([]);setSelectedFile(null);setManualText('');setTitle('');setYoutubeUrl('');setYoutubeSubtitles('');setIssuesList([]);setSyncReport(null);setExcelSheets([]);setDetectedExams([]);setExamContent(null);setSituationContent(null);setGrammarContent({rule:'',exercises:[]});setCurrentUser(db.auth.getUser());setIsAdminState(db.auth.isAdmin());setScope(db.auth.isAdmin()?'public':'private');setStep(1);}};window.addEventListener('sprach_auth_change',reset);return()=>window.removeEventListener('sprach_auth_change',reset);},[]);
+  const draftOwner=useRef(null), draftGeneration=useRef(0), savingImport=useRef(false);
+  useEffect(()=>{const reset=()=>{if(elioImport.isActive()){draftGeneration.current++;draftOwner.current=null;savingImport.current=false;setIsSubmitting(false);setIsProcessing(false);setGrammarExercisesJson('');setExtractedItems([]);setSelectedFile(null);setManualText('');setTitle('');setYoutubeUrl('');setYoutubeSubtitles('');setIssuesList([]);setSyncReport(null);setExcelSheets([]);setDetectedExams([]);setExamContent(null);setSituationContent(null);setGrammarContent({rule:'',exercises:[]});setCurrentUser(db.auth.getUser());setIsAdminState(db.auth.isAdmin());setScope(db.auth.isAdmin()?'public':'private');setStep(1);}};window.addEventListener('sprach_auth_change',reset);return()=>window.removeEventListener('sprach_auth_change',reset);},[]);
 
   // General Settings
   const [contentType, setContentType] = useState(defaultType);
@@ -104,6 +105,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
   // Reset or adjust initial values when modal opens
   useEffect(() => {
+    draftGeneration.current++;
     if (isOpen) {
       setContentType(defaultType);
       if(elioImport.isActive()){setDuplicateMode('skip');draftOwner.current=db.auth.getUser()?.id;}
@@ -177,8 +179,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
   // Step 1 -> Step 2: Trigger Extraction Process
   const handleStartExtraction = async () => {
-    const extractionOwner=db.auth.getUser()?.id;
-    const assertCurrentDraft=()=>{if(elioImport.isActive()&&(draftOwner.current!==extractionOwner||db.auth.getUser()?.id!==extractionOwner))throw Error('Tài khoản đã thay đổi; không hiển thị tài liệu của tài khoản trước.');};
+    const extractionOwner=db.auth.getUser()?.id, extractionGeneration=draftGeneration.current;
+    const assertCurrentDraft=()=>{if(elioImport.isActive()&&(draftGeneration.current!==extractionGeneration||draftOwner.current!==extractionOwner||db.auth.getUser()?.id!==extractionOwner))throw Error('Tài khoản đã thay đổi; không hiển thị tài liệu của tài khoản trước.');};
     if (!title.trim()) {
       toast.error('Vui lòng nhập tiêu đề cho bộ tài liệu!');
       return;
@@ -190,7 +192,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIssuesList([]);
 
     try {
-      if(elioImport.isActive()&&!['vocabulary','listening'].includes(contentType))throw Error('Loại tài liệu này chưa nối màn xem trước với server.');
+      if(elioImport.isActive()&&!['vocabulary','listening','grammar','exam'].includes(contentType))throw Error('Loại tài liệu này chưa nối màn xem trước với server.');
       // CASE A: LISTENING (YouTube)
       if (contentType === 'listening') {
         const info = extractYouTubeInfo(youtubeUrl);
@@ -213,7 +215,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         setProcessProgress({ message: 'Phân tích bài giảng Markdown & bài tập...', percent: 50 });
         let ruleText = manualText;
         if (inputMethod === 'file' && selectedFile) {
-          if (fileType === 'docx') {
+          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await elioImport.extractFile(selectedFile);ruleText=draft.text;
+          }else if (fileType === 'docx') {
             const docxRes = await parseDocxFile(selectedFile);
             ruleText = docxRes.rawText;
           } else if (fileType === 'pdf') {
@@ -226,7 +229,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           }
         }
 
-        const parsedGrammar = parseGrammarInput(ruleText, grammarExercisesJson);
+        const parsedGrammar = elioImport.isActive()?await reviewedGrammar(ruleText,grammarExercisesJson,{title,level}):parseGrammarInput(ruleText, grammarExercisesJson);
+        assertCurrentDraft();
         setGrammarContent(parsedGrammar);
         setIssuesList(parsedGrammar.issues || []);
         setStep(2);
@@ -240,7 +244,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         let rawExamText = manualText;
         if (inputMethod === 'file') {
           if (!selectedFile) throw new Error('Vui lòng chọn tệp tin đề thi tải lên.');
-          if (fileType === 'pdf') {
+          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await elioImport.extractFile(selectedFile);rawExamText=draft.text;
+          }else if (fileType === 'pdf') {
             setProcessProgress({ message: 'Đang trích xuất nội dung từ PDF đa đề thi...', percent: 45 });
             const pdfRes = await parsePdfFile(selectedFile, (p) => {
               setProcessProgress({ message: `Đang quét PDF trang ${p.current}/${p.total}`, percent: p.percent });
@@ -255,7 +260,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           }
         }
 
-        const multiRes = parseMultiExams(rawExamText, { level, provider: 'Goethe' });
+        const multiRes = elioImport.isActive()?{success:true,exams:reviewedExams(rawExamText),issues:[]}:parseMultiExams(rawExamText, { level, provider: 'Goethe' });
+        assertCurrentDraft();
         if (!multiRes.success || multiRes.exams.length === 0) {
           throw new Error(multiRes.issues.join('; ') || 'Không tìm thấy cấu trúc đề thi hợp lệ.');
         }
@@ -421,10 +427,11 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
   // Step 2 -> Step 3: Confirm Save and Synchronize
   const handleConfirmSave = async () => {
+    if(savingImport.current)return;const saveGeneration=draftGeneration.current; savingImport.current=true;
     setIsSubmitting(true);
 
     try {
-      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode});setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent]});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;
@@ -621,7 +628,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
       setSyncReport(report);
       setStep(3);
-      setIsSubmitting(false);
+      setIsSubmitting(false);savingImport.current=false;
 
       // Notify entire app of db change
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
@@ -629,7 +636,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
       if (onSuccess) onSuccess();
     } catch (err) {
-      setIsSubmitting(false);
+      if(saveGeneration!==draftGeneration.current)return;
+      setIsSubmitting(false);savingImport.current=false;
       toast.error('Có lỗi xảy ra khi lưu vào hệ thống: ' + err.message);
     }
   };

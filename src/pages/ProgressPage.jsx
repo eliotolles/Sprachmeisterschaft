@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import {useFocusTimer} from '@/lib/use-focus-timer';
 import { db } from '@/lib/db';
 import {progressCoreActive} from '@/lib/elio-progress-runtime';
 import {progressStreak} from '@/core/elio/progress-binding';
@@ -29,7 +30,9 @@ import {
 } from 'lucide-react';
 
 export function ProgressPage() {
-  const coreActive=progressCoreActive();
+  const coreActive=progressCoreActive(), focus=useFocusTimer();
+  const [focusMinutes,setFocusMinutes]=useState(25),[focusPhase,setFocusPhase]=useState('focus'),[focusSound,setFocusSound]=useState(false);
+  useEffect(()=>{if(focus.active){setFocusMinutes(focus.active.durationMs/60000);setFocusPhase(focus.active.phase);setFocusSound(focus.active.soundEnabled);}},[focus.active?.id]);
   const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
   const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
   const [sessions, setSessions] = useState(() => coreActive?[]:db.skillSessions.findMany());
@@ -240,6 +243,25 @@ export function ProgressPage() {
           </table>
         </div>
       </div>
+      {focus.enabled && (
+        <section aria-label="Pomodoro" className="surface p-6 space-y-4">
+          <h2 className="font-display text-xl font-bold">Pomodoro · Tập trung học</h2>
+          <p className="text-xs text-muted-foreground">Chỉ phiên tập trung hoàn tất được server xác nhận mới cộng phút học.</p>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+            <label>Thời lượng (phút) <input aria-label="Thời lượng Pomodoro" type="number" min="1" max="90" value={focusMinutes} disabled={!!focus.active||focus.busy} onChange={e=>setFocusMinutes(Number(e.target.value))} className="w-20 px-2 py-1 border border-border bg-card rounded-sm" /></label>
+            <select aria-label="Loại phiên Pomodoro" value={focusPhase} disabled={!!focus.active||focus.busy} onChange={e=>setFocusPhase(e.target.value)} className="px-2 py-1 border border-border bg-card rounded-sm"><option value="focus">Tập trung</option><option value="break">Nghỉ</option></select>
+            <label><input type="checkbox" checked={focusSound} disabled={!!focus.active||focus.busy} onChange={e=>setFocusSound(e.target.checked)} /> Âm báo khi hoàn tất</label>
+          </div>
+          <output className="block text-3xl font-mono" aria-live="off">{String(Math.floor(Math.ceil(focus.remaining/1000)/60)).padStart(2,'0')}:{String(Math.ceil(focus.remaining/1000)%60).padStart(2,'0')}</output>
+          <div className="flex flex-wrap gap-2 text-xs font-mono">
+            {!focus.active?<button type="button" disabled={!focus.ready||focus.busy||!Number.isInteger(focusMinutes)||focusMinutes<1||focusMinutes>90} onClick={()=>focus.action('start',{minutes:focusMinutes,phase:focusPhase,soundEnabled:focusSound})} className="tap px-3 py-2 rounded-sm border border-accent bg-accent text-accent-foreground disabled:opacity-50">Bắt đầu tập trung</button>:<>
+              <button type="button" disabled={focus.busy} onClick={()=>focus.action(focus.active.paused?'resume':'pause')} className="tap px-3 py-2 rounded-sm border border-border bg-card">{focus.active.paused?'Tiếp tục phiên':'Tạm dừng phiên'}</button>
+              <button type="button" disabled={focus.busy||focus.remaining>0} onClick={()=>focus.action('finish')} className="tap px-3 py-2 rounded-sm border border-accent bg-accent text-accent-foreground disabled:opacity-50">Hoàn tất phiên</button>
+              <button type="button" disabled={focus.busy} onClick={()=>focus.action('cancel')} className="tap px-3 py-2 rounded-sm border border-border bg-card">Hủy phiên</button>
+            </>}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -1,13 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import {elioClient} from '@/lib/elio-auth-runtime';
+import {speakingCoreActive} from '@/lib/elio-speaking-runtime';
+import {createSpeechPlayer} from '@/core/elio/browser-audio';
+import {toast} from 'sonner';
 import { speakGerman } from '@/lib/algorithms';
 
 export function SpeakButton({ text, className = '', size = 'md' }) {
   const [playing, setPlaying] = useState(false);
+  const [player]=useState(()=>createSpeechPlayer({client:elioClient}));
+  useEffect(()=>{const stop=()=>{player.stop();setPlaying(false);};window.addEventListener('sprach_auth_change',stop);return()=>{player.stop();window.removeEventListener('sprach_auth_change',stop);};},[player]);
 
-  const handleSpeak = (e) => {
+  const handleSpeak = async (e) => {
     e.stopPropagation();
     if (!text) return;
+    if(speakingCoreActive()){if(playing){player.stop();setPlaying(false);return;}setPlaying(true);try{await player.play(text);}catch(error){if(error.code!=='ACCOUNT_CHANGED')toast.error(error.message);}finally{setPlaying(false);}return;}
     setPlaying(true);
     speakGerman(text);
     setTimeout(() => setPlaying(false), 1200);

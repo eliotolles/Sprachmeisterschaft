@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import {newGrammarBinding,grammarCoreActive} from '@/lib/elio-grammar-runtime';
 import { db } from '@/lib/db';
 import { LevelFilter } from '@/components/ui/LevelFilter';
 import { GRAMMAR_CORE } from '@/data/grammar';
@@ -22,15 +23,19 @@ import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function GrammarStudio({ onBack }) {
-  const isAdmin = db.auth.isAdmin();
+  const coreActive=grammarCoreActive(), [core]=useState(newGrammarBinding);
+  const [catalog,setCatalog]=useState([]),[lesson,setLesson]=useState(null),[exerciseIndex,setExerciseIndex]=useState(0),[feedbacks,setFeedbacks]=useState({});
+  const [grading,setGrading]=useState(false); const generation=useRef(0),inFlight=useRef(false);
+  const isAdmin = !coreActive && db.auth.isAdmin();
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [dbTopics, setDbTopics] = useState(() => db.universal.findMany({ type: 'grammar' }));
+  const [dbTopics, setDbTopics] = useState(() => coreActive?[]:db.universal.findMany({ type: 'grammar' }));
   const [deletedIds, setDeletedIds] = useState(() => db.grammar?.getDeletedIds?.() || []);
   const [overrides, setOverrides] = useState(() => db.grammar?.getOverrides?.() || {});
   const [editingTopic, setEditingTopic] = useState(null);
 
   useEffect(() => {
     const handleDbChange = () => {
+      if(coreActive)return;
       setDbTopics(db.universal.findMany({ type: 'grammar' }));
       setDeletedIds(db.grammar?.getDeletedIds?.() || []);
       setOverrides(db.grammar?.getOverrides?.() || {});
@@ -56,7 +61,7 @@ export function GrammarStudio({ onBack }) {
     isImported: true,
   }));
 
-  const allGrammar = [...importedGrammarList, ...GRAMMAR_CORE, ...GRAMMAR_EXTRA]
+  const allGrammar = coreActive?catalog.map(r=>({id:r.key,title_vi:r.title,title_de:r.title,level:r.level,rule:'',examples:[],source:r})): [...importedGrammarList, ...GRAMMAR_CORE, ...GRAMMAR_EXTRA]
     .filter((g) => !deletedIds.includes(g.id))
     .map((g) => {
       if (overrides[g.id]) {
@@ -72,6 +77,19 @@ export function GrammarStudio({ onBack }) {
   // Exercise state per topic
   const [userAnswers, setUserAnswers] = useState({});
   const [exerciseSubmitted, setExerciseSubmitted] = useState({});
+
+  useEffect(()=>{
+    if(!coreActive)return;let cancelled=false;
+    const load=async()=>{generation.current++;core.reset();setCatalog([]);setLesson(null);setFeedbacks({});setUserAnswers({});setExerciseSubmitted({});setGrading(false);inFlight.current=false;try{const rows=await core.catalog();if(!cancelled){setCatalog(rows);setActiveTopicId(rows[0]?.key||'');}}catch(e){if(!cancelled&&e.code!=='ACCOUNT_CHANGED')toast.error(e.message);}};
+    load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);
+    return()=>{cancelled=true;generation.current++;core.reset();window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
+  },[coreActive]);
+  useEffect(()=>{
+    if(!coreActive)return;const row=catalog.find(r=>r.key===activeTopicId);const current=++generation.current;setLesson(null);setExerciseIndex(0);inFlight.current=false;setGrading(false);
+    if(row)core.lesson(row).then(r=>{if(current===generation.current)setLesson(r);}).catch(e=>{if(current===generation.current&&e.code!=='ACCOUNT_CHANGED')toast.error(e.message);});
+    return()=>{generation.current++;};
+  },[coreActive,activeTopicId,catalog]);
+  const answerKey=id=>coreActive?`${id}:${lesson?.exercises[exerciseIndex]?.id}:${lesson?.exercises[exerciseIndex]?.revision}`:id;
 
   const handleDeleteTopic = async (topicId, topicTitle) => {
     const ok = await showConfirmModal({
@@ -132,17 +150,20 @@ export function GrammarStudio({ onBack }) {
     return true;
   });
 
-  const activeTopic = allGrammar.find((t) => t.id === activeTopicId) || filteredTopics[0] || allGrammar[0];
+  const selectedTopic = allGrammar.find((t) => t.id === activeTopicId) || filteredTopics[0] || allGrammar[0];
+  const sourceExercise=lesson?.exercises[exerciseIndex],sourceFeedback=feedbacks[answerKey(selectedTopic?.id)];
+  const activeTopic=coreActive&&selectedTopic?{...selectedTopic,rule:lesson?.content||'Đang tải bài học từ server…',exercise:sourceExercise?{...sourceExercise,answer:sourceFeedback?.acceptedAnswers?.[0],explanation:sourceFeedback?.explanation||''}:null}:selectedTopic;
 
   const handleSelectAnswer = (topicId, opt) => {
-    if (exerciseSubmitted[topicId]) return;
-    setUserAnswers((prev) => ({ ...prev, [topicId]: opt }));
+    if (exerciseSubmitted[answerKey(topicId)]) return;
+    setUserAnswers((prev) => ({ ...prev, [answerKey(topicId)]: opt }));
   };
 
-  const handleCheckExercise = (topicId) => {
-    const chosen = userAnswers[topicId];
+  const handleCheckExercise = async (topicId) => {
+    const chosen = userAnswers[answerKey(topicId)];
     if (!chosen || !activeTopic?.exercise) return;
 
+    if(coreActive){if(inFlight.current||!lesson||!sourceExercise)return;const current=generation.current,key=answerKey(topicId);inFlight.current=true;setGrading(true);try{const feedback=await core.submit(lesson,sourceExercise,chosen);if(current===generation.current){setFeedbacks(p=>({...p,[key]:feedback}));setExerciseSubmitted(p=>({...p,[key]:true}));window.dispatchEvent(new CustomEvent('sprach_db_change'));toast[feedback.correct?'success':'error'](feedback.correct?'Chính xác!':'Chưa chính xác, hãy xem đáp án nguồn.');}}catch(e){if(current===generation.current)toast.error(e.message);}finally{if(current===generation.current){inFlight.current=false;setGrading(false);}}return;}
     const isCorrect = chosen === activeTopic.exercise.answer;
     setExerciseSubmitted((prev) => ({ ...prev, [topicId]: true }));
 
@@ -300,6 +321,13 @@ export function GrammarStudio({ onBack }) {
               </div>
             </div>
 
+            {coreActive && lesson && lesson.exercises.length>0 && (
+              <div className="flex items-center justify-between gap-2 text-xs font-mono">
+                <button type="button" disabled={grading||exerciseIndex===0} onClick={()=>setExerciseIndex(i=>i-1)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card disabled:opacity-50">Bài trước</button>
+                <span>Bài {exerciseIndex+1}/{lesson.exercises.length}</span>
+                <button type="button" disabled={grading||exerciseIndex>=lesson.exercises.length-1} onClick={()=>setExerciseIndex(i=>i+1)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card disabled:opacity-50">Bài tiếp</button>
+              </div>
+            )}
             {/* Examples if present */}
             {activeTopic.examples && activeTopic.examples.length > 0 && (
               <div className="space-y-2">
@@ -319,6 +347,14 @@ export function GrammarStudio({ onBack }) {
               </div>
             )}
 
+            {coreActive && lesson && (
+              <details className="p-4 rounded-sm border border-border bg-card/60">
+                <summary className="text-xs font-mono text-accent cursor-pointer">Mindmap · {lesson.title}</summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  {lesson.mindmap.groups.map((group,index)=><div key={index} className="text-xs space-y-2"><strong>{['Cách dùng','Cấu trúc','Ví dụ','Lưu ý','Nội dung khác'][index]}</strong>{group.map((section,i)=><div key={i}><strong>{section.title}</strong><p className="whitespace-pre-wrap">{section.body}</p></div>)}</div>)}
+                </div>
+              </details>
+            )}
             {/* Practice Exercise */}
             {activeTopic.exercise && (
               <div className="surface p-5 border-accent/30 space-y-3 bg-accent/5">
@@ -327,7 +363,7 @@ export function GrammarStudio({ onBack }) {
                     Bài tập thực hành chấm ngay
                   </span>
                   <span className="text-[10px] font-mono text-muted-foreground">
-                    +10 XP khi đúng
+                    {coreActive?'Chấm theo đáp án nguồn':'+10 XP khi đúng'}
                   </span>
                 </div>
 
@@ -335,11 +371,15 @@ export function GrammarStudio({ onBack }) {
                   {activeTopic.exercise.question}
                 </p>
 
+                {coreActive && sourceExercise?.type !== 'quiz' && (
+                  <input aria-label="Đáp án ngữ pháp" type="text" value={userAnswers[answerKey(activeTopic.id)]||''} disabled={grading||exerciseSubmitted[answerKey(activeTopic.id)]} onChange={e=>handleSelectAnswer(activeTopic.id,e.target.value)} className="w-full px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground" />
+                )}
+                {coreActive && sourceExercise?.tokens && <p className="text-xs font-mono">{sourceExercise.tokens.join(' · ')}</p>}
                 {activeTopic.exercise.options && activeTopic.exercise.options.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {activeTopic.exercise.options.map((opt) => {
-                      const isSelected = userAnswers[activeTopic.id] === opt;
-                      const isSubmitted = exerciseSubmitted[activeTopic.id];
+                      const isSelected = userAnswers[answerKey(activeTopic.id)] === opt;
+                      const isSubmitted = exerciseSubmitted[answerKey(activeTopic.id)];
                       const isCorrect = opt === activeTopic.exercise.answer;
 
                       let optStyle = 'border-border bg-card text-foreground hover:bg-muted';
@@ -357,7 +397,7 @@ export function GrammarStudio({ onBack }) {
                         <button
                           key={opt}
                           type="button"
-                          disabled={isSubmitted}
+                          disabled={isSubmitted || grading}
                           onClick={() => handleSelectAnswer(activeTopic.id, opt)}
                           className={`tap p-2.5 rounded-sm border text-xs text-left transition-colors flex items-center justify-between ${optStyle}`}
                         >
@@ -370,10 +410,10 @@ export function GrammarStudio({ onBack }) {
                   </div>
                 )}
 
-                {!exerciseSubmitted[activeTopic.id] ? (
+                {!exerciseSubmitted[answerKey(activeTopic.id)] ? (
                   <button
                     type="button"
-                    disabled={!userAnswers[activeTopic.id]}
+                    disabled={grading || !userAnswers[answerKey(activeTopic.id)]}
                     onClick={() => handleCheckExercise(activeTopic.id)}
                     className="tap w-full py-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 shadow-sm mt-2"
                   >

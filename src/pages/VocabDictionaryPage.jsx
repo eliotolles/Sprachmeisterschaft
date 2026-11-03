@@ -28,8 +28,9 @@ export function VocabDictionaryPage() {
     );
   });
 
-  const handleSave = (w) => {
-    db.vocabulary.create({
+  const handleSave = async (w) => {
+    try {
+    await db.vocabulary.create({
       german: w.german,
       article: w.article,
       word_type: w.word_type,
@@ -41,6 +42,8 @@ export function VocabDictionaryPage() {
     });
     setMyCards(db.vocabulary.findMany());
     toast.success(`Đã thêm "${w.german}" vào bộ thẻ!`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
   return (

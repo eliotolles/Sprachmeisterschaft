@@ -36,10 +36,9 @@ export function VocabLevelsPage() {
     return true;
   });
 
-  const handleAddDeckToCards = (deck) => {
-    let addedCount = 0;
-    for (const w of deck.words) {
-      db.vocabulary.create({
+  const handleAddDeckToCards = async (deck) => {
+    try {
+    const added = await db.vocabulary.createMany(deck.words.map(w=>({
         german: w.german,
         article: w.article || '',
         word_type: w.word_type || 'noun',
@@ -48,11 +47,12 @@ export function VocabLevelsPage() {
         example_vi: w.example_vi || '',
         topic: deck.title,
         level: deck.level,
-      });
-      addedCount++;
-    }
-    db.studyLogs.recordActivity({ newWords: addedCount });
+      })));
+    const addedCount=added.length;
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: addedCount });
     toast.success(`Đã nạp toàn bộ ${addedCount} thẻ từ của bộ "${deck.title}" vào Thẻ ôn SRS cá nhân!`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
   return (

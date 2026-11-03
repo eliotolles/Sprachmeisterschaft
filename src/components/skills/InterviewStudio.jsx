@@ -1,3 +1,5 @@
+import {elioClient} from '@/lib/elio-auth-runtime';
+import {createGermanRecorder} from '@/core/elio/browser-audio';
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import {newSpeakingBinding,speakingCoreActive} from '@/lib/elio-speaking-runtime';
@@ -29,7 +31,9 @@ export function InterviewStudio({ onBack }) {
   const [coreExams,setCoreExams]=useState([]);
   const [tasksReady,setTasksReady]=useState(!coreActive);
   const [restart,setRestart]=useState(0);
-  const requestEpoch=useRef(0);
+  const requestEpoch=useRef(0),[recorder]=useState(()=>createGermanRecorder({client:elioClient}));
+  const [recordingState,setRecordingState]=useState('idle');
+
   const allExams = coreActive?coreExams:getAllExams();
   const [selectedExamId, setSelectedExamId] = useState(allExams[0]?.id || 'free_mode');
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -40,6 +44,8 @@ export function InterviewStudio({ onBack }) {
   const [feedback, setFeedback] = useState(null);
   const chatEndRef = useRef(null);
 
+  useEffect(()=>{recorder.cancel();setRecordingState('idle');const changed=()=>{recorder.cancel();setRecordingState('idle');};window.addEventListener('sprach_auth_change',changed);return()=>{recorder.cancel();window.removeEventListener('sprach_auth_change',changed);};},[recorder,part,selectedExamId]);
+
   const currentExam = allExams.find((e) => e.id === selectedExamId);
   const speakingTasks = currentExam?.speakingTasks || (Array.isArray(currentExam?.speaking) ? currentExam.speaking : []);
   const currentTask = speakingTasks[part - 1] || null;
@@ -47,7 +53,7 @@ export function InterviewStudio({ onBack }) {
   useEffect(()=>{
     if(!coreActive)return;let cancelled=false;
     const load=async()=>{setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams();if(!cancelled){setCoreExams(exams);setSelectedExamId(exams[0]?.id||'free_mode');setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
-    load();window.addEventListener('sprach_auth_change',load);return()=>{cancelled=true;core.reset();requestEpoch.current++;window.removeEventListener('sprach_auth_change',load);};
+    load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{cancelled=true;core.reset();requestEpoch.current++;window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
   },[coreActive]);
 
   const speakingContext=()=>({part:'Teil '+part,level:currentExam?.level||profile.target_level||'B1',examProvider:({goethe:'Goethe',telc:'telc','ösd':'ÖSD',ecl:'ECL'})[String(currentExam?.provider||'').toLowerCase()]||'practice',task:currentTask?.prompt||''});
@@ -71,6 +77,7 @@ export function InterviewStudio({ onBack }) {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
+    if(coreActive){recorder.cancel();setRecordingState('idle');}
 
     if(coreActive){const text=input.trim(),epoch=requestEpoch.current;setLoading(true);try{const turns=await core.send(speakingContext(),text);if(epoch===requestEpoch.current){setMessages(turns);setInput('');}}catch(error){if(epoch===requestEpoch.current)toast.error(error.message);}finally{if(epoch===requestEpoch.current)setLoading(false);}return;}
     const userMsg = { role: 'user', content: input.trim() };
@@ -98,6 +105,7 @@ export function InterviewStudio({ onBack }) {
 
   const handleEndInterview = async () => {
     if(loading)return;
+    if(coreActive){recorder.cancel();setRecordingState('idle');}
     if(coreActive){const epoch=requestEpoch.current;setLoading(true);try{const result=await core.grade();if(epoch===requestEpoch.current)setFeedback(result);}catch(error){if(epoch===requestEpoch.current)toast.error(error.message);}finally{if(epoch===requestEpoch.current)setLoading(false);}return;}
     setLoading(true);
     try {
@@ -185,7 +193,7 @@ export function InterviewStudio({ onBack }) {
 
         <button
           type="button"
-          onClick={() => coreActive?toast.error('Import đề nói chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
+          onClick={() => setIsImportOpen(true)}
           className="tap px-2.5 py-1 rounded bg-accent/10 border border-accent/30 text-accent font-bold hover:bg-accent/20 flex items-center gap-1 shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -294,6 +302,7 @@ export function InterviewStudio({ onBack }) {
               placeholder="Nhập câu trả lời bằng tiếng Đức của bạn..."
               className="flex-1 px-3 py-2 text-sm rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-heading"
             />
+            {coreActive && <button type="button" aria-label={recordingState==='recording'?'Dừng ghi âm':'Ghi âm câu trả lời'} disabled={loading||recordingState==='transcribing'} onClick={async()=>{if(recordingState==='recording'){recorder.stop();return;}const epoch=requestEpoch.current;try{await recorder.start({onText:text=>{if(epoch===requestEpoch.current)setInput(p=>[p,text].filter(Boolean).join(' '));},onState:state=>{if(epoch===requestEpoch.current)setRecordingState(state);},onError:e=>{if(epoch===requestEpoch.current)toast.error(e.message);}});}catch(e){toast.error(e.message);}}} className="tap px-3 py-2 rounded-sm border border-border bg-card text-xs font-mono disabled:opacity-50"><Mic className="w-4 h-4" />{recordingState==='recording'?'Dừng':recordingState==='transcribing'?'Đang nhận dạng…':'Ghi âm'}</button>}
             <button
               type="submit"
               disabled={loading || !input.trim()}

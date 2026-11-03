@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
@@ -342,8 +343,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     toast.success('Đã sao chép toàn bộ lời thoại vào clipboard!');
   };
 
-  const handleSaveSentenceAsCard = (sub) => {
-    if(coreActive)return toast.error('Lưu câu vào bộ từ chưa nối server; chưa ghi dữ liệu cục bộ.');
+  const handleSaveSentenceAsCard = async (sub) => {
+    if(coreActive){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
     db.vocabulary.create({
       german: sub.de,
       vietnamese: sub.vi || 'Mẫu câu luyện nghe',

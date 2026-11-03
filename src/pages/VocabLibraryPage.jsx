@@ -43,11 +43,12 @@ export function VocabLibraryPage() {
     return true;
   });
 
-  const handleSaveWord = (word) => {
+  const handleSaveWord = async (word) => {
+    try {
     const key = `${(word.article || '').trim()} ${(word.german || '').trim()}`.toLowerCase();
     if (savedKeys.has(key)) return;
 
-    db.vocabulary.create({
+    await db.vocabulary.create({
       german: word.german,
       article: word.article,
       word_type: word.word_type,
@@ -57,11 +58,14 @@ export function VocabLibraryPage() {
       topic: word.topic,
       level: word.level,
     });
-    db.studyLogs.recordActivity({ newWords: 1 });
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: 1 });
     toast.success(`Đã lưu "${word.german}" vào bộ thẻ cá nhân.`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
-  const handleSaveWholeTopic = () => {
+  const handleSaveWholeTopic = async () => {
+    try {
     const unsaved = filteredWords.filter(
       (w) => !savedKeys.has(`${(w.article || '').trim()} ${(w.german || '').trim()}`.toLowerCase())
     );
@@ -70,9 +74,11 @@ export function VocabLibraryPage() {
       return;
     }
 
-    const added = db.vocabulary.createMany(unsaved);
-    db.studyLogs.recordActivity({ newWords: added.length });
+    const added = await db.vocabulary.createMany(unsaved);
+    if(!db.vocabulary.isCore?.()) db.studyLogs.recordActivity({ newWords: added.length });
     toast.success(`Đã lưu toàn bộ ${added.length} từ mới vào bộ thẻ!`);
+
+    } catch(error) { toast.error(error.message); }
   };
 
   return (
