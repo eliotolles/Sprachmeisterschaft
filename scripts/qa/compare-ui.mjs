@@ -35,10 +35,17 @@ try{
    await page.goto(`http://127.0.0.1:${ports[i]}/#${route}`,{waitUntil:'networkidle'});
    await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'});
    await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
-   dom.push(await page.evaluate(()=>({text:document.body.innerText,elements:[...document.body.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,box:[r.x,r.y,r.width,r.height].map(n=>Math.round(n*1000)/1000),style:Object.fromEntries(['color','backgroundColor','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','padding','margin','border','borderRadius','opacity','transform','display','visibility'].map(k=>[k,s[k]]))};})})));
-   let screenshot=await page.screenshot({animations:'disabled',fullPage:true}),stable=false;
-   for(let pass=0;pass<4;pass++){await page.waitForTimeout(100);const next=await page.screenshot({animations:'disabled',fullPage:true});if(comparePixels(PNG.sync.read(screenshot),PNG.sync.read(next)).equal){stable=true;screenshot=next;break;}screenshot=next;}
-   if(!stable)errors.push({build:i,message:'Screenshot did not stabilize'});
+   const snapshot=()=>page.evaluate(()=>({text:document.body.innerText,elements:[...document.body.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,box:[r.x,r.y,r.width,r.height].map(n=>Math.round(n*1000)/1000),style:Object.fromEntries(['color','backgroundColor','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','padding','margin','border','borderRadius','opacity','transform','display','visibility'].map(k=>[k,s[k]]))};})}));
+   let finalDOM=await snapshot(),screenshot=await page.screenshot({animations:'disabled',fullPage:true}),stable=false,lastStability=null;
+   for(let pass=0;pass<8;pass++){
+    await page.waitForTimeout(150);
+    const nextDOM=await snapshot(),next=await page.screenshot({animations:'disabled',fullPage:true});
+    lastStability=comparePresentation(PNG.sync.read(screenshot),PNG.sync.read(next),JSON.stringify(finalDOM)===JSON.stringify(nextDOM));
+    screenshot=next;finalDOM=nextDOM;
+    if(lastStability.equal){stable=true;break;}
+   }
+   dom.push(finalDOM);
+   if(!stable)errors.push({build:i,message:'Screenshot did not stabilize',lastStability});
    await writeFile(`ui-artifacts/${label}-${i?'candidate':'baseline'}.png`,screenshot);images.push(screenshot);
    if(await page.locator('body').innerText().then(s=>s.trim().length<20))errors.push({build:i,message:'Empty rendered page'});
    await context.close();
