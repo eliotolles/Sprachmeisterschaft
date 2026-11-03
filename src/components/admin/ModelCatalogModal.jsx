@@ -253,7 +253,7 @@ export function ModelCatalogModal({
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-sm bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200 text-[10px] font-mono font-bold border border-amber-300 dark:border-amber-800">
-                              PAID
+                              {m.pricing?.tier==='UNKNOWN'?'TÙY TÀI KHOẢN':'PAID'}
                             </span>
                           )}
                         </div>

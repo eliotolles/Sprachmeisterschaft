@@ -1,3 +1,4 @@
+import {previewModelSuggestions} from '@/lib/model-previews.js';
 import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
@@ -141,7 +142,7 @@ export function AdminPage() {
   });
   const [smartRecs, setSmartRecs] = useState(() => {
     const cached = getCachedCatalog('gemini');
-    return cached?.models ? getSmartRecommendations(cached.models) : [];
+    return cached?.models ? getSmartRecommendations(cached.models) : elioAIAdmin()?.isActive()?previewModelSuggestions('gemini'):[];
   });
   const [discoveryMeta, setDiscoveryMeta] = useState(() => {
     const cached = getCachedCatalog('gemini');
@@ -230,9 +231,9 @@ export function AdminPage() {
       currentModels = cached.models;
     } else {
       setDiscoveredModels([]);
-      setSmartRecs([]);
+      setSmartRecs(elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):[]);
       setDiscoveryMeta(null);
-      currentModels = elioAIAdmin()?.isActive()?[]:FREE_AI_MODELS.filter((m) => m.provider === providerType);
+      currentModels = elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):FREE_AI_MODELS.filter((m) => m.provider === providerType);
       if(elioAIAdmin()?.isActive())setSelectedModel('');
     }
 
@@ -254,7 +255,7 @@ export function AdminPage() {
     if (cached?.models?.length > 0) {
       return cached.models;
     }
-    if(elioAIAdmin()?.isActive())return [];
+    if(elioAIAdmin()?.isActive())return previewModelSuggestions(providerType);
     // Safe initial seed from catalog
     return FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
       id: m.id,
@@ -826,7 +827,7 @@ export function AdminPage() {
                     autoComplete="off"
                     value={providerName}
                     onChange={(e) => setProviderName(e.target.value)}
-                    placeholder="Ví dụ: Google Gemini 2.5 Flash Free"
+                    placeholder={elioAIAdmin()?.isActive()?'Ví dụ: Cấu hình Gemini học tiếng Đức':'Ví dụ: Google Gemini 2.5 Flash Free'}
                     className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
                   />
                 </div>
@@ -1043,7 +1044,7 @@ export function AdminPage() {
                                 </span>
                               ) : (
                                 <span className="px-1.5 py-0.2 rounded-sm bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[9px] font-mono font-bold">
-                                  PAID
+                                  {m.preview?'GỢI Ý':m.pricing?.tier==='UNKNOWN'?'TÙY TÀI KHOẢN':'PAID'}
                                 </span>
                               )}
                               {hasVisionFlag && (
@@ -1062,7 +1063,7 @@ export function AdminPage() {
                         </div>
 
                         <div className="pt-2 mt-2 border-t border-border/80 text-[10px] font-mono text-muted-foreground flex items-center justify-between">
-                          <span>{m.contextWindow || '128k context'}</span>
+                          <span>{m.contextWindow || (elioAIAdmin()?.isActive()?'Chưa rõ context':'128k context')}</span>
                           {isSelected && <span className="text-accent font-bold">✓ ĐANG CHỌN</span>}
                         </div>
                       </button>
