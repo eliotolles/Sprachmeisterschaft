@@ -98,7 +98,7 @@ export function WritingStudio({ onBack }) {
   const [result, setResult] = useState(null);
   const [activeSectionTab, setActiveSectionTab] = useState('overview');
   useEffect(()=>{if(!elioWriting.isActive())return;let mounted=true;
-    const load=()=>{const stamp=++writingGeneration.current;setCoreTasksReady(false);setCoreTasks([]);draftDirty.current=false;drafts.reset();setText('');setResult(null);setSelectedTaskIndex(0);Promise.all([elioWriting.loadTasks(),drafts.load()]).then(([rows])=>{if(mounted&&stamp===writingGeneration.current){setCoreTasks(rows);setText(drafts.text(rows[0]?.id||'custom_writing'));setCoreTasksReady(true);}}).catch(error=>{if(mounted&&stamp===writingGeneration.current)toast.error(error.message);});};
+    const load=()=>{const stamp=++writingGeneration.current;setCoreTasksReady(false);setCoreTasks([]);draftDirty.current=false;drafts.reset();setText('');setResult(null);setSelectedTaskIndex(0);Promise.all([elioWriting.loadTasks(),drafts.load()]).then(([rows,saved])=>{if(mounted&&stamp===writingGeneration.current){const legacy=Object.entries(saved).filter(([id,d])=>d.legacySource&&!rows.some(t=>t.id===id)).map(([id],index)=>({id,title:'Bản nháp Elio '+(index+1),level:db.learnerProfile.get().target_level||'B1',prompt:'',provider:'practice',hints:['Đề gốc của bản nháp cần được xác nhận trước khi chấm.'],legacyDraft:true}));const combined=[...rows,...legacy];setCoreTasks(combined);setText(drafts.text(combined[0]?.id||'custom_writing'));setCoreTasksReady(true);}}).catch(error=>{if(mounted&&stamp===writingGeneration.current)toast.error(error.message);});};
     load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{mounted=false;writingGeneration.current++;window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
   },[]); // 'overview' | 'sentences' | 'errors' | 'rewrite' | 'model'
 
@@ -112,6 +112,7 @@ export function WritingStudio({ onBack }) {
     e.preventDefault();
     if(submitting.current)return;
     if(elioWriting.isActive()&&!coreTasksReady){toast.error('Đề viết chưa tải xong.');return;}
+    if(elioWriting.isActive()&&task.legacyDraft&&!task.prompt){toast.error('Đề gốc của bản nháp chưa được xác minh; hãy nhập đề nguồn trước khi chấm.');return;}
     if (wordCount < 15) {
       toast.error('Bài viết cần tối thiểu 15 từ để AI chấm điểm nghiêm túc.');
       return;

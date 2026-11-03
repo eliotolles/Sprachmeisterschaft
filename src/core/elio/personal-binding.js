@@ -8,8 +8,9 @@ export function createPersonalBinding({client, legacy, isActive, notify=()=>{}, 
   function check(s){if(s.owner!==client.getUser()?.id||s.epoch!==epoch)throw fail('ACCOUNT_CHANGED','Tài khoản đã thay đổi; không áp dụng dữ liệu cũ.');}
   function serial(work){const s=scope();if(!s.owner)return Promise.reject(fail('AUTH_REQUIRED','Bạn cần đăng nhập.'));const task=queue.catch(()=>{}).then(()=>{check(s);return work(s);});queue=task;return task;}
   async function load(s){
-    const records=await client.loadState(keys);check(s);
-    const p=records[keys[0]]?.value??{},raw=records[keys[1]]?.value??[],n=Array.isArray(raw)?raw:raw?.notes;
+    const records=await client.loadState([...keys,'settings']);check(s);
+    const settings=records.settings?.value,legacy={};if(settings&&typeof settings==='object'&&!Array.isArray(settings)){const name=settings.userProfile?.name;if(typeof name==='string'&&name.trim()&&name.length<=100)legacy.display_name=name;if(Number.isInteger(settings.dailyGoal)&&settings.dailyGoal>=5&&settings.dailyGoal<=100)legacy.daily_goal=settings.dailyGoal;}
+    const p=Object.hasOwn(records,keys[0])?records[keys[0]].value:legacy,raw=Object.hasOwn(records,keys[1])?records[keys[1]].value:[],n=Array.isArray(raw)?raw:raw?.notes;
     if(!p||typeof p!=='object'||Array.isArray(p)||!Array.isArray(n)||n.some(v=>!v||typeof v.id!=='string'||!v.id)||new Set(n.map(v=>v.id)).size!==n.length)throw fail('PERSONAL_INVALID','Dữ liệu cá nhân chưa hợp lệ; chưa dùng bản cục bộ thay thế.');
     profile=structuredClone(p);notes=structuredClone(n);envelope=Array.isArray(raw)?null:structuredClone(raw);loaded=true;notify();
   }
