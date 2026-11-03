@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {progressCoreActive} from '@/lib/elio-progress-runtime';
+import {useCoreProgress} from '@/lib/use-core-progress';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { computeReadiness } from '@/lib/algorithms';
@@ -18,16 +20,20 @@ import {
 import { toast } from 'sonner';
 
 export function ReadinessPage() {
+  const coreActive=progressCoreActive();
   const [profile] = useState(() => db.learnerProfile.get());
-  const [cards, setCards] = useState(() => db.vocabulary.findMany());
-  const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
-  const [exams, setExams] = useState(() => db.examResults.findMany());
+  const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
+  const [sessions, setSessions] = useState(() => coreActive?[]:db.skillSessions.findMany());
+  const [exams, setExams] = useState(() => coreActive?[]:db.examResults.findMany());
 
   const [aiAdvice, setAiAdvice] = useState(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
 
+  useCoreProgress(db,{cards:setCards,sessions:setSessions,exams:setExams});
+
   useEffect(() => {
     const handleDbChange = () => {
+      if(progressCoreActive()){setCards(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]);return;}
       setCards(db.vocabulary.findMany());
       setSessions(db.skillSessions.findMany());
       setExams(db.examResults.findMany());

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {progressCoreActive} from '@/lib/elio-progress-runtime';
+import {progressStreak} from '@/core/elio/progress-binding';
+import {useCoreProgress} from '@/lib/use-core-progress';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
@@ -21,17 +24,21 @@ import {
 import { toast } from 'sonner';
 
 export function HomePage() {
+  const coreActive=progressCoreActive();
   const { navigate } = useRouter();
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
-  const [cards, setCards] = useState(() => db.vocabulary.findMany());
-  const [logs, setLogs] = useState(() => db.studyLogs.findMany());
-  const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
-  const [exams, setExams] = useState(() => db.examResults.findMany());
+  const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
+  const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
+  const [sessions, setSessions] = useState(() => coreActive?[]:db.skillSessions.findMany());
+  const [exams, setExams] = useState(() => coreActive?[]:db.examResults.findMany());
   const [studyPlan, setStudyPlan] = useState(() => db.studyPlan?.get());
+
+  useCoreProgress(db,{cards:setCards,logs:setLogs,sessions:setSessions,exams:setExams});
 
   useEffect(() => {
     const handleDbChange = () => {
       setProfile(db.learnerProfile.get());
+      if(progressCoreActive()){setCards(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]);return;}
       setCards(db.vocabulary.findMany());
       setLogs(db.studyLogs.findMany());
       setSessions(db.skillSessions.findMany());
@@ -63,7 +70,7 @@ export function HomePage() {
   const dueCards = cards.filter((c) => !c.due_date || c.due_date <= today);
 
   // Streak
-  const streak = calculateStreak(logs);
+  const streak = coreActive?progressStreak(logs,today):calculateStreak(logs);
 
   // Exam Countdown (D-xx)
   const examDate = profile.exam_date ? new Date(profile.exam_date) : new Date(Date.now() + 45 * 86400000);

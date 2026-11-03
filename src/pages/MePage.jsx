@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {progressCoreActive} from '@/lib/elio-progress-runtime';
+import {useCoreProgress} from '@/lib/use-core-progress';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
@@ -16,16 +18,20 @@ import {
 } from 'lucide-react';
 
 export function MePage() {
+  const coreActive=progressCoreActive();
   const { navigate } = useRouter();
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
   const [user, setUser] = useState(() => db.auth.getUser());
-  const [cards, setCards] = useState(() => db.vocabulary.findMany());
-  const [logs, setLogs] = useState(() => db.studyLogs.findMany());
+  const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
+  const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
+
+  useCoreProgress(db,{cards:setCards,logs:setLogs});
 
   useEffect(() => {
     const handleDbChange = () => {
       setProfile(db.learnerProfile.get());
       setUser(db.auth.getUser());
+      if(progressCoreActive()){setCards(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]);return;}
       setCards(db.vocabulary.findMany());
       setLogs(db.studyLogs.findMany());
     };

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
+import {progressCoreActive} from '@/lib/elio-progress-runtime';
+import {progressStreak} from '@/core/elio/progress-binding';
+import {useCoreProgress} from '@/lib/use-core-progress';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
 import { calculateStreak, formatDate, addDays } from '@/lib/algorithms';
@@ -26,14 +29,16 @@ import {
 } from 'lucide-react';
 
 export function ProgressPage() {
-  const [cards, setCards] = useState(() => db.vocabulary.findMany());
-  const [logs, setLogs] = useState(() => db.studyLogs.findMany());
-  const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
-  const [exams, setExams] = useState(() => db.examResults.findMany());
-  const [notes, setNotes] = useState(() => db.notes.findMany());
+  const coreActive=progressCoreActive();
+  const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
+  const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
+  const [sessions, setSessions] = useState(() => coreActive?[]:db.skillSessions.findMany());
+  const [exams, setExams] = useState(() => coreActive?[]:db.examResults.findMany());
+  const [notes, setNotes] = useState(() => coreActive?[]:db.notes.findMany());
 
   useEffect(() => {
     const handleDbChange = () => {
+      if(progressCoreActive()){setCards(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]);return;}
       setCards(db.vocabulary.findMany());
       setLogs(db.studyLogs.findMany());
       setSessions(db.skillSessions.findMany());
@@ -44,10 +49,12 @@ export function ProgressPage() {
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
 
+  useCoreProgress(db,{cards:setCards,logs:setLogs,sessions:setSessions,exams:setExams,notes:setNotes});
+
   const today = formatDate();
   const dueCount = cards.filter((c) => !c.due_date || c.due_date <= today).length;
   const learnedCount = cards.filter((c) => (c.repetitions || 0) > 0).length;
-  const streak = calculateStreak(logs);
+  const streak = coreActive?progressStreak(logs,today):calculateStreak(logs);
   const totalXp = logs.reduce((sum, l) => sum + (l.xp || 0), 0);
 
   // 14-day activity bar chart data

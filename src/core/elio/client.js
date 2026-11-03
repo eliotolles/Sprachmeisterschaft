@@ -16,6 +16,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     if (expectedEpoch !== epoch) throw fail('ACCOUNT_CHANGED', 'Tài khoản đã thay đổi; không áp dụng kết quả cũ.');
     let payload;
     try { payload = await response.json(); } catch { throw fail('INVALID_RESPONSE', 'Máy chủ trả dữ liệu không hợp lệ.'); }
+    if (expectedEpoch !== epoch) throw fail('ACCOUNT_CHANGED', 'Tài khoản đã thay đổi; không áp dụng kết quả cũ.');
     if (!response.ok) throw fail(payload.code || 'REQUEST_FAILED', payload.error || 'Yêu cầu chưa thành công.', { status: response.status, latest: payload.latest });
     return payload;
   }
@@ -26,15 +27,15 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     return identity;
   }
   function requireUser() { if (!identity) throw fail('AUTH_REQUIRED', 'Bạn cần đăng nhập.'); }
-  async function loadState(keys, expectedEpoch = epoch, user = identity) {
+  async function loadState(keys, expectedEpoch = epoch, user = identity, rememberVersions = true) {
     requireUser();
     const payload = await request('/state' + (keys ? '?keys=' + encodeURIComponent(keys.join(',')) : ''), { expectedEpoch, user });
     if (payload.userId !== user.id || !payload.records || typeof payload.records !== 'object') throw fail('ACCOUNT_CHANGED', 'Dữ liệu không khớp tài khoản.');
     for (const [name, row] of Object.entries(payload.records)) {
       if (!Number.isSafeInteger(row.version) || row.version < 1) throw fail('INVALID_RESPONSE', 'Phiên bản dữ liệu không hợp lệ.');
-      versions.set(name, row.version);
+      if(rememberVersions)versions.set(name, row.version);
     }
-    if (keys) for (const name of keys) if (!Object.hasOwn(payload.records, name)) versions.set(name, 0);
+    if (rememberVersions && keys) for (const name of keys) if (!Object.hasOwn(payload.records, name)) versions.set(name, 0);
     return payload.records;
   }
   async function continueJob(path,data,{current=epoch,user=identity,onPartial=()=>{},wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
@@ -84,6 +85,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       ++epoch; identity = null; versions.clear();
     },
     loadState,
+    stateSnapshot(keys){return loadState(keys,epoch,identity,false);},
     saveState(name, value) {
       requireUser();
       const current = epoch, user = identity, key = user.id + ':' + name;
