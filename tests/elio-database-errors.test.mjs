@@ -10,3 +10,8 @@ test('Turso errors distinguish credentials, missing schema and write permissions
   }
  }finally{globalThis.fetch=original;}
 });
+
+test('Worker transport uses manual redirects and rejects redirects without resending credentials',async()=>{
+ const original=globalThis.fetch;let calls=0;globalThis.fetch=async(url,init)=>{calls++;assert.equal(init.redirect,'manual');return new Response('',{status:302,headers:{Location:'https://other.invalid'}});};
+ try{await assert.rejects(query({TURSO_DATABASE_URL:'libsql://'+APPROVED_HOST,TURSO_AUTH_TOKEN:'fixture'},'SELECT 1'),e=>e.code==='DATABASE_HTTP');assert.equal(calls,1);}finally{globalThis.fetch=original;}
+});

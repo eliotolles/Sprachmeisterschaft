@@ -3,7 +3,7 @@ const ROOTS=Object.freeze({gemini:'https://generativelanguage.googleapis.com/v1b
 export const PROVIDERS=Object.freeze(Object.keys(ROOTS));
 async function responseJSON(url,options={},deadlineAt=Date.now()+45000){
   let response;
-  try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(remaining)});}
+  try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(remaining)});}
   catch{throw coreError(503,'AI_TRANSPORT','Provider AI chưa phản hồi hoặc hết thời gian chờ.');}
   if(!response.ok)throw Object.assign(coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.'),{providerStatus:response.status});
   const text=await response.text();if(text.length>4000000)throw coreError(502,'AI_RESPONSE_SIZE','Provider trả dữ liệu quá lớn.');

@@ -27,7 +27,7 @@ export async function query(env, sql, args = []) {
   let response;
   try {
     response = await fetch(endpoint, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.TURSO_AUTH_TOKEN },
       body: JSON.stringify({ requests: [{ type: 'execute', stmt: { sql, args: args.map(cell), want_rows: true } }, { type: 'close' }] }),
     });

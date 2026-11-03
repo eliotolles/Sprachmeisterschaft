@@ -31,7 +31,7 @@ export async function completeGoogleAuth(request,env){
  if(!state||state!==cookie||!code||code.length>4000)throw coreError(401,'GOOGLE_STATE','Phiên Google không khớp hoặc đã hết hạn.');
  const flow=(await query(env,'DELETE FROM sprach_core_google_flows WHERE state_hash=? AND expires>? RETURNING nonce,verifier,link_user',[await digest(state),Date.now()])).rows[0];if(!flow)throw coreError(401,'GOOGLE_STATE','Phiên Google đã dùng hoặc hết hạn.');
  let claims;try{
-  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,redirect_uri:callback(request),grant_type:'authorization_code',code_verifier:flow.verifier}),signal:AbortSignal.timeout(10000)});
+  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',redirect:'manual',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,redirect_uri:callback(request),grant_type:'authorization_code',code_verifier:flow.verifier}),signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw Error();const data=await response.json();claims=await verifyGoogleToken(data.id_token,env,flow.nonce);
  }catch{throw coreError(401,'GOOGLE_IDENTITY','Chưa xác minh được danh tính Google.');}
  let identity=(await query(env,'SELECT user_id FROM ee_google_identities WHERE google_sub=?',[claims.sub])).rows[0];
