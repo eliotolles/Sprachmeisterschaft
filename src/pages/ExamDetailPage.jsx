@@ -568,7 +568,7 @@ export function ExamDetailPage({ examId }) {
 
   // ================= RENDER TAKING EXAM =================
   return (
-    <div className="space-y-6 animate-rise max-w-4xl mx-auto">
+    <div data-lookup-disabled className="space-y-6 animate-rise max-w-4xl mx-auto">
       {/* Top Bar with Timer and Submit */}
       <div className="surface p-4 flex items-center justify-between sticky top-14 md:top-4 z-30 shadow-md">
         <div>

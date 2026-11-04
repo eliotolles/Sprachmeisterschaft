@@ -168,48 +168,79 @@ export function WordDetail({ target, onClose }) {
   );
 }
 
-const excluded = 'a,button,input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="button"]';
+const excluded = 'a, button, input, textarea, select, label, [contenteditable]:not([contenteditable="false"]), [role="button"], [role="option"], [data-lookup-disabled], dialog, svg';
 
-export const LookupText = React.memo(function LookupText({ text, translation, stopPropagation = false }) {
+export function LookupText({ text, translation, stopPropagation }) {
+  return <span lang="de" data-lookup-translation={translation} data-lookup-no-seek={stopPropagation || undefined}>{text}</span>;
+}
+
+export function AppWordLookup({ route }) {
   const [target, setTarget] = useState(null);
   const [selection, setSelection] = useState(null);
   const close = React.useCallback(() => setTarget(null), []);
-  useEffect(() => { setTarget(null); setSelection(null); }, [text]);
-  if (typeof text !== 'string' || !text) return text;
-  const parts = text.split(/([\p{L}]+(?:['’\u2010-][\p{L}]+)*)/gu);
-  let offset = 0;
-  const onSelect = event => {
-    const selected = window.getSelection();
-    if (event.target.closest(excluded) || !selected || selected.isCollapsed || !event.currentTarget.contains(selected.anchorNode) || !event.currentTarget.contains(selected.focusNode)) {
-      setSelection(null); return;
-    }
-    const token = selected.toString().trim();
-    if (!token || token.length > 120) { setSelection(null); return; }
-    const range = selected.getRangeAt(0);
-    const prefix = document.createRange();
-    prefix.selectNodeContents(event.currentTarget);
-    prefix.setEnd(range.startContainer, range.startOffset);
-    const start = prefix.toString().length + selected.toString().indexOf(token);
-    setSelection({ token, range: [start, token.length], rect: range.getBoundingClientRect() });
-  };
+  useEffect(() => {
+    setTarget(null);
+    setSelection(null);
+    const eligible = node => {
+      const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+      return element instanceof Element && element.closest('main') && !element.closest(excluded);
+    };
+    const open = event => {
+      if (!eligible(event.target) || window.getSelection()?.isCollapsed === false || event.detail === 0) return;
+      const caret = document.caretPositionFromPoint?.(event.clientX, event.clientY);
+      const fallback = caret ? null : document.caretRangeFromPoint?.(event.clientX, event.clientY);
+      const node = caret?.offsetNode || fallback?.startContainer;
+      const position = caret?.offset ?? fallback?.startOffset;
+      if (node?.nodeType !== Node.TEXT_NODE || !event.target.contains(node) || !eligible(node)) return;
+      const sentence = node.textContent;
+      const range = document.createRange();
+      for (const match of sentence.matchAll(/[\p{L}]+(?:['’\u2010-][\p{L}]+)*/gu)) {
+        if (position < match.index || position > match.index + match[0].length) continue;
+        range.setStart(node, match.index);
+        range.setEnd(node, match.index + match[0].length);
+        const rect = [...range.getClientRects()].find(rect => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom);
+        if (!rect) continue;
+        if (node.parentElement.closest('[data-lookup-no-seek]')) event.stopPropagation();
+        setSelection(null);
+        setTarget({ route, token: match[0], sentence, range: [match.index, match[0].length], rect, translation: node.parentElement.closest('[data-lookup-translation]')?.dataset.lookupTranslation });
+        break;
+      }
+    };
+    const readSelection = () => {
+      const selected = window.getSelection();
+      if (!selected?.rangeCount || selected.isCollapsed || !eligible(selected.anchorNode) || !eligible(selected.focusNode)) {
+        setSelection(null);
+        return;
+      }
+      const range = selected.getRangeAt(0);
+      const token = selected.toString().trim();
+      if (!token || token.length > 120 || !eligible(range.commonAncestorContainer) || range.cloneContents().querySelector(excluded)) {
+        setSelection(null);
+        return;
+      }
+      const sentence = range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE ? range.startContainer.textContent : token;
+      const offset = sentence === token ? 0 : range.startOffset + selected.toString().indexOf(token);
+      setSelection({ route, token, sentence, range: [offset, token.length], rect: range.getBoundingClientRect() });
+    };
+    const clear = () => { setTarget(null); setSelection(null); };
+    document.addEventListener('click', open, true);
+    document.addEventListener('selectionchange', readSelection);
+    window.addEventListener('sprach_auth_change', clear);
+    return () => {
+      document.removeEventListener('click', open, true);
+      document.removeEventListener('selectionchange', readSelection);
+      window.removeEventListener('sprach_auth_change', clear);
+    };
+  }, [route]);
+
   return <>
-    <span lang="de" tabIndex={0} aria-label="Văn bản tiếng Đức, chọn từ để tra nghĩa" onKeyUp={event => { if (event.key === 'Enter') onSelect(event); }} onPointerUp={onSelect} onClick={event => {
-      if (event.target.closest(excluded)) return;
-      if (stopPropagation) event.stopPropagation();
-      if (window.getSelection()?.isCollapsed === false) return;
-      const token = event.target.dataset.lookup;
-      if (!token) return;
-      setSelection(null);
-      setTarget({ token, sentence:text, translation, anchor:event.target, range:[Number(event.target.dataset.offset),token.length], rect:event.target.getBoundingClientRect() });
-    }}>{parts.map((part, index) => {
-      const start = offset; offset += part.length;
-      return index % 2 ? <span key={index} data-lookup={part} data-offset={start} className="cursor-pointer hover:underline" tabIndex={-1}>{part}</span> : part;
-    })}</span>
-    {selection && <button type="button" className="tap mx-1 text-accent underline" onPointerDown={event => event.preventDefault()} onClick={event => {
-      event.stopPropagation();
-      setTarget({ ...selection, sentence:text, translation });
-      setSelection(null);
-    }}>Tra nghĩa</button>}
-    {target && <WordDetail key={JSON.stringify(target.range)} target={target} onClose={close} />}
+    {selection?.route === route && !target && createPortal(
+      <button type="button" className="fixed z-50 rounded-sm bg-accent px-3 py-2 text-accent-foreground"
+        style={{ left: Math.max(8, Math.min(selection.rect.left, window.innerWidth - 112)), top: Math.max(8, Math.min(selection.rect.bottom + 4, window.innerHeight - 48)) }}
+        onPointerDown={event => event.preventDefault()}
+        onClick={() => { setTarget(selection); setSelection(null); window.getSelection()?.removeAllRanges(); }}>
+        Tra nghĩa
+      </button>, document.body)}
+    {target?.route === route && <WordDetail key={target.token + ':' + target.range[0] + ':' + target.sentence} target={target} onClose={close} />}
   </>;
-});
+}

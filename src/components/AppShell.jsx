@@ -1,3 +1,4 @@
+import { AppWordLookup } from '@/components/vocabulary/WordDetail';
 import {toast} from 'sonner';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, Link } from '@/lib/router';
@@ -390,6 +391,7 @@ export function AppShell({ children }) {
       <main className="flex-1 min-w-0 pb-20 md:pb-8 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-rise">
         {children}
       </main>
+      <AppWordLookup route={currentPath} />
 
       {/* Mobile Bottom Navigation (5 quick items) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around py-1.5 px-2">
