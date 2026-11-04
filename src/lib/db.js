@@ -92,8 +92,6 @@ function loadDatabase() {
       if (!parsed.aiTaskAssignments) parsed.aiTaskAssignments = {};
       if (!parsed.uiVoiceConfig) {
         parsed.uiVoiceConfig = { fontFamily: 'sans', speechVoice: '', rate: 0.9, pitch: 1.0 };
-      } else if (parsed.uiVoiceConfig.fontFamily === 'serif') {
-        parsed.uiVoiceConfig.fontFamily = 'sans';
       }
       if (!parsed.listeningCollections) parsed.listeningCollections = [];
       if (!parsed.listeningEpisodes) parsed.listeningEpisodes = [];
