@@ -505,7 +505,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
             <div id="youtube-player-iframe" className="w-full h-full" />
 
             {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Requirement 1) */}
-            {currentSub && (showGerman || showVietnamese) && (
+            {subtitles[activeSubIndex] && subtitles[activeSubIndex].vi?.trim() !== 'Nội dung video' &&
+              ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
               <div className="absolute bottom-4 left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center">
                 <div className="bg-black/85 backdrop-blur-sm px-4 py-2.5 rounded-md max-w-xl shadow-2xl border border-white/10 space-y-1">
                   {showGerman && currentSub.de && (
