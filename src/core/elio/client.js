@@ -155,7 +155,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async startExam(data){requireUser();return request('/exam/start',{method:'POST',data});},
     async saveExamAnswers(data){requireUser();return request('/exam/answers',{method:'POST',data});},
     async submitExam(data){requireUser();return request('/exam/submit',{method:'POST',data});},
-    async listeningTranscript(url){requireUser();return request('/listening/transcript',{method:'POST',data:{url},deadlineMs:65000});},
+    async listeningTranscript(url, target={}){requireUser();return request('/listening/transcript',{method:'POST',data:{url,...target},deadlineMs:65000});},
     async saveListeningCue(data){requireUser();return request('/listening/save-cue',{method:'POST',data});},
     submitDictation(data,options){return journalJob('/listening/submit','sprach_listening_results',data,options);},
     speakingReply(data,options){return journalJob('/speaking/reply','sprach_speaking_results',data,options);},

@@ -60,7 +60,25 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     subtitles: [],
   };
 
-  const subtitles = currentEpisode.subtitles || [];
+  const [captionBusy,setCaptionBusy]=useState(false);
+  const [preview,setPreview]=useState(null);
+  const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId]);
+  const captionScopeRef=useRef(captionScope);
+  captionScopeRef.current=captionScope;
+  const subtitles = currentEpisode.subtitles?.length ? currentEpisode.subtitles : preview?.scope===captionScope ? preview.cues : [];
+  const fetchCaptions=async()=>{
+    if(captionBusy||!currentEpisode.youtubeId)return;
+    setCaptionBusy(true);
+    try{
+      const save=coreActive&&currentEpisode.recordId&&currentEpisode.owner===elioClient.getUser()?.id&&!currentEpisode.subtitles?.length;
+      const result=await elioClient.listeningTranscript('https://www.youtube.com/watch?v='+currentEpisode.youtubeId,save?{recordId:currentEpisode.recordId,itemId:currentEpisode.itemId}:{});
+      if(captionScopeRef.current!==captionScope)return;
+      if(!result.available)throw Error(result.reason||'Chưa lấy được phụ đề gốc.');
+      if(result.saved){await elioListening().hydrate();toast.success('Đã lưu '+result.cues.length+' đoạn phụ đề gốc.');}
+      else {setPreview({scope:captionScope,cues:result.cues.map(c=>({...c,de:c.text,vi:''}))});toast.success('Đã lấy '+result.cues.length+' đoạn phụ đề gốc để xem.');}
+    }catch(error){if(captionScopeRef.current===captionScope)toast.error(error.message);}
+    finally{setCaptionBusy(false);}
+  };
 
   // Studio Mode State
   const [activeTab, setActiveTab] = useState('video'); // 'video' | 'dictation' | 'shadowing' | 'quiz'
@@ -320,6 +338,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const handleCheckDictation = async (e) => {
     e.preventDefault();
     if (!typedInput.trim()||coreBusy.current) return;
+    if(coreActive&&!currentSub.recordId)return toast.error("Bản xem thử chưa được lưu để chấm.");
     if(coreActive){const epoch=coreEpoch.current;coreBusy.current=true;setCoreSaving(true);try{const result=await elioListening().submit(currentSub,typedInput.trim());if(epoch===coreEpoch.current){setDictationAudit(result.audit);setDictationChecked(true);if(result.audit.isExact)setLearnedSubs(prev=>new Set(prev).add(currentSub.id||activeSubIndex));}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}finally{if(epoch===coreEpoch.current){coreBusy.current=false;setCoreSaving(false);}}return;}
 
     const audit = auditDictationSentence({
@@ -344,6 +363,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   const handleSaveSentenceAsCard = async (sub) => {
+    if(coreActive&&!sub.recordId)return toast.error('Bản xem thử chưa được lưu vào bài nghe.');
     if(coreActive){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
     db.vocabulary.create({
       german: sub.de,
@@ -699,6 +719,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               </button>
             </div>
 
+            {!subtitles.length&&currentEpisode.youtubeId&&<button type="button" disabled={captionBusy} onClick={fetchCaptions} className="tap px-2 py-1 text-xs border border-border rounded-sm">{captionBusy?'Đang lấy…':'Lấy bản hiện lời'}</button>}
             <button
               onClick={handleCopyTranscript}
               className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"

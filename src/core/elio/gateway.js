@@ -161,7 +161,7 @@ export async function handleElioCore(request, env) {
     if(path==='/api/core/vocabulary/edit'&&request.method==='POST')return json(await editVocabulary(env,user,await body(request,1500000)));
     if(path==='/api/core/listening/save-cue'&&request.method==='POST')return json(await saveListeningCue(env,user,await body(request,3000)));
     if (path === '/api/core/listening/transcript' && request.method === 'POST') {
-      await throttle(env,'core-caption:'+user.id,10,60000);const result=await getTranscript(env,await body(request,3000));return json(result,result.available?200:503);
+      await throttle(env,'core-caption:'+user.id,10,60000);const result=await getTranscript(env,await body(request,3000),user);return json(result,result.available?200:503);
     }
     if (path === '/api/core/listening/submit' && request.method === 'POST') {
       const result=await submitDictation(env,user,await body(request,15000));return json(result,result.conflict?409:200);

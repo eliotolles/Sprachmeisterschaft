@@ -4,10 +4,22 @@ import {fetchElioTranscript} from './transcript-backend.js';
 import {ListeningV2Core} from './listening-content.js';
 import {readJournal,saveJournal} from './journal.js';
 export const LISTENING_KEY='sprach_listening_results';
-export async function getTranscript(env,input){
+export async function getTranscript(env,input,user){
  const id=ListeningV2Core.id(input.url)||(/^[\w-]{11}$/.test(input.videoId||'')?input.videoId:null);
  if(!id)throw coreError(400,'VIDEO_ID','URL YouTube không hợp lệ.');
- return fetchElioTranscript(env,id,['de']);
+ if(input.recordId===undefined)return fetchElioTranscript(env,id,['de']);
+ const row=(await query(env,"SELECT data FROM ee_records WHERE id=? AND kind='listening' AND owner=?",[input.recordId,user.id])).rows[0];
+ if(!row)throw coreError(403,'CAPTION_WRITE_FORBIDDEN','Chỉ chủ sở hữu được lưu phụ đề cho bài này.');
+ const data=JSON.parse(row.data), item=input.itemId===undefined?data:data.items?.find(i=>i.id===input.itemId);
+ if(!item||(item.youtubeId||item.videoId||ListeningV2Core.id(item.url||item.youtubeUrl||''))!==id)throw coreError(409,'VIDEO_CHANGED','Video đã thay đổi.');
+ if(item.cues?.length)throw coreError(409,'CAPTION_EXISTS','Bài đã có phụ đề; không ghi đè.');
+ const result=await fetchElioTranscript(env,id,['de']);if(!result.available)return result;
+ item.cues=result.cues;item.transcriptComplete=true;item.transcriptSource=result.source;
+ const value=JSON.stringify(data);
+ if(new TextEncoder().encode(value).byteLength>1500000)throw coreError(413,'CAPTION_LIMIT','Bản lời vượt giới hạn lưu trữ.');
+ const saved=await query(env,"UPDATE ee_records SET data=?,updated_at=? WHERE id=? AND owner=? AND data=? RETURNING id",[value,new Date().toISOString(),input.recordId,user.id,row.data]);
+ if(!saved.rows.length)throw coreError(409,'CAPTION_CHANGED','Bài nghe đã thay đổi; chưa ghi đè.');
+ return {...result,saved:true};
 }
 // Caption answers are resolved from accessible stored records, never from the request.
 export async function submitDictation(env,user,input){
