@@ -61,7 +61,11 @@ import { toast } from 'sonner';
 
 export function AdminPage() {
   const { navigate } = useRouter();
-  const [activeTab, setActiveTab] = useState('ai'); // 'ai' | 'content' | 'users' | 'ui'
+  const [activeTab, setActiveTab] = useState('overview');
+  const [contentSearch, setContentSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const matches = (query, ...values) => values.some(value => String(value ?? '').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
   // Master Admin verification (Strictly role === 'admin' or system admin email)
   const currentUser = db.auth.getUser();
@@ -159,7 +163,7 @@ export function AdminPage() {
   // Content State
   const [universalItems, setUniversalItems] = useState(() => db.universal.findMany());
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [contentSubTab, setContentSubTab] = useState('universal');
+  const [contentSubTab, setContentSubTab] = useState('grammar');
   const [examsList, setExamsList] = useState(() => getAllExams());
   const [grammarDeletedIds, setGrammarDeletedIds] = useState(() => db.grammar?.getDeletedIds?.() || []);
   const [grammarOverrides, setGrammarOverrides] = useState(() => db.grammar?.getOverrides?.() || {});
@@ -650,36 +654,17 @@ export function AdminPage() {
     <div className="space-y-6 animate-rise max-w-7xl mx-auto pb-12">
       <PageHeader
         eyebrow="TRUNG TÂM KIỂM SOÁT HỆ THỐNG"
-        title="Quản trị Sprachmeisterschaft"
+        title="Quản trị"
         deTitle="Administrationsbereich"
         subtitle="Quản lý toàn diện: phân công mô hình AI, kho học thuật theo cấp độ, kiểm soát tài khoản học viên và tùy biến giao diện."
-        actions={
-          <div className="flex items-center gap-2">
-            {!isAdmin ? (
-              <button
-                onClick={() => {
-                  db.auth.setRole('admin');
-                  setIsAdmin(true);
-                  toast.success('Đã chuyển sang vai trò Master Admin toàn quyền!');
-                }}
-                className="tap px-3 py-1.5 rounded-sm bg-accent text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Bật quyền Master Admin</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 font-mono text-xs font-bold">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Master Admin Active</span>
-              </span>
-            )}
-          </div>
-        }
+        actions={<span className="rounded-sm border border-border px-3 py-1.5 text-xs font-medium">Quản trị viên</span>}
       />
 
       {/* 4 Tabs Navigation (Matching Image 3) */}
       <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto">
         {[
+          { id: 'overview', label: 'Tổng quan', icon: ShieldCheck },
+          { id: 'imports', label: 'Import và tài liệu', icon: FileText },
           { id: 'ai', label: 'AI & phân công', icon: Bot },
           { id: 'content', label: 'Nội dung học', icon: Layers },
           { id: 'users', label: 'Tài khoản & quyền', icon: Users },
@@ -703,6 +688,32 @@ export function AdminPage() {
           );
         })}
       </div>
+
+      {activeTab !== 'overview' && activeTab !== 'ai' && (
+        <nav aria-label="Đường dẫn" className="text-sm text-muted-foreground">
+          <button type="button" onClick={() => setActiveTab('overview')} className="text-accent underline">Quản trị</button>
+          <span> / {{ content: 'Nội dung học tập', imports: 'Import và tài liệu', users: 'Người dùng và phân quyền', ui: 'Giao diện và giọng đọc' }[activeTab]}</span>
+        </nav>
+      )}
+
+      {activeTab === 'overview' && (
+        <section className="surface space-y-5 border border-border p-4 sm:p-6">
+          <h2 className="font-display text-xl font-bold">Tổng quan quản trị</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ['content', 'Nội dung học tập', 'Xem và quản lý nội dung theo nhóm.'],
+              ['imports', 'Import và tài liệu', 'Nhập nguồn mới hoặc xem tài liệu đã nhập.'],
+              ['users', 'Người dùng và phân quyền', 'Mở danh sách tài khoản và vai trò.'],
+            ].map(([id, title, description]) => (
+              <button key={id} type="button" onClick={() => setActiveTab(id)} className="tap rounded-sm border border-border bg-card p-4 text-left hover:border-accent">
+                <span className="block font-semibold text-foreground">{title}</span>
+                <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">Chưa có nguồn nhật ký quản trị hoặc trạng thái hệ thống cho màn hình này.</p>
+        </section>
+      )}
 
       {activeTab === 'ai' && (
         <div className="space-y-6 animate-fade-in">
@@ -1434,16 +1445,16 @@ export function AdminPage() {
       {/* ========================================================================= */}
       {/* TAB 2: NỘI DUNG HỌC & TOÀN QUYỀN SỬA/XÓA ADMIN */}
       {/* ========================================================================= */}
-      {activeTab === 'content' && (
+      {(activeTab === 'content' || activeTab === 'imports') && (
         <div className="surface p-6 border border-border space-y-6 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
             <div>
               <div className="eyebrow mb-1">KHO TRI THỨC TOÀN HỆ THỐNG</div>
               <h3 className="font-display text-2xl font-bold text-foreground">
-                Quản trị toàn bộ nội dung học (Toàn quyền Sửa / Xóa)
+                {activeTab === 'imports' ? 'Import và tài liệu' : 'Quản lý nội dung học tập'}
               </h3>
               <p className="font-body text-xs text-muted-foreground mt-0.5">
-                Admin có quyền sửa, xóa riêng lẻ từng bài hoặc xóa cả bộ trên toàn bộ routing chính của ứng dụng.
+                Chọn mục cần quản lý. Các thao tác khả dụng được hiển thị cạnh từng nội dung.
               </p>
             </div>
 
@@ -1458,10 +1469,11 @@ export function AdminPage() {
             </div>
           </div>
 
+          <label className="block text-sm">Tìm nội dung<input type="search" value={contentSearch} onChange={e => setContentSearch(e.target.value)} className="mt-1 block w-full rounded-sm border border-border bg-card p-2 sm:max-w-sm" /></label>
           {/* Content Category Subtabs */}
+          {activeTab === 'content' && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border text-xs font-mono">
             {[
-              { id: 'universal', label: 'Tài liệu Import', count: universalItems.length, icon: Layers },
               { id: 'exams', label: 'Bộ đề thi', count: examsList.length, icon: FileText },
               { id: 'grammar', label: 'Ngữ pháp', count: computedGrammarList.length, icon: BookOpen },
               { id: 'listening', label: 'Luyện nghe', count: listeningCols.length, icon: Headphones },
@@ -1490,8 +1502,9 @@ export function AdminPage() {
             })}
           </div>
 
+          )}
           {/* Subtab 1: Universal Imports */}
-          {contentSubTab === 'universal' && (
+          {activeTab === 'imports' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1534,7 +1547,7 @@ export function AdminPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {universalItems.map((item) => (
+                      {universalItems.filter(item => matches(contentSearch, item.title, item.type, item.level, item.scope)).map((item) => (
                         <tr key={item.id} className="hover:bg-muted/30">
                           <td className="p-3 uppercase font-bold text-accent">{item.type}</td>
                           <td className="p-3 font-semibold text-foreground">{item.title}</td>
@@ -1592,7 +1605,7 @@ export function AdminPage() {
           )}
 
           {/* Subtab 2: Exams */}
-          {contentSubTab === 'exams' && (
+          {activeTab === 'content' && contentSubTab === 'exams' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1631,7 +1644,7 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {examsList.map((ex) => (
+                    {examsList.filter(ex => matches(contentSearch, ex.title, ex.name, ex.level, ex.provider)).map((ex) => (
                       <tr key={ex.id} className="hover:bg-muted/30">
                         <td className="p-3 font-bold text-accent uppercase">{ex.provider}</td>
                         <td className="p-3 font-bold">{ex.level}</td>
@@ -1676,7 +1689,7 @@ export function AdminPage() {
           )}
 
           {/* Subtab 3: Grammar */}
-          {contentSubTab === 'grammar' && (
+          {activeTab === 'content' && contentSubTab === 'grammar' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1716,7 +1729,7 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {computedGrammarList.map((g) => (
+                    {computedGrammarList.filter(g => matches(contentSearch, g.title_vi, g.title_de, g.level)).map((g) => (
                       <tr key={g.id} className="hover:bg-muted/30">
                         <td className="p-3 font-bold text-accent">{g.level}</td>
                         <td className="p-3 font-semibold text-foreground">{g.title_vi}</td>
@@ -1761,7 +1774,7 @@ export function AdminPage() {
           )}
 
           {/* Subtab 4: Listening */}
-          {contentSubTab === 'listening' && (
+          {activeTab === 'content' && contentSubTab === 'listening' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1801,7 +1814,7 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {listeningCols.map((col) => {
+                    {listeningCols.filter(col => matches(contentSearch, col.title, col.provider, col.level)).map((col) => {
                       const epCount = db.listening.getEpisodes(col.id).length;
                       return (
                         <tr key={col.id} className="hover:bg-muted/30">
@@ -1850,7 +1863,7 @@ export function AdminPage() {
           )}
 
           {/* Subtab 5: Situations */}
-          {contentSubTab === 'situations' && (
+          {activeTab === 'content' && contentSubTab === 'situations' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1889,7 +1902,7 @@ export function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {computedSituationsList.map((s) => (
+                    {computedSituationsList.filter(s => matches(contentSearch, s.title, s.title_vi, s.title_de, s.level)).map((s) => (
                       <tr key={s.id} className="hover:bg-muted/30">
                         <td className="p-3 font-semibold text-foreground">{s.title_vi}</td>
                         <td className="p-3 text-muted-foreground italic">{s.title_de}</td>
@@ -1933,7 +1946,7 @@ export function AdminPage() {
           )}
 
           {/* Subtab 6: Vocabulary */}
-          {contentSubTab === 'vocab' && (
+          {activeTab === 'content' && contentSubTab === 'vocab' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-foreground">
@@ -1975,7 +1988,7 @@ export function AdminPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {vocabCards.map((c) => (
+                      {vocabCards.filter(c => matches(contentSearch, c.word, c.word_de, c.german, c.term, c.front, c.meaning, c.translation, c.level)).map((c) => (
                         <tr key={c.id} className="hover:bg-muted/30">
                           <td className="p-3 font-bold text-foreground">{c.german}</td>
                           <td className="p-3 text-accent font-medium">{c.vietnamese}</td>
@@ -2024,6 +2037,12 @@ export function AdminPage() {
             </p>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">Tìm tài khoản<input type="search" value={userSearch} onChange={e => setUserSearch(e.target.value)} className="mt-1 block w-full rounded-sm border border-border bg-card p-2" /></label>
+            <label className="text-sm">Vai trò<select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="mt-1 block w-full rounded-sm border border-border bg-card p-2">
+              <option value="">Tất cả</option><option value="admin">Quản trị viên</option><option value="user">Học viên</option>
+            </select></label>
+          </div>
           {/* Add User Form */}
           <form onSubmit={handleAddUser} className="p-4 rounded-sm bg-muted/20 border border-border space-y-3">
             <div className="font-mono text-xs font-bold text-foreground flex items-center gap-1.5">
@@ -2079,7 +2098,7 @@ export function AdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {usersList.map((u) => (
+                {usersList.filter(u => (!roleFilter || u.role === roleFilter) && matches(userSearch, u.name, u.email)).map((u) => (
                   <tr key={u.id} className="hover:bg-muted/30">
                     <td className="p-3 font-semibold text-foreground flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-bold">

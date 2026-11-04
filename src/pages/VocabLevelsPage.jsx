@@ -1,3 +1,4 @@
+import { WordDetail } from '@/components/vocabulary/WordDetail';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
@@ -23,6 +24,8 @@ import {
 import { toast } from 'sonner';
 
 export function VocabLevelsPage() {
+  const [wordTarget, setWordTarget] = useState(null);
+  const closeWord = React.useCallback(() => setWordTarget(null), []);
   const { navigate } = useRouter();
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [expandedDeckId, setExpandedDeckId] = useState('deck-a1-family');
@@ -63,6 +66,7 @@ export function VocabLevelsPage() {
 
   return (
     <div className="space-y-6 animate-rise">
+      {wordTarget && <WordDetail target={wordTarget} onClose={closeWord} />}
       <PageHeader
         eyebrow="TỪ VỰNG CHUẨN KHUNG CHÂU ÂU"
         title="Bộ từ theo cấp độ"
@@ -183,7 +187,7 @@ export function VocabLevelsPage() {
                       >
                         <div>
                           <div className="flex items-center gap-2">
-                            <GenderText article={w.article} word={w.german} className="text-base" />
+                            <button type="button" className="tap text-left hover:underline" onClick={event => setWordTarget({ word: w, anchor: event.currentTarget })} aria-label={'Xem chi tiết ' + w.german}><GenderText article={w.article} word={w.german} className="text-base" /></button>
                             {w.word_type && (
                               <span className="text-[10px] font-mono text-muted-foreground italic">
                                 ({w.word_type})

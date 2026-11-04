@@ -1,3 +1,4 @@
+import { LookupText } from '@/components/vocabulary/WordDetail';
 import {renderLessonMarkdown} from '@/lib/lesson-markdown.js';
 import React, { useState, useEffect, useRef } from 'react';
 import {newGrammarBinding,grammarCoreActive} from '@/lib/elio-grammar-runtime';
@@ -338,7 +339,7 @@ export function GrammarStudio({ onBack }) {
                 {activeTopic.examples.map((ex, i) => (
                   <div key={i} className="p-3 rounded-sm border border-border bg-muted/20 text-xs space-y-0.5">
                     <div className="font-heading font-semibold text-foreground">
-                      {ex.de}
+                      <LookupText text={ex.de} translation={ex.vi} />
                     </div>
                     <div className="font-body text-muted-foreground italic">
                       → {ex.vi}

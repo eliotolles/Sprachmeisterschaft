@@ -27,6 +27,10 @@ export function mapSharedElioCard(row) {
     meaning_de: extra.meaning_de ?? '',
     synonyms: extra.synonyms ?? [],
     phrases: extra.phrases ?? [],
+    ...Object.fromEntries(['ipa','phonetic','plural','du','prateritum','partizip_ii','auxiliary','comparative','superlative','preposition','grammatical_case','note'].filter(key => typeof extra[key] === 'string').map(key => [key, extra[key]])),
+    separable: extra.separable === true,
+    reflexive: extra.reflexive === true,
+    antonyms: Array.isArray(extra.antonyms) ? extra.antonyms : [],
     // No user_id, status, due_date, repetitions or review history here.
   };
 }

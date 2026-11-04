@@ -263,7 +263,7 @@ export function speechMatchScore(expected, actual) {
 /**
  * Text-to-Speech using Web Speech API (de-DE)
  */
-export function speakGerman(text) {
+export function speakGerman(text, rate = 0.85) {
   if (typeof window === "undefined" || !window.speechSynthesis) {
     console.warn("SpeechSynthesis not supported.");
     return;
@@ -272,7 +272,7 @@ export function speakGerman(text) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "de-DE";
-  utterance.rate = 0.85; // Slightly slower, clear learner rate
+  utterance.rate = rate; // Slightly slower, clear learner rate
 
   const voices = window.speechSynthesis.getVoices();
   const deVoice = voices.find(

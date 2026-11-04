@@ -6,7 +6,7 @@ import {createSpeechPlayer} from '@/core/elio/browser-audio';
 import {toast} from 'sonner';
 import { speakGerman } from '@/lib/algorithms';
 
-export function SpeakButton({ text, className = '', size = 'md' }) {
+export function SpeakButton({ text, className = '', size = 'md', slow = false }) {
   const [playing, setPlaying] = useState(false);
   const [player]=useState(()=>createSpeechPlayer({client:elioClient}));
   useEffect(()=>{const stop=()=>{player.stop();setPlaying(false);};window.addEventListener('sprach_auth_change',stop);return()=>{player.stop();window.removeEventListener('sprach_auth_change',stop);};},[player]);
@@ -14,9 +14,9 @@ export function SpeakButton({ text, className = '', size = 'md' }) {
   const handleSpeak = async (e) => {
     e.stopPropagation();
     if (!text) return;
-    if(speakingCoreActive()){if(playing){player.stop();setPlaying(false);return;}setPlaying(true);try{await player.play(text);}catch(error){if(error.code!=='ACCOUNT_CHANGED')toast.error(error.message);}finally{setPlaying(false);}return;}
+    if(!slow && speakingCoreActive()){if(playing){player.stop();setPlaying(false);return;}setPlaying(true);try{await player.play(text);}catch(error){if(error.code!=='ACCOUNT_CHANGED')toast.error(error.message);}finally{setPlaying(false);}return;}
     setPlaying(true);
-    speakGerman(text);
+    speakGerman(text, slow ? 0.65 : undefined);
     setTimeout(() => setPlaying(false), 1200);
   };
 
@@ -30,7 +30,8 @@ export function SpeakButton({ text, className = '', size = 'md' }) {
     <button
       type="button"
       onClick={handleSpeak}
-      title="Nghe phát âm chuẩn tiếng Đức"
+      title={slow ? "Nghe phát âm chậm" : "Nghe phát âm tiếng Đức"}
+      aria-label={slow ? "Nghe phát âm chậm" : "Nghe phát âm tiếng Đức"}
       className={`tap inline-flex items-center justify-center rounded-sm border border-border bg-card/60 hover:bg-accent/10 hover:text-accent hover:border-accent/30 text-muted-foreground transition-colors ${sizeClasses} ${className}`}
     >
       <Volume2 className={`w-full h-full ${playing ? 'text-accent scale-110 animate-pulse' : ''}`} />

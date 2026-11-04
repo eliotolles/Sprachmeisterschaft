@@ -1,3 +1,4 @@
+import { LookupText } from '@/components/vocabulary/WordDetail';
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import {newExamBinding,examCoreActive} from '@/lib/elio-exam-runtime';
@@ -651,7 +652,7 @@ export function ExamDetailPage({ examId }) {
                       className="p-4 rounded-sm border border-border bg-card space-y-3"
                     >
                       <div className="font-heading font-semibold text-sm text-foreground">
-                        {qIdx + 1}. {q.question}
+                        {qIdx + 1}. <LookupText text={q.question} />
                       </div>
 
                       <div className="space-y-2">
@@ -726,7 +727,7 @@ export function ExamDetailPage({ examId }) {
                     </div>
 
                     <div className="font-heading font-semibold text-sm text-foreground">
-                      {q.question}
+                      <LookupText text={q.question} />
                     </div>
 
                     <div className="space-y-2">
@@ -866,7 +867,7 @@ export function ExamDetailPage({ examId }) {
                     {part.part}
                   </div>
                   <p className="font-body text-xs text-muted-foreground">
-                    {part.prompt}
+                    <LookupText text={part.prompt} />
                   </p>
                   {part.tips && (
                     <div className="text-[11px] font-mono text-accent pt-1">

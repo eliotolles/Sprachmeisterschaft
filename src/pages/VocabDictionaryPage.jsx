@@ -1,3 +1,4 @@
+import { WordDetail } from '@/components/vocabulary/WordDetail';
 import React, { useState } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { VocabTabs } from '@/components/vocabulary/VocabTabs';
@@ -10,6 +11,8 @@ import { db } from '@/lib/db';
 import { toast } from 'sonner';
 
 export function VocabDictionaryPage() {
+  const [wordTarget, setWordTarget] = useState(null);
+  const closeWord = React.useCallback(() => setWordTarget(null), []);
   const [search, setSearch] = useState('');
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [myCards, setMyCards] = useState(() => db.vocabulary.findMany());
@@ -48,6 +51,7 @@ export function VocabDictionaryPage() {
 
   return (
     <div className="space-y-6 animate-rise">
+      {wordTarget && <WordDetail target={wordTarget} onClose={closeWord} />}
       <PageHeader
         eyebrow="TRA CỨU SONG NGỮ"
         title="Từ điển Đức — Việt"
@@ -91,12 +95,12 @@ export function VocabDictionaryPage() {
             <div key={`${w.german}_${idx}`} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-muted/20 transition-colors">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <GenderText
+                  <button type="button" className="tap text-left hover:underline" onClick={event => setWordTarget({ word: w, anchor: event.currentTarget })} aria-label={'Xem chi tiết ' + w.german}><GenderText
                     article={w.article}
                     german={w.german}
                     wordType={w.word_type}
                     className="text-lg font-bold"
-                  />
+                  /></button>
                   <SpeakButton text={w.german} size="sm" />
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-muted/60 border border-border text-muted-foreground">
                     {w.level}

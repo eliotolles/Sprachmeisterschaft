@@ -1,3 +1,4 @@
+import { LookupText } from '@/components/vocabulary/WordDetail';
 import React, { useState } from 'react';
 import { db } from '@/lib/db';
 import { StudioResult } from '@/components/ui/StudioResult';
@@ -144,7 +145,7 @@ export function ReadingStudio({ onBack }) {
 
       {/* Reading Passage */}
       <div className="p-4 md:p-6 rounded-sm bg-muted/20 border border-border font-body text-sm leading-relaxed text-foreground/90 space-y-2">
-        <p>{passage.text}</p>
+        <p><LookupText text={passage.text} /></p>
       </div>
 
       {/* Questions */}

@@ -1,3 +1,4 @@
+import { LookupText } from '@/components/vocabulary/WordDetail';
 import React, { useState, useEffect, useRef } from 'react';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
@@ -490,7 +491,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 <div className="bg-black/85 backdrop-blur-sm px-4 py-2.5 rounded-md max-w-xl shadow-2xl border border-white/10 space-y-1">
                   {showGerman && currentSub.de && (
                     <div className="text-white font-heading font-bold text-base md:text-lg tracking-wide leading-snug drop-shadow">
-                      {currentSub.de}
+                      <LookupText text={currentSub.de} translation={currentSub.vi} />
                     </div>
                   )}
                   {showVietnamese && currentSub.vi && (
@@ -773,7 +774,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                           isActive ? 'font-bold text-foreground' : 'text-foreground/90'
                         }`}
                       >
-                        {sub.de}
+                        <LookupText text={sub.de} translation={sub.vi} stopPropagation />
                       </div>
                     )}
 
