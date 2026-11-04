@@ -65,7 +65,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId]);
   const captionScopeRef=useRef(captionScope);
   captionScopeRef.current=captionScope;
-  const subtitles = currentEpisode.subtitles?.length ? currentEpisode.subtitles : preview?.scope===captionScope ? preview.cues : [];
+  const subtitles = preview?.scope===captionScope ? preview.cues : currentEpisode.subtitles || [];
   const fetchCaptions=async()=>{
     if(captionBusy||!currentEpisode.youtubeId)return;
     setCaptionBusy(true);
@@ -719,7 +719,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               </button>
             </div>
 
-            {!subtitles.length&&currentEpisode.youtubeId&&<button type="button" disabled={captionBusy} onClick={fetchCaptions} className="tap px-2 py-1 text-xs border border-border rounded-sm">{captionBusy?'Đang lấy…':'Lấy bản hiện lời'}</button>}
+            {currentEpisode.youtubeId&&<button type="button" disabled={captionBusy} onClick={fetchCaptions} className="tap px-2 py-1 text-xs border border-border rounded-sm">{captionBusy?'Đang lấy…':'Lấy bản hiện lời'}</button>}
             <button
               onClick={handleCopyTranscript}
               className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"
