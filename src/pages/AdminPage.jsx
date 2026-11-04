@@ -2168,24 +2168,25 @@ export function AdminPage() {
 
               <div className="space-y-2">
                 {[
-                  { id: 'sans', label: 'Hiện đại & Trực quan (Inter Sans — Chuẩn an toàn, rõ nét)', desc: 'Gọn gàng, dễ nhìn, chống mỏi mắt trên cả máy tính & điện thoại.' },
-                  { id: 'serif', label: 'Ấn phẩm Đức cổ điển (Cormorant Garamond + Lora)', desc: 'Phong cách trang báo hàn lâm, cổ điển.' },
-                  { id: 'mono', label: 'Học thuật Kỹ thuật (JetBrains Mono)', desc: 'Phù hợp người thích số liệu, thẻ từ sắc nét.' },
+                  { id: 'sans', preview: "'Inter', sans-serif", label: 'Hiện đại & Trực quan (Inter Sans — Chuẩn an toàn, rõ nét)', desc: 'Gọn gàng, dễ nhìn, chống mỏi mắt trên cả máy tính & điện thoại.' },
+                  { id: 'serif', preview: "'Cormorant Garamond', Georgia, serif", body: "'Lora', Georgia, serif", label: 'Ấn phẩm Đức cổ điển (Cormorant Garamond + Lora)', desc: 'Phong cách trang báo hàn lâm, cổ điển.' },
+                  { id: 'mono', preview: "'JetBrains Mono', monospace", label: 'Học thuật Kỹ thuật (JetBrains Mono)', desc: 'Phù hợp người thích số liệu, thẻ từ sắc nét.' },
                 ].map((f) => (
                   <button
                     key={f.id}
                     type="button"
                     onClick={() => handleSaveUIVoice({ fontFamily: f.id })}
+                    aria-pressed={uiVoice.fontFamily === f.id}
                     className={`tap w-full p-3 rounded-sm border text-left transition-all ${
                       uiVoice.fontFamily === f.id
                         ? 'border-accent bg-accent/10 ring-1 ring-accent'
                         : 'border-border bg-card hover:bg-muted/50'
                     }`}
                   >
-                    <div className="font-display font-bold text-sm text-foreground">
+                    <div style={{ fontFamily: f.preview }} className="font-display font-bold text-sm text-foreground">
                       {f.label}
                     </div>
-                    <div className="text-xs font-body text-muted-foreground mt-0.5">
+                    <div style={{ fontFamily: f.body || f.preview }} className="text-xs font-body text-muted-foreground mt-0.5">
                       {f.desc}
                     </div>
                   </button>
