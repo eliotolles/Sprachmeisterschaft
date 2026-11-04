@@ -118,7 +118,8 @@ export function App() {
 
     // Dynamic Skill Route: /skills/:skillId
     if (currentPath.startsWith('/skills/')) {
-      const skillId = currentPath.replace('/skills/', '');
+      const skillPath = currentPath.replace('/skills/', '');
+      const skillId = skillPath.startsWith('reading/') ? 'reading' : skillPath;
       return <SkillStudioPage skillId={skillId} />;
     }
 
