@@ -127,6 +127,25 @@ export function WordDetail({ target, onClose }) {
             {translation && <p className="text-sm text-muted-foreground">{translation}</p>}
             <SpeakButton text={sentence} size="sm" />
           </div>}
+          {target.sentence && word.example_de && word.example_de !== target.sentence && <section className="space-y-1">
+            <h3 className="font-semibold">Ví dụ</h3>
+            <p lang="de">{word.example_de} <SpeakButton text={word.example_de} size="sm" /></p>
+            {word.example_vi && <p className="text-sm text-muted-foreground">{word.example_vi}</p>}
+          </section>}
+          {Array.isArray(word.meanings) && word.meanings.length > 0 && <section>
+            <h3 className="font-semibold">Các nghĩa</h3>
+            <ol className="list-decimal space-y-2 pl-5">
+              {word.meanings.map((sense, index) => {
+                const definition = typeof sense === 'string' ? sense : sense?.vi || sense?.vietnamese || sense?.meaning;
+                if (typeof definition !== 'string' || !definition.trim()) return null;
+                return <li key={index}>{definition}
+                  {typeof sense?.example_de === 'string' && <p lang="de">{sense.example_de}</p>}
+                  {typeof sense?.example_vi === 'string' && <p className="text-sm text-muted-foreground">{sense.example_vi}</p>}
+                </li>;
+              })}
+            </ol>
+          </section>}
+            {[['Từ đồng nghĩa', word.synonyms], ['Trái nghĩa', word.antonyms], ['Cụm từ hay dùng', word.phrases]].map(([label, items]) => Array.isArray(items) && items.length > 0 && <section key={label}><h3 className="font-semibold">{label}</h3><ul>{items.map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul></section>)}
           <details>
             <summary className="cursor-pointer font-medium">Xem chi tiết</summary>
             {word.english && <p>Tiếng Anh · {word.english}</p>}
@@ -135,7 +154,6 @@ export function WordDetail({ target, onClose }) {
             {word.separable === true && <p>Động từ tách</p>}
             {word.reflexive === true && <p>Động từ phản thân</p>}
             {word.note && <p>{word.note}</p>}
-            {[['Đồng nghĩa', word.synonyms], ['Trái nghĩa', word.antonyms], ['Cụm từ', word.phrases]].map(([label, items]) => Array.isArray(items) && items.length > 0 && <section key={label}><h3 className="font-semibold">{label}</h3><ul>{items.map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul></section>)}
           </details>
           {word.due_date && <p className="text-sm">Ôn tiếp ngày {word.due_date}{word.status ? ' · ' + word.status : ''}</p>}
           <div className="flex flex-wrap items-center gap-3">
@@ -178,7 +196,7 @@ export const LookupText = React.memo(function LookupText({ text, translation, st
     <span lang="de" tabIndex={0} aria-label="Văn bản tiếng Đức, chọn từ để tra nghĩa" onKeyUp={event => { if (event.key === 'Enter') onSelect(event); }} onPointerUp={onSelect} onClick={event => {
       if (event.target.closest(excluded)) return;
       if (stopPropagation) event.stopPropagation();
-      if (!window.getSelection()?.isCollapsed) return;
+      if (window.getSelection()?.isCollapsed === false) return;
       const token = event.target.dataset.lookup;
       if (!token) return;
       setSelection(null);

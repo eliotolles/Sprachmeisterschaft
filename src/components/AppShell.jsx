@@ -1,5 +1,5 @@
 import {toast} from 'sonner';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, Link } from '@/lib/router';
 import { db } from '@/lib/db';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -24,7 +24,6 @@ import {
   Video,
   ShieldCheck,
   PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 
@@ -42,24 +41,9 @@ export function AppShell({ children }) {
     }
     return false;
   });
-  const [isHovered, setIsHovered] = useState(false);
-  const hoverTimeoutRef = useRef(null);
-
-  // Auto-collapse when entering immersive pages (Listening Studio / Exam testing)
-  useEffect(() => {
-    const isImmersivePage =
-      (currentPath.startsWith('/skills/listening/') && currentPath.split('/').length > 3) ||
-      (currentPath.startsWith('/exams/') && currentPath !== '/exams');
-    if (isImmersivePage) {
-      setIsCollapsed(true);
-      setIsHovered(false);
-    }
-  }, [currentPath]);
-
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
       const next = !prev;
-      setIsHovered(false);
       if (typeof window !== 'undefined') {
         localStorage.setItem('sprach_sidebar_collapsed', String(next));
       }
@@ -135,23 +119,7 @@ export function AppShell({ children }) {
     catch(error){toast.error(error.message || 'Chưa đăng xuất được.');}
   };
 
-  const handleMouseEnter = () => {
-    if (!isCollapsed) return;
-    clearTimeout(hoverTimeoutRef.current);
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovered(true);
-    }, 100);
-  };
-
-  const handleMouseLeave = () => {
-    clearTimeout(hoverTimeoutRef.current);
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovered(false);
-    }, 140);
-  };
-
-  // When collapsed, hovering smoothly expands the sidebar as an overlay without shifting layout
-  const effectiveExpanded = !isCollapsed || isHovered;
+  const effectiveExpanded = !isCollapsed;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background text-foreground antialiased selection:bg-accent/20 selection:text-accent">
@@ -164,12 +132,12 @@ export function AppShell({ children }) {
 
       {/* Desktop Sidebar with Auto-Hover Overlay & Clean Explicit Toggle */}
       <aside
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        aria-label="Thanh điều hướng"
+        onClick={event => {
+          if (isCollapsed && !event.target.closest('a, button, input, select')) toggleCollapse();
+        }}
         className={`hidden md:flex flex-col border-r border-border bg-card/95 backdrop-blur-md fixed top-0 left-0 h-screen overflow-y-auto overflow-x-hidden shrink-0 select-none transition-[width,box-shadow] duration-200 ease-in-out ${
-          isCollapsed && isHovered
-            ? 'w-60 lg:w-64 shadow-2xl z-50 ring-1 ring-border/80'
-            : isCollapsed
+          isCollapsed
             ? 'w-16 z-30'
             : 'w-60 lg:w-64 z-30'
         }`}
@@ -191,26 +159,19 @@ export function AppShell({ children }) {
                 </p>
               </Link>
             ) : (
-              <Link to="/" className="mx-auto block" title="Sprachmeisterschaft">
+              <button type="button" onClick={toggleCollapse} className="tap mx-auto block" aria-label="Mở thanh bên">
                 <span className="w-8 h-8 rounded-full bg-accent/15 border border-accent/40 flex items-center justify-center font-display font-bold text-accent text-sm">
                   SM
                 </span>
-              </Link>
+              </button>
             )}
 
             {/* Toggle Collapse Button */}
-            <button
-              type="button"
-              onClick={toggleCollapse}
-              className="p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-              title={isCollapsed ? 'Mở rộng và ghim thanh bên' : 'Thu gọn thanh bên (Tự động mở khi rê chuột)'}
-            >
-              {!effectiveExpanded ? (
-                <PanelLeftOpen className="w-4 h-4 text-accent" />
-              ) : (
+            {effectiveExpanded && (
+              <button type="button" onClick={toggleCollapse} aria-label="Thu thanh bên" title="Thu thanh bên" className="tap shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <PanelLeftClose className="w-4 h-4" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
 
           {effectiveExpanded && (

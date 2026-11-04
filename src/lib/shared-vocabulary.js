@@ -25,6 +25,7 @@ export function mapSharedElioCard(row) {
     source_deck_id: String(row.source_deck_id ?? ''),
     english: extra.english ?? '',
     meaning_de: extra.meaning_de ?? '',
+    meanings: Array.isArray(extra.meanings) ? extra.meanings : Array.isArray(extra.senses) ? extra.senses : [],
     synonyms: extra.synonyms ?? [],
     phrases: extra.phrases ?? [],
     ...Object.fromEntries(['ipa','phonetic','plural','du','prateritum','partizip_ii','auxiliary','comparative','superlative','preposition','grammatical_case','note'].filter(key => typeof extra[key] === 'string').map(key => [key, extra[key]])),
