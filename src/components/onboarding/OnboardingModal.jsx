@@ -97,20 +97,26 @@ export function OnboardingModal({ isOpen, onClose }) {
   const handleConfirmPlan = () => {
     if (!generatedRoadmap) return;
 
-    db.studyPlan.save(
-      user?.id,
-      {
-        examKey,
-        currentLevel,
-        targetLevel,
-        timeFrame,
-        customExamDate,
-        weakSkills,
-        dailyMinutes,
-        daysPerWeek,
-      },
-      generatedRoadmap
-    );
+    try {
+      const saved = db.studyPlan.save(
+        user?.id,
+        {
+          examKey,
+          currentLevel,
+          targetLevel,
+          timeFrame,
+          customExamDate,
+          weakSkills,
+          dailyMinutes,
+          daysPerWeek,
+        },
+        generatedRoadmap
+      );
+      if (!saved) throw new Error('Phiên đăng nhập đã thay đổi.');
+    } catch (error) {
+      toast.error('Không lưu được lộ trình. ' + error.message);
+      return;
+    }
 
     toast.success('Đã lưu thành công lộ trình học tập cá nhân hóa của bạn!');
     onClose();
