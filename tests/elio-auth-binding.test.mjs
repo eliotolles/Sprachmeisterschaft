@@ -11,3 +11,17 @@ test('disabled preview retains existing flows and unavailable server never authe
 test('Google button uses server OAuth destination, never the selected email as proof',async()=>{
  let redirected=null,calls=0;const client={config:async()=>({enabled:true,uiAuthEnabled:true}),restore:async()=>null,getUser:()=>null,startGoogleAuth:async()=>{calls++;return {url:'https://accounts.google.com/o/oauth2/v2/auth?state=fixture'};}};const binding=createAuthBinding({client,legacy,redirect:url=>{redirected=url;}});await binding.initialize();binding.auth.loginWithGoogle({email:'admin@example.invalid'});await new Promise(r=>setTimeout(r,0));assert.equal(calls,1);assert(redirected.startsWith('https://accounts.google.com/'));client.startGoogleAuth=async()=>({url:'https://evil.example/'});await assert.rejects(binding.auth.loginWithGoogle({email:'admin@example.invalid'}),e=>e.code==='GOOGLE_REDIRECT');
 });
+
+test('password login can retry after initial session restoration fails', async () => {
+ const account = {id: 'server-id', email: 'fixture@example.invalid', role: 'user'};
+ let attempts = 0, identity = null;
+ const client = {
+  config: async () => ({enabled: true, uiAuthEnabled: true}),
+  restore: async () => { if (++attempts === 1) throw Error('offline'); },
+  getUser: () => identity,
+  login: async () => { identity = account; return identity; },
+ };
+ const binding = createAuthBinding({client, legacy});
+ await assert.rejects(binding.initialize(), /offline/);
+ assert.equal((await binding.auth.login(account.email, 'fixture')).id, account.id);
+});
