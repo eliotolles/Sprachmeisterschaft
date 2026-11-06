@@ -1252,8 +1252,9 @@ export const db = {
   // Personalized Study Plan & Onboarding Management
   studyPlan: {
     get: (userId) => {
-      const u = userId ? (state.users || []).find((usr) => usr.id === userId) : db.auth.getUser();
-      if (!u) return null;
+      const u = elioAuthentication()?.isActive() ? db.auth.getUser() : userId ? (state.users || []).find((usr) => usr.id === userId) : db.auth.getUser();
+      if (!u || (userId && u.id !== userId)) return null;
+      if (elioAuthentication()?.isActive()) return state.studyPlans?.[u.id] ?? null;
       const fullUser = (state.users || []).find(
         (usr) => usr.id === u.id || usr.email?.toLowerCase() === u.email?.toLowerCase()
       );
@@ -1263,10 +1264,11 @@ export const db = {
     save: (userId, answers, roadmap) => {
       const curUser = db.auth.getUser();
       const targetId = userId || curUser?.id;
-      if (!targetId) return null;
+      const coreAuth = elioAuthentication()?.isActive();
+      if (!targetId || (coreAuth && targetId !== curUser?.id)) return null;
 
       // 1. Update in state.users
-      const idx = (state.users || []).findIndex(
+      const idx = coreAuth ? -1 : (state.users || []).findIndex(
         (u) => u.id === targetId || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
       );
       if (idx !== -1) {
@@ -1303,7 +1305,7 @@ export const db = {
       saveDatabase(state);
 
       // 4. Update session user in AUTH_KEY
-      if (curUser) {
+      if (curUser && !coreAuth) {
         curUser.onboarding_completed = true;
         curUser.onboarding_answers = answers;
         curUser.study_plan = roadmap;
@@ -1366,6 +1368,8 @@ export const db = {
       if (sessionStorage.getItem('sprach_onboarding_dismissed') === 'true') {
         return false;
       }
+
+      if (elioAuthentication()?.isActive()) return !state.studyPlans?.[user.id];
 
       const fullUser = (state.users || []).find(
         (u) => u.id === user.id || u.email?.toLowerCase() === user.email?.toLowerCase()
