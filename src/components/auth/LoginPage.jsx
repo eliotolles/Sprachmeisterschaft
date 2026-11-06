@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, BookOpen, Check, Eye, EyeOff, Loader2, LockKeyho
 // Account selection belongs to Google; never publish a list of personal accounts.
 export const GOOGLE_PRESET_ACCOUNTS = [];
 const callbackErrors = {
-  GOOGLE_NOT_LINKED: 'Google chưa được liên kết. Hãy đăng nhập bằng mật khẩu trước.',
+  GOOGLE_NOT_LINKED: 'Google chưa được liên kết. Đăng nhập bằng mật khẩu, rồi vào Tài khoản → Liên kết tài khoản Google.',
   GOOGLE_ALREADY_LINKED: 'Google đã được liên kết với tài khoản khác.',
   GOOGLE_STATE: 'Phiên Google đã hết hạn. Vui lòng thử lại.',
   ACCOUNT_BLOCKED: 'Tài khoản không được phép đăng nhập.',
