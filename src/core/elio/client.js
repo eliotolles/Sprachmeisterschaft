@@ -68,7 +68,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async restore() {
       const current = ++epoch; identity = null; versions.clear();
       try { return setIdentity((await request('/auth/me', { expectedEpoch: current, user: null })).user); }
-      catch (error) { if (error.status === 401) return null; throw error; }
+      catch (error) { if (error.status === 401 || error.code === 'ACCOUNT_BLOCKED') return null; throw error; }
     },
     async login(email, password) {
       const current = ++epoch; identity = null; versions.clear();
