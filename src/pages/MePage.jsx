@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { elioAuthentication } from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import {progressCoreActive} from '@/lib/elio-progress-runtime';
 import {useCoreProgress} from '@/lib/use-core-progress';
@@ -21,6 +23,7 @@ export function MePage() {
   const coreActive=progressCoreActive();
   const { navigate } = useRouter();
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [user, setUser] = useState(() => db.auth.getUser());
   const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
   const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
@@ -45,9 +48,23 @@ export function MePage() {
 
   const totalXp = logs.reduce((sum, l) => sum + (l.xp || 0), 0);
 
-  const handleLogout = () => {
-    db.auth.logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await db.auth.logout();
+      navigate('/login');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const linkGoogle = async () => {
+    setLinkingGoogle(true);
+    try {
+      await db.auth.linkGoogle();
+    } catch (error) {
+      toast.error(error.message);
+      setLinkingGoogle(false);
+    }
   };
 
   return (
@@ -138,6 +155,21 @@ export function MePage() {
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-accent transition-colors" />
         </Link>
+
+        {user && elioAuthentication()?.isActive() && (
+          <button type="button" onClick={linkGoogle} disabled={linkingGoogle}
+            className="tap w-full p-4 flex items-center gap-3 text-left hover:bg-muted/30 disabled:opacity-60">
+            <ShieldCheck className="w-5 h-5 text-accent shrink-0" />
+            <span>
+              <span className="block font-heading font-semibold text-sm">
+                {linkingGoogle ? 'Đang mở Google…' : 'Liên kết tài khoản Google'}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Dùng tài khoản Google này để đăng nhập lần sau.
+              </span>
+            </span>
+          </button>
+        )}
 
         {/* Logout */}
         <button
