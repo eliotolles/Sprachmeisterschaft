@@ -56,3 +56,11 @@ export async function moveCollectionRecord(env,user,input){
  if(!result.rows.length)throw coreError(409,'CONTENT_CHANGED','Tài liệu đã thay đổi; hãy tải lại.');
  return {userId:user.id,recordId:row.id,collectionId:input.collectionId||null};
 }
+
+export async function renameCollection(env,user,input){
+ if(!input||typeof input.name!=='string'||!input.name.trim()||input.name.length>150)throw invalid();
+ const current=await readCollection(env,user,input.id,{write:true});if(input.revision!==current.revision)throw coreError(409,'COLLECTION_CONFLICT','Tên bộ vừa thay đổi; tải lại trước khi sửa.');
+ const {raw,revision,...data}=current;data.name=input.name.trim();const value=JSON.stringify(data);
+ const result=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[value,PREFIX+input.id,raw]);if(!result.rows.length)throw coreError(409,'COLLECTION_CONFLICT','Bộ vừa thay đổi; chưa ghi đè.');
+ return {collection:{...data,canEdit:true,revision:await digest(value)}};
+}

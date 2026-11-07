@@ -17,7 +17,7 @@ export function createListeningBinding({client,isActive}){
     let data;try{data=JSON.parse(row.data);}catch{throw Error('Bài nghe chưa đọc được; chưa dùng dữ liệu cục bộ thay thế.');}
     for(const content of Array.isArray(data?.items)?data.items:[data]){
      if(!content||typeof content!=='object'||Array.isArray(data?.items)&&!['string','number'].includes(typeof content.id))continue;
-     const metadata={recordId:row.id,...(Array.isArray(data.items)?{itemId:content.id}:{}),collectionTitle:row.title||'Bài nghe',title:content.title||row.title||'Bài nghe',scope:row.public?'public':'private',owner:row.owner,youtubeId:content.youtubeId||content.videoId||ListeningV2Core.id(content.url||content.youtubeUrl||'')||'',level:content.level||row.level||'',transcriptComplete:content.transcriptComplete===true};
+     const metadata={recordId:row.id,organizerId:data.organizerId||null,...(Array.isArray(data.items)?{itemId:content.id}:{}),collectionTitle:data.groupName||data.channelTitle||data.collectionTitle||row.title||'Bài nghe',title:content.title||row.title||'Bài nghe',scope:row.public?'public':'private',owner:row.owner,youtubeId:content.youtubeId||content.videoId||ListeningV2Core.id(content.url||content.youtubeUrl||'')||'',level:content.level||row.level||'',transcriptComplete:content.transcriptComplete===true};
      const subtitles=[];
      for(let cueIndex=0;cueIndex<(Array.isArray(content.cues)?content.cues.length:0);cueIndex++){
       const cue=content.cues[cueIndex];if(!cue||typeof cue.text!=='string'||!cue.text.trim()||cue.text.length>5000||ListeningV2Core.tokens(cue.text).length>400)continue;

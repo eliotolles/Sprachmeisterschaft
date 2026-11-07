@@ -1,3 +1,4 @@
+import {renameCollection} from './collections.js';
 import {enrichDictionaryWord} from './dictionary-enrichment.js';
 import {readImportedPractice,updateImportedPractice} from './imported-practice.js';
 import {readEditableRecord,editRecord} from './record-editing.js';
@@ -252,6 +253,7 @@ export async function handleElioCore(request, env) {
       return json({collection:{...collection,canEdit:collection.owner===user.id||collection.visibility==='public'&&publicUser(user).role==='admin'},items:rows.map(row=>row.kind==='exam'?{...row,data:examCatalogData(row.data)}:row)});
     }
     if(path==='/api/core/collections'&&request.method==='GET')return json(await listCollections(env,user));
+    if(path==='/api/core/collections'&&request.method==='PATCH')return json(await renameCollection(env,user,await body(request,2000)));
     if(path==='/api/core/collections'&&request.method==='POST')return json(await createCollection(env,user,await body(request,2000)));
     if(path==='/api/core/collections/move'&&request.method==='POST')return json(await moveCollectionRecord(env,user,await body(request,1000)));
     if(path==='/api/core/records/edit'&&request.method==='GET')return json(await readEditableRecord(env,user,url.searchParams.get('id')));

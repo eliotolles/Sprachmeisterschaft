@@ -90,3 +90,5 @@ test('new words added while studying a collection stay in that collection',async
   await assert.rejects(editVocabulary(env,bob,{action:'create',organizerId:target.id,words:[{german:'Test',vietnamese:'thử'}]}),e=>e.status===403);
  }finally{db.close();}
 });
+
+test('collection names can be changed only by the owner or public-content admin with a matching revision',async()=>{const {renameCollection}=await import('../src/core/elio/collections.js');const {db,env}=fixture();try{const folder=(await createCollection(env,bob,{name:'My listening',skill:'listening',visibility:'private',requestId:'rename-one'})).collection;const renamed=await renameCollection(env,bob,{id:folder.id,revision:folder.revision,name:'New listening name'});assert.equal(renamed.collection.name,'New listening name');assert.equal(renamed.collection.id,folder.id);await assert.rejects(renameCollection(env,alice,{id:folder.id,revision:renamed.collection.revision,name:'No access'}),e=>e.status===403);await assert.rejects(renameCollection(env,bob,{id:folder.id,revision:folder.revision,name:'Stale'}),e=>e.status===409);}finally{db.close();}});

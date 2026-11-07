@@ -1,8 +1,11 @@
+import {digest} from '@/core/elio/passwords';
+import {CreateCollectionDialog} from '@/components/common/CollectionTools';
+import {elioClient} from '@/lib/elio-auth-runtime';
 import {ImportedContentManager} from '@/components/common/ImportedContentManager';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '@/lib/db';
 import {elioImport} from '@/lib/elio-import-runtime';
-import {listeningCoreActive} from '@/lib/elio-listening-runtime';
+import {listeningCoreActive,elioListening} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
@@ -31,7 +34,8 @@ import {
 
 export function ListeningOverviewPage({ initialTab = null }) {
   const { navigate } = useRouter();
-  const [mode,setMode]=useState('youtube'),[managing,setManaging]=useState(false);
+  const groupSection=useRef(null);
+  const [mode,setMode]=useState('youtube'),[managing,setManaging]=useState(false),[creatingGroup,setCreatingGroup]=useState(false),[openedGroup,setOpenedGroup]=useState(null),[importTarget,setImportTarget]=useState(null),[groupBusy,setGroupBusy]=useState(false);
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [activeScopeTab, setActiveScopeTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -43,6 +47,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const [collections, setCollections] = useState(() => db.listening.getCollections());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);
+  useEffect(()=>{if(openedGroup)groupSection.current?.scrollIntoView({behavior:'smooth',block:'start'});},[openedGroup]);
 
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
@@ -58,7 +63,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const filteredCollections = collections.filter((c) => {
     if(mode==='podcast'&&!/podcast|podcast|postcard/i.test([c.title,c.provider,c.description].join(' ')))return false;
     // 1. Level filter
-    if (selectedLevel !== 'ALL' && c.level !== selectedLevel) return false;
+    if (selectedLevel !== 'ALL' && !(c.levels||[c.level]).includes(selectedLevel)) return false;
 
     // 2. Scope tab filter
     if (activeScopeTab === 'personal') {
@@ -97,21 +102,26 @@ export function ListeningOverviewPage({ initialTab = null }) {
     }
   };
 
-  const handleSaveCollectionEdit = (e) => {
-    e.preventDefault();
-    if (!editingCollection) return;
-    if(listeningCoreActive())return toast.error('Sửa bộ nghe chưa nối server.');
-    db.listening.updateCollection(editingCollection.id, {
-      title: editingCollection.title,
-      deTitle: editingCollection.deTitle,
-      level: editingCollection.level,
-      provider: editingCollection.provider,
-      description: editingCollection.description,
-      scope: editingCollection.scope || 'public',
-    });
-    setEditingCollection(null);
-    toast.success('Đã lưu chỉnh sửa bộ video!');
+  async function ensureGroupFolder(group,name=group.title){
+    if(group.organizerId)return {id:group.organizerId,revision:group.revision};
+    const result=await elioClient.createCollection({name,skill:'listening',visibility:group.scope==='private'?'private':'public',requestId:'listening-group-'+await digest(group.id)});
+    for(const recordId of group.recordIds||[])await elioClient.moveCollectionRecord({recordId,collectionId:result.collection.id});
+    return result.collection;
+  }
+  const addToGroup=async group=>{if(groupBusy)return;setGroupBusy(true);try{const folder=await ensureGroupFolder(group);setImportTarget(folder.id);setIsImportOpen(true);}catch(error){toast.error(error.message);}finally{setGroupBusy(false);await elioListening()?.hydrate().catch(error=>toast.error(error.message));}};
+  const handleSaveCollectionEdit = async(e) => {
+    e.preventDefault();if(!editingCollection||groupBusy)return;setGroupBusy(true);
+    try{
+     if(listeningCoreActive()){
+      const original=collections.find(c=>c.id===editingCollection.id);const folder=await ensureGroupFolder(original,original.title);
+      await elioClient.renameCollection({id:folder.id,revision:folder.revision,name:editingCollection.title});
+      await elioListening().hydrate();
+     }else db.listening.updateCollection(editingCollection.id,{...editingCollection});
+     setEditingCollection(null);toast.success('Đã đổi tên bộ nghe.');
+    }catch(error){toast.error(error.message);}finally{setGroupBusy(false);}
   };
+  const openedCollection=collections.find(c=>c.id===openedGroup);
+  const openedEpisodes=openedCollection?db.listening.getEpisodes(openedCollection.id).filter(e=>selectedLevel==='ALL'||e.level===selectedLevel):[];
 
   return (
     <div className="space-y-6 animate-rise">
@@ -122,6 +132,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
         subtitle="Học qua video YouTube có phụ đề song ngữ Đức - Việt, đồng bộ thời gian thực theo lời nói, tự động dừng từng câu và chép chính tả chuẩn CEFR."
         actions={
           <div className="flex items-center gap-2">
+            <button onClick={()=>setCreatingGroup(true)} className="tap px-3 py-1.5 border border-border bg-card rounded-sm font-heading text-sm">Tạo bộ nghe</button>
             {isAdmin && (
               <button
                 onClick={handleResetListening}
@@ -274,14 +285,14 @@ export function ListeningOverviewPage({ initialTab = null }) {
                     {canManage && (
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => listeningCoreActive()?setManaging(true):setEditingCollection({ ...col })}
+                          onClick={() => setEditingCollection({ ...col })}
                           className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                           title="Sửa bộ video"
                         >
                           <Edit3 className="w-3.5 h-3.5 text-blue-500" />
                         </button>
                         <button
-                          onClick={() => handleDeleteCollection(col.id, col.title)}
+                          onClick={() => listeningCoreActive()?setManaging(true):handleDeleteCollection(col.id, col.title)}
                           className="tap p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600"
                           title="Xóa bộ video"
                         >
@@ -307,11 +318,10 @@ export function ListeningOverviewPage({ initialTab = null }) {
                   </span>
 
                   <button
-                    disabled={!firstEpisodeId}
-                    onClick={() => firstEpisodeId&&navigate(`/skills/listening/${col.id}/${firstEpisodeId}?mode=${mode==='dictation'?'dictation':mode==='shadowing'?'shadowing':'video'}`)}
+                    onClick={() => {setOpenedGroup(col.id);}}
                     className="tap px-3 py-1.5 rounded-sm bg-accent/10 hover:bg-accent text-accent hover:text-accent-foreground font-mono text-xs font-semibold flex items-center gap-1.5 transition-colors"
                   >
-                    <span>Vào luyện nghe</span>
+                    <span>Mở bộ</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -321,12 +331,15 @@ export function ListeningOverviewPage({ initialTab = null }) {
         })}
       </div>
 
+      {openedCollection&&<section ref={groupSection} className="surface border border-border p-5 space-y-4"><div className="flex items-center justify-between gap-3 flex-wrap"><div><h2 className="font-heading text-2xl font-semibold">{openedCollection.title}</h2><p className="font-body text-sm text-muted-foreground">{openedEpisodes.length} tập · chọn cấp độ ở trên để lọc trong bộ</p></div><div className="flex gap-2">{(isAdmin||openedCollection.created_by===currentUser?.id)&&<button disabled={groupBusy} onClick={()=>addToGroup(openedCollection)} className="tap px-3 py-2 border border-border rounded-sm">Thêm video vào bộ này</button>}<button onClick={()=>setOpenedGroup(null)} className="tap px-3 py-2 border border-border rounded-sm">Đóng bộ</button></div></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{openedEpisodes.map(episode=><button key={episode.id} onClick={()=>navigate(`/skills/listening/${openedCollection.id}/${episode.id}?mode=${mode==='dictation'?'dictation':mode==='shadowing'?'shadowing':'video'}`)} className="text-left border border-border rounded-sm p-3 bg-card flex gap-3 items-start"><img alt="" loading="lazy" src={'https://img.youtube.com/vi/'+episode.youtubeId+'/mqdefault.jpg'} className="w-24 aspect-video object-cover rounded-sm"/><div><h3 className="font-heading font-semibold">{episode.title}</h3><p className="text-sm text-muted-foreground">{episode.level} · {episode.subtitles?.length||0} câu phụ đề</p></div></button>)}</div>{!openedEpisodes.length&&<p>Bộ chưa có video ở cấp độ đang chọn. Thêm video hoặc chọn Tất cả cấp độ.</p>}</section>}
+      <CreateCollectionDialog open={creatingGroup} onClose={()=>setCreatingGroup(false)} initialSkill="listening" onCreated={async folder=>{setCreatingGroup(false);setSelectedLevel('ALL');setActiveScopeTab(folder.visibility==='private'?'personal':'all');await elioListening()?.hydrate();setOpenedGroup('folder-'+folder.id);toast.success('Đã tạo bộ nghe riêng. Chọn Thêm video vào bộ này.');}}/>
       {managing&&<ImportedContentManager onClose={()=>setManaging(false)}/>}
       {/* Universal Import Modal */}
       <UniversalImportModal
         isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
+        onClose={() => {setIsImportOpen(false);setImportTarget(null);}}
         defaultType="listening"
+        defaultCollectionId={importTarget}
         initialScope={activeScopeTab === 'personal' ? 'private' : 'public'}
         onSuccess={() => {
           setCollections(db.listening.getCollections());
@@ -364,6 +377,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 />
               </div>
 
+              {!listeningCoreActive()&&<>
               <div className="space-y-1">
                 <label className="font-mono text-muted-foreground uppercase text-[10px]">
                   Tên bộ (Tiếng Đức)
@@ -436,6 +450,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 />
               </div>
 
+              </>}
+              {listeningCoreActive()&&<p className="font-body text-sm text-muted-foreground">Tên áp dụng cho cả bộ. Cấp độ và nội dung được giữ theo từng video; chỉnh từng tài liệu ở Sửa / Xóa nội dung import.</p>}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
                 <button
                   type="button"

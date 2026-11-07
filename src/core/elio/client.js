@@ -147,6 +147,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async deleteRecord(data){requireUser();return request('/records/delete',{method:'POST',data});},
     async collectionContents(id){requireUser();return request('/collections/content?'+new URLSearchParams({id}),{deadlineMs:45000});},
     async collections(){requireUser();return request('/collections');},
+    async renameCollection(data){requireUser();return request('/collections',{method:'PATCH',data});},
     async createCollection(data){requireUser();return request('/collections',{method:'POST',data,deadlineMs:45000});},
     async moveCollectionRecord(data){requireUser();return request('/collections/move',{method:'POST',data,deadlineMs:65000});},
     async records(kind,{limit=200,offset=0,collectionId=activeCollectionId()}={}) {

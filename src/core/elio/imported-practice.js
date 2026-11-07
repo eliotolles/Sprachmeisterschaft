@@ -65,7 +65,7 @@ export function validateExtractedPractice(value,source){
  if(count>150)throw fail('Chia đề thành các phần nhỏ hơn.');
  return value;
 }
-export async function readImportedPractice(env,user,id){const {row}=await sourceRecord(env,user,id);const s=await state(env,user,id);return {userId:user.id,record:{id:row.id,title:row.title,kind:row.kind,level:row.level},version:s.version,practice:publicState(s.document),sourceChanged:!!s.document&&s.document.sourceHash!==await digest(row.data),serverNow:Date.now()};}
+export async function readImportedPractice(env,user,id){const {row}=await sourceRecord(env,user,id);const s=await state(env,user,id);return {userId:user.id,record:{id:row.id,title:row.title,kind:row.kind,level:row.level},version:s.version,practice:publicState(s.document),sourceChanged:!!s.document&&(s.document.contentHash?s.document.contentHash!==await digest(JSON.stringify(JSON.parse(row.data).items||JSON.parse(row.data).words||[JSON.parse(row.data)])):s.document.sourceHash!==await digest(row.data)&&s.document.source!==originalText(JSON.parse(row.data))),serverNow:Date.now()};}
 export async function updateImportedPractice(env,user,input,ai=generateAI){
  const {row,data}=await sourceRecord(env,user,input?.recordId);const s=await state(env,user,row.id,input.version);
  const sourceHash=await digest(row.data);
@@ -73,11 +73,11 @@ export async function updateImportedPractice(env,user,input,ai=generateAI){
   if(input.action!=='prepare')throw fail('Tạo môi trường luyện trước.');
   const source=originalText(data);if(!source.trim()||source.length>500000)throw fail('Tài liệu trống hoặc quá lớn. Chia thành từng đề.');
   const structured=projectStructured(data);
-  s.document={recordId:row.id,title:row.title,sourceHash,source,sections:structured.sections,keys:structured.keys,chunk:structured.sections.length?splitPracticeSource(source).length:0,totalChunks:splitPracticeSource(source).length,answers:{},warnings:[],submitted:false,startedAt:null,deadline:null,transcript:'',createdAt:Date.now()};
+  s.document={recordId:row.id,title:row.title,sourceHash,contentHash:await digest(JSON.stringify(data.items||data.words||[data])),source,sections:structured.sections,keys:structured.keys,chunk:structured.sections.length?splitPracticeSource(source).length:0,totalChunks:splitPracticeSource(source).length,answers:{},warnings:[],submitted:false,startedAt:null,deadline:null,transcript:'',createdAt:Date.now()};
   return save(env,user,s);
  }
  const d=s.document;
- if(d.sourceHash!==sourceHash)throw coreError(409,'PRACTICE_SOURCE_CHANGED','Tài liệu gốc đã sửa. Bài làm cũ được giữ nguyên; tạo bản sao nguồn để luyện bản mới.');
+ if(d.contentHash?d.contentHash!==await digest(JSON.stringify(data.items||data.words||[data])):d.sourceHash!==sourceHash&&d.source!==originalText(data))throw coreError(409,'PRACTICE_SOURCE_CHANGED','Tài liệu gốc đã sửa. Bài làm cũ được giữ nguyên; tạo bản sao nguồn để luyện bản mới.');
  if(input.action==='prepare')return {userId:user.id,version:s.version,practice:publicState(d),serverNow:Date.now()};
  if(input.action==='extract'){
   const chunks=splitPracticeSource(d.source);if(d.chunk>=chunks.length)return {userId:user.id,version:s.version,practice:publicState(d),serverNow:Date.now()};

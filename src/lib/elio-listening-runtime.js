@@ -1,3 +1,4 @@
+import {groupListeningLibrary} from './listening-groups.js';
 import {activeCollectionId} from './collection-types.js';
 import {toast} from 'sonner';
 import {elioClient,elioAuthentication} from './elio-auth-runtime.js';
@@ -9,8 +10,9 @@ export const elioListening=()=>binding;
 export function installListeningRuntime(db){if(binding)return binding;const core=newListeningBinding(),legacy={...db.listening};let owner=null,collections=[],episodes=[];
  const clear=()=>{owner=elioClient.getUser()?.id;collections=[];episodes=[];core.reset();};const scope=()=>{if(owner!==elioClient.getUser()?.id)clear();};
  const notify=()=>{window.dispatchEvent(new CustomEvent('sprach_listening_change'));window.dispatchEvent(new CustomEvent('sprach_db_change'));};
- async function hydrate(){clear();notify();if(!listeningCoreActive()||!owner)return;const current=owner,{videos}=await core.load();if(current!==elioClient.getUser()?.id)throw Error('Tài khoản đã thay đổi.');const cs=new Map(),es=new Map();for(const video of videos){const {collectionId,episodeId}=listeningRouteIds(video);if(es.has(episodeId))throw Error('ID nguồn video bị trùng; chưa gộp hoặc ghi đè.');if(!cs.has(collectionId))cs.set(collectionId,{id:collectionId,title:video.collectionTitle,level:video.level,scope:video.scope,created_by:video.owner,thumbnail:'https://img.youtube.com/vi/'+video.youtubeId+'/hqdefault.jpg'});es.set(episodeId,{id:episodeId,collection_id:collectionId,title:video.title,level:video.level,youtubeId:video.youtubeId,recordId:video.recordId,itemId:video.itemId,owner:video.owner,subtitles:video.subtitles});}collections=[...cs.values()];episodes=[...es.values()];notify();}
- const api={getCollections:(options={})=>{scope();return listeningCoreActive()?collections.filter(c=>(!options.level||options.level==='ALL'||c.level===options.level)&&(!options.scope||c.scope===options.scope)):legacy.getCollections(options);},getCollectionById:id=>{scope();return listeningCoreActive()?collections.find(c=>c.id===id):legacy.getCollectionById(id);},getEpisodes:id=>{scope();return listeningCoreActive()?episodes.filter(e=>e.collection_id===id):legacy.getEpisodes(id);},getEpisodeById:id=>{scope();return listeningCoreActive()?episodes.find(e=>e.id===id):legacy.getEpisodeById(id);}};
+ async function hydrate(){clear();notify();if(!listeningCoreActive()||!owner)return;const current=owner;const [{videos},folders]=await Promise.all([core.load(),elioClient.collections()]);if(current!==elioClient.getUser()?.id)throw Error('Tài khoản đã thay đổi.');const result=groupListeningLibrary(videos,folders.items);collections=result.collections;episodes=result.episodes;notify();}
+
+ const api={getCollections:(options={})=>{scope();return listeningCoreActive()?collections.filter(c=>(!options.level||options.level==='ALL'||c.levels?.includes(options.level))&&(!options.scope||c.scope===options.scope)):legacy.getCollections(options);},getCollectionById:id=>{scope();return listeningCoreActive()?collections.find(c=>c.id===id)||collections.find(c=>c.recordIds?.some(record=>encodeURIComponent(record)===id)):legacy.getCollectionById(id);},getEpisodes:id=>{scope();return listeningCoreActive()?episodes.filter(e=>e.collection_id===id||encodeURIComponent(e.recordId)===id):legacy.getEpisodes(id);},getEpisodeById:id=>{scope();return listeningCoreActive()?episodes.find(e=>e.id===id):legacy.getEpisodeById(id);}};
  async function remove(recordId,itemId){
   const captured=elioClient.getUser()?.id;
   const result=await elioClient.deleteRecord({recordId,...(itemId!==undefined?{itemId}:{})});
@@ -21,7 +23,7 @@ export function installListeningRuntime(db){if(binding)return binding;const core
   if(!listeningCoreActive())return legacy.deleteCollection(id);
   scope();const collection=collections.find(item=>item.id===id);
   if(!collection)throw Error('Không tìm thấy bộ video đang chọn.');
-  return remove(decodeURIComponent(id));
+  throw Error('Bộ nghe gồm nhiều tài liệu. Dùng Sửa / Xóa nội dung import để chọn chính xác tài liệu cần xóa.');
  };
  api.deleteEpisode=async id=>{
   if(!listeningCoreActive())return legacy.deleteEpisode(id);
