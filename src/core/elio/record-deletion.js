@@ -1,16 +1,18 @@
+import {digest} from './passwords.js';
 import {coreError,query} from './database.js';
 
 export async function deleteRecord(env,user,input){
  if(!input||typeof input.recordId!=='string'||!input.recordId||input.recordId.length>256||
-   Object.keys(input).some(key=>!['recordId','itemId'].includes(key))||
+   Object.keys(input).some(key=>!['recordId','itemId','revision'].includes(key))||
    input.itemId!==undefined&&!['string','number'].includes(typeof input.itemId)){
   throw coreError(400,'DELETE_INPUT','Chọn đúng nội dung cần xóa.');
  }
  const row=(await query(env,'SELECT id,owner,kind,public,data FROM ee_records WHERE id=?',[input.recordId])).rows[0];
  if(!row)return {userId:user.id,recordId:input.recordId,deleted:false};
- if(row.owner!==user.id&&!['admin','super_admin'].includes(user.role)){
+ if(row.owner!==user.id&&!(row.public&&['admin','super_admin'].includes(user.role))){
   throw coreError(403,'DELETE_OWNER','Không có quyền xóa nội dung này.');
  }
+ if(input.revision!==undefined&&input.revision!==await digest(row.data))throw coreError(409,'CONTENT_CHANGED','Nội dung đã thay đổi. Tải lại trước khi xóa.');
  let result;
  if(input.itemId===undefined){
   result=await query(env,'DELETE FROM ee_records WHERE id=? AND data=? RETURNING id',[row.id,row.data]);

@@ -1,3 +1,4 @@
+import {vocabularyDetails} from './vocabulary-details.js';
 /** Pure content adapter: shared Elio cards never inherit personal progress or ownership. */
 export function mapSharedElioCard(row) {
   if (!row || typeof row !== 'object') throw new TypeError('Invalid vocabulary row');
@@ -23,10 +24,7 @@ export function mapSharedElioCard(row) {
     topic: String(row.topic ?? ''),
     level: String(row.level ?? ''),
     source_deck_id: String(row.source_deck_id ?? ''),
-    english: extra.english ?? '',
-    meaning_de: extra.meaning_de ?? '',
-    synonyms: extra.synonyms ?? [],
-    phrases: extra.phrases ?? [],
+    ...vocabularyDetails(extra),
     // No user_id, status, due_date, repetitions or review history here.
   };
 }

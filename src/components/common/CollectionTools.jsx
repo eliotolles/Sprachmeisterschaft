@@ -1,3 +1,4 @@
+import {ImportedContentManager} from './ImportedContentManager';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {FolderPlus,FolderOpen,X} from 'lucide-react';
@@ -41,14 +42,16 @@ export function CreateCollectionDialog({open,onClose,onCreated,initialSkill='all
 
 export function CollectionToolbar(){
  const {currentPath,search,navigate}=useRouter();
- const [creating,setCreating]=useState(false);
- const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin';
+ const [creating,setCreating]=useState(false),[managing,setManaging]=useState(false);
+ const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin'||currentPath.startsWith('/collections')||currentPath.startsWith('/listening')||currentPath.startsWith('/videos')||currentPath==='/personal-videos';
  if(!supported)return null;
  const skill=collectionSkillForPath(currentPath),collection=new URLSearchParams(search).get('collection');
  return <div className="flex flex-wrap items-center justify-end gap-2 mb-4 font-body">
   {collection&&<button type="button" className="tap px-3 py-1.5 rounded-sm border border-border text-sm" onClick={()=>navigate('/collections/view/'+encodeURIComponent(collection))}>Về bộ đang học</button>}
   <button type="button" onClick={()=>setCreating(true)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm inline-flex items-center gap-2"><FolderPlus className="w-4 h-4"/>Tạo bộ</button>
   <button type="button" onClick={()=>navigate('/collections/'+skill)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm inline-flex items-center gap-2"><FolderOpen className="w-4 h-4"/>Các bộ học</button>
+  <button type="button" onClick={()=>setManaging(true)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm">Sửa / Xóa nội dung import</button>
+  {managing&&<ImportedContentManager onClose={()=>setManaging(false)} collectionId={collection||null}/>}
   <CreateCollectionDialog open={creating} onClose={()=>setCreating(false)} initialSkill={skill} onCreated={value=>navigate('/collections/view/'+value.id)}/>
  </div>;
 }

@@ -1,3 +1,4 @@
+import {readEditableRecord,editRecord} from './record-editing.js';
 import {listCollections,createCollection,readCollection,moveCollectionRecord} from './collections.js';
 import {deleteRecord} from './record-deletion.js';
 import {getAIRouting,updateAIRouting} from './ai-routing.js';
@@ -248,6 +249,8 @@ export async function handleElioCore(request, env) {
     if(path==='/api/core/collections'&&request.method==='GET')return json(await listCollections(env,user));
     if(path==='/api/core/collections'&&request.method==='POST')return json(await createCollection(env,user,await body(request,2000)));
     if(path==='/api/core/collections/move'&&request.method==='POST')return json(await moveCollectionRecord(env,user,await body(request,1000)));
+    if(path==='/api/core/records/edit'&&request.method==='GET')return json(await readEditableRecord(env,user,url.searchParams.get('id')));
+    if(path==='/api/core/records/edit'&&request.method==='POST')return json(await editRecord(env,user,await body(request,1600000)));
     if(path==='/api/core/records/delete'&&request.method==='POST')return json(await deleteRecord(env,user,await body(request,1000)));
     if (path === '/api/core/records' && request.method === 'GET') {
       const kind = url.searchParams.get('kind');

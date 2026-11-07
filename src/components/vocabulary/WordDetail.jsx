@@ -1,3 +1,4 @@
+import {vocabularyDetails,lexicalItems} from '@/lib/vocabulary-details';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SpeakButton } from '@/components/ui/SpeakButton';
@@ -100,6 +101,7 @@ export function WordDetail({ target, onClose }) {
   const name = article ? word.german.replace(/^(der|die|das)\s+/i, '') : word?.german;
   const sentence = target.sentence || word?.example_de;
   const translation = target.translation || (!target.sentence && word?.example_vi);
+  const details = vocabularyDetails(word||{});
   const formFields = [['Số nhiều', word?.plural], ['Ngôi du', word?.du], ['Präteritum', word?.prateritum], ['Partizip II', word?.partizip_ii], ['Trợ động từ', word?.auxiliary], ['Komparativ', word?.comparative], ['Superlativ', word?.superlative], ['Giới từ', word?.preposition], ['Cách', word?.grammatical_case]];
   const rect = target.rect;
   const position = mobile ? { position:'fixed', inset:'auto 0 0', margin:0, width:'100%', maxWidth:'100%' }
@@ -127,15 +129,15 @@ export function WordDetail({ target, onClose }) {
             {translation && <p className="text-sm text-muted-foreground">{translation}</p>}
             <SpeakButton text={sentence} size="sm" />
           </div>}
-          <details>
+          <details open>
             <summary className="cursor-pointer font-medium">Xem chi tiết</summary>
             {word.english && <p>Tiếng Anh · {word.english}</p>}
-            {word.meaning_de && <p lang="de">{word.meaning_de}</p>}
+            {details.meaning_de && <p lang="de">{details.meaning_de}</p>}
             {formFields.filter(([, value]) => typeof value === 'string' && value).map(([label, value]) => <p key={label}>{label} · {value}</p>)}
             {word.separable === true && <p>Động từ tách</p>}
             {word.reflexive === true && <p>Động từ phản thân</p>}
-            {word.note && <p>{word.note}</p>}
-            {[['Đồng nghĩa', word.synonyms], ['Trái nghĩa', word.antonyms], ['Cụm từ', word.phrases]].map(([label, items]) => Array.isArray(items) && items.length > 0 && <section key={label}><h3 className="font-semibold">{label}</h3><ul>{items.map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul></section>)}
+            {details.notes && <p>{details.notes}</p>}
+            {[['Đồng nghĩa', details.synonyms], ['Trái nghĩa', details.antonyms], ['Chunk / Cụm từ đi kèm', details.phrases]].map(([label, items]) => lexicalItems(items).length > 0 && <section key={label}><h3 className="font-semibold">{label}</h3><ul>{lexicalItems(items).map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul></section>)}
           </details>
           {word.due_date && <p className="text-sm">Ôn tiếp ngày {word.due_date}{word.status ? ' · ' + word.status : ''}</p>}
           <div className="flex flex-wrap items-center gap-3">
@@ -195,3 +197,9 @@ export const LookupText = React.memo(function LookupText({ text, translation, st
     {target && <WordDetail key={JSON.stringify(target.range)} target={target} onClose={close} />}
   </>;
 });
+
+export function WordDetailsTrigger({word,children}){
+ const [target,setTarget]=useState(null);
+ const close=React.useCallback(()=>setTarget(null),[]);
+ return <><button type="button" className="text-left hover:underline font-inherit" aria-label={'Xem đầy đủ dữ liệu từ '+(word.german||word.de||'')} onClick={event=>{event.stopPropagation();setTarget({word,token:word.german,anchor:event.currentTarget});}}>{children}</button>{target&&<WordDetail target={target} onClose={close}/>}</>;
+}

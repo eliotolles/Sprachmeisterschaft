@@ -1,3 +1,5 @@
+import {vocabularyDetails} from '@/lib/vocabulary-details';
+import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
 import {activeCollectionId} from '@/lib/collection-types';
 import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect } from 'react';
@@ -50,6 +52,7 @@ export function VocabLevelsPage() {
     try {
     if(deck.isCore){toast.info('Bộ từ đã có trong kho SRS của tài khoản; không tạo thẻ trùng.');navigate('/review');return;}
     const added = await db.vocabulary.createMany(deck.words.map(w=>({
+        ...vocabularyDetails(w),
         german: w.german,
         article: w.article || '',
         word_type: w.word_type || 'noun',
@@ -189,7 +192,7 @@ export function VocabLevelsPage() {
                       >
                         <div>
                           <div className="flex items-center gap-2">
-                            <GenderText article={w.article} word={w.german} className="text-base" />
+                            <WordDetailsTrigger word={w}><GenderText article={w.article} word={w.german} className="text-base" /></WordDetailsTrigger>
                             {w.word_type && (
                               <span className="text-[10px] font-mono text-muted-foreground italic">
                                 ({w.word_type})

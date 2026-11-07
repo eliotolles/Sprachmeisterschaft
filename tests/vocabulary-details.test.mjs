@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {vocabularyDetails,lexicalItems} from '../src/lib/vocabulary-details.js';
+import {mapSharedElioCard} from '../src/lib/shared-vocabulary.js';
+test('preserve imported synonyms and chunks from shared extra metadata and string fields',()=>{const card=mapSharedElioCard({source_id:'original',german:'Haus',extra_json:JSON.stringify({synonyms:'Gebäude; Heim',chunks:'nach Hause gehen',notes:'Original',english:'house'})});assert.equal(card.synonyms,'Gebäude; Heim');assert.equal(card.phrases,'nach Hause gehen');assert.equal(card.notes,'Original');assert.deepEqual(lexicalItems(card.synonyms),['Gebäude; Heim']);assert.equal(card.id,'elio_shared_original');});
+test('private and legacy extra lexical data remains visible without copying ownership or progress',()=>{const result=vocabularyDetails({extra:{collocations:[{de:'zu Hause',vi:'ở nhà'}],synonyms:['Heim'],user_id:'other',status:'mastered'}});assert.deepEqual(result.phrases,[{de:'zu Hause',vi:'ở nhà'}]);assert.deepEqual(result.synonyms,['Heim']);assert.equal(result.user_id,undefined);assert.equal(result.status,undefined);});

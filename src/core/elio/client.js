@@ -139,6 +139,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
+    async editableRecord(id){requireUser();return request('/records/edit?'+new URLSearchParams({id}));},
+    async editRecord(data){requireUser();return request('/records/edit',{method:'POST',data});},
     async deleteRecord(data){requireUser();return request('/records/delete',{method:'POST',data});},
     async collectionContents(id){requireUser();return request('/collections/content?'+new URLSearchParams({id}),{deadlineMs:45000});},
     async collections(){requireUser();return request('/collections');},

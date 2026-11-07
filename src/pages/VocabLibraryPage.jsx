@@ -1,3 +1,5 @@
+import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
+import {vocabularyDetails} from '@/lib/vocabulary-details';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -49,6 +51,7 @@ export function VocabLibraryPage() {
     if (savedKeys.has(key)) return;
 
     await db.vocabulary.create({
+      ...vocabularyDetails(word),
       german: word.german,
       article: word.article,
       word_type: word.word_type,
@@ -168,12 +171,12 @@ export function VocabLibraryPage() {
                 </div>
 
                 <div className="flex items-baseline justify-between gap-2">
-                  <GenderText
+                  <WordDetailsTrigger word={word}><GenderText
                     article={word.article}
                     german={word.german}
                     wordType={word.word_type}
                     className="text-lg font-bold"
-                  />
+                  /></WordDetailsTrigger>
                   <SpeakButton text={word.german} size="sm" />
                 </div>
 

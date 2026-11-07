@@ -30,7 +30,7 @@ export function CollectionsPage({skill='all',collectionId=null}){
   try{
    const items=[];
    for(const kind of kinds)for(let offset=0;offset<10000;offset+=200){
-    const rows=(await elioClient.records(kind,{limit:200,offset,collectionId:null})).items;
+    const rows=await elioClient.records(kind,{limit:200,offset,collectionId:null});
     if(current!==generation.current||owner!==elioClient.getUser()?.id)return;
     items.push(...rows.filter(row=>{try{return JSON.parse(row.data).organizerId!==collectionId;}catch{return false;}}));
     if(rows.length<200)break;

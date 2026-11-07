@@ -1,3 +1,5 @@
+import {vocabularyDetails} from '@/lib/vocabulary-details';
+import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
 import {sourceSpecialtyWords} from '@/lib/specialty-vocabulary';
 import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -140,6 +142,7 @@ export function VocabSpecialtiesPage() {
 
     const added = await db.vocabulary.createMany(
       unsaved.map((w) => ({
+        ...vocabularyDetails(w),
         german: w.german,
         article: w.article || '',
         word_type: w.word_type || 'noun',
@@ -320,11 +323,11 @@ export function VocabSpecialtiesPage() {
 
                   <div>
                     <div className="flex items-baseline justify-between gap-2">
-                      <GenderText
+                      <WordDetailsTrigger word={word}><GenderText
                         article={word.article}
                         text={word.german}
                         className="font-display text-lg font-bold text-foreground leading-snug"
-                      />
+                      /></WordDetailsTrigger>
                       <SpeakButton text={word.german} />
                     </div>
                     <div className="font-heading text-xs text-muted-foreground mt-0.5">

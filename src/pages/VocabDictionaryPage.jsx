@@ -1,3 +1,5 @@
+import {vocabularyDetails} from '@/lib/vocabulary-details';
+import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
 import {ExternalDictionaryResults} from '@/components/vocabulary/ExternalDictionaryResults';
 import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -34,6 +36,7 @@ export function VocabDictionaryPage() {
   const handleSave = async (w) => {
     try {
     await db.vocabulary.create({
+      ...vocabularyDetails(w),
       german: w.german,
       article: w.article,
       word_type: w.word_type,
@@ -96,12 +99,12 @@ export function VocabDictionaryPage() {
             <div key={`${w.german}_${idx}`} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-muted/20 transition-colors">
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <GenderText
+                  <WordDetailsTrigger word={w}><GenderText
                     article={w.article}
                     german={w.german}
                     wordType={w.word_type}
                     className="text-lg font-bold"
-                  />
+                  /></WordDetailsTrigger>
                   <SpeakButton text={w.german} size="sm" />
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-muted/60 border border-border text-muted-foreground">
                     {w.level}

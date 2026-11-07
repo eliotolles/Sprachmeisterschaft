@@ -1,3 +1,4 @@
+import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
 import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
@@ -230,12 +231,12 @@ export function VocabularyPage() {
                 </div>
 
                 <div className="flex items-baseline justify-between gap-2">
-                  <GenderText
+                  <WordDetailsTrigger word={card}><GenderText
                     article={card.article}
                     german={card.german}
                     wordType={card.word_type}
                     className="text-lg md:text-xl font-bold"
-                  />
+                  /></WordDetailsTrigger>
                   <SpeakButton text={card.german} size="sm" />
                 </div>
 

@@ -26,11 +26,11 @@ export async function saveSharedWord(env,user,input){
  const saved=await query(env,"UPDATE ee_records SET data=?,updated_at=? WHERE id=? AND kind='vocab' AND data=? RETURNING id",[value,new Date().toISOString(),row.id,row.data]);
  return saved.rows.length?{userId:user.id,deckId:row.id,sourceId:input.sourceId,skipped:false,revision:await digest(value)}:{conflict:true};
 }
-const lexical=['german','vietnamese','article','word_type','english','example_de','example_vi','topic','level','synonyms','collocations'];
+const lexical=['german','vietnamese','article','word_type','english','example_de','example_vi','topic','level','synonyms','collocations','phrases','chunks','explanation_de','meaning_de','plural','ipa','notes'];
 function lexicalWord(input){
  if(!input||typeof input!=='object'||typeof input.german!=='string'||!input.german.trim()||typeof input.vietnamese!=='string'||!input.vietnamese.trim())throw coreError(400,'WORD_INPUT','Cần từ tiếng Đức và nghĩa Việt.');
  if(input.german.length>1000||input.vietnamese.length>2000||input.article!==undefined&&!['','der','die','das'].includes(input.article)||input.level!==undefined&&!['A1','A2','B1','B2','C1','C2',''].includes(input.level))throw coreError(400,'WORD_INPUT','Dữ liệu từ vựng không hợp lệ.');
- for(const field of lexical)if(input[field]!==undefined&&(typeof input[field]!=='string'||input[field].length>10000))throw coreError(400,'WORD_INPUT','Trường từ vựng không hợp lệ.');
+ for(const field of lexical)if(input[field]!==undefined&&(typeof input[field]!=='string'&&!Array.isArray(input[field])||JSON.stringify(input[field]).length>10000))throw coreError(400,'WORD_INPUT','Trường từ vựng không hợp lệ.');
  return {...Object.fromEntries(lexical.filter(k=>input[k]!==undefined).map(k=>[k,input[k]])),de:input.german.trim(),vi:input.vietnamese.trim(),type:input.word_type||'',example:input.example_de||'',exampleVi:input.example_vi||''};
 }
 export async function editVocabulary(env,user,input){

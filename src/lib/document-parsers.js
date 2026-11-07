@@ -53,7 +53,7 @@ export const VOCAB_14_COLUMNS = [
   { key: 'example_vi', label: 'Dịch ví dụ Việt', required: false, aliases: ['example_vi', 'dịch ví dụ', 'dich vi du', 'übersetzung', 'dịch nghĩa', 'nghĩa ví dụ'] },
   { key: 'explanation_de', label: 'Giải thích Đức', required: false, aliases: ['explanation_de', 'giải thích đức', 'giai thich', 'erklärung', 'erlaeuterung', 'định nghĩa'] },
   { key: 'synonyms', label: 'Từ đồng nghĩa', required: false, aliases: ['synonyms', 'từ đồng nghĩa', 'synonyme', 'đồng nghĩa'] },
-  { key: 'collocations', label: 'Cụm từ đi kèm', required: false, aliases: ['collocations', 'cụm từ', 'kollokationen', 'wendendung', 'feste wendungen'] },
+  { key: 'collocations', label: 'Cụm từ đi kèm', required: false, aliases: ['collocations', 'cụm từ', 'kollokationen', 'wendendung', 'feste wendungen', 'chunks', 'chunk', 'fixed_phrases', 'phrases', 'cụm từ cố định', 'cụm từ đi kèm'] },
   { key: 'plural', label: 'Số nhiều / Biến cách', required: false, aliases: ['plural', 'số nhiều', 'so nhieu', 'pluralform', 'chia động từ', 'conjugation'] },
   { key: 'notes', label: 'Ghi chú ngữ cảnh', required: false, aliases: ['notes', 'ghi chú', 'ghi chu', 'anmerkung', 'hinweis', 'bẫy từ'] },
 ];
