@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import {ExternalDictionaryResults} from '@/components/vocabulary/ExternalDictionaryResults';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { VocabTabs } from '@/components/vocabulary/VocabTabs';
 import { LevelFilter } from '@/components/ui/LevelFilter';
@@ -14,17 +15,19 @@ export function VocabDictionaryPage() {
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [myCards, setMyCards] = useState(() => db.vocabulary.findMany());
 
+  useEffect(()=>{const refresh=()=>setMyCards(db.vocabulary.findMany());window.addEventListener('sprach_db_change',refresh);window.addEventListener('elio:import-saved',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('elio:import-saved',refresh);};},[]);
+  const localWords=useMemo(()=>{const unique=new Map();for(const word of [...WORDS,...myCards]){if(word.german)unique.set(((word.article||'')+' '+word.german).toLowerCase().trim(),word);}return [...unique.values()];},[myCards]);
   const savedKeys = new Set(
     myCards.map((c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase())
   );
 
-  const results = WORDS.filter((w) => {
+  const results = localWords.filter((w) => {
     if (selectedLevel !== 'ALL' && w.level !== selectedLevel) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
       w.german.toLowerCase().includes(q) ||
-      w.vietnamese.toLowerCase().includes(q)
+      (w.vietnamese||'').toLowerCase().includes(q)
     );
   });
 
@@ -80,6 +83,8 @@ export function VocabDictionaryPage() {
       <div className="text-xs font-mono text-muted-foreground">
         Tìm thấy {results.length} mục từ phù hợp
       </div>
+
+      <ExternalDictionaryResults query={search}/>
 
       {/* Dictionary entries list */}
       <div className="surface divide-y divide-border">

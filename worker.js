@@ -1,3 +1,4 @@
+import { handleDictionaryLookup } from './src/lib/external-dictionary.js';
 import { handleParticipleLookup } from './src/lib/participle-dictionary.js';
 import { listStagedElioVocabulary } from './src/lib/turso-content-api.js';
 import { handleElioCore } from './src/core/elio/gateway.js';
@@ -10,6 +11,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === '/api/dictionary/lookup') return handleDictionaryLookup(request);
     if (url.pathname === '/api/dictionary/participle') return handleParticipleLookup(request);
 
     // Isolated migration API; disabled until explicit preview configuration.
