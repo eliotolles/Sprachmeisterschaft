@@ -139,6 +139,9 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
+    async enrichWord(data){requireUser();return request('/dictionary/enrich',{method:'POST',data,deadlineMs:125000});},
+    async practice(id){requireUser();return request('/practice?'+new URLSearchParams({id}),{deadlineMs:45000});},
+    async updatePractice(data){requireUser();return request('/practice',{method:'POST',data,deadlineMs:125000});},
     async editableRecord(id){requireUser();return request('/records/edit?'+new URLSearchParams({id}));},
     async editRecord(data){requireUser();return request('/records/edit',{method:'POST',data});},
     async deleteRecord(data){requireUser();return request('/records/delete',{method:'POST',data});},

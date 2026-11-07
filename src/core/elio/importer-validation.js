@@ -12,7 +12,8 @@ export function validateImport(kind,collection){
    if(item.cues!==undefined&&(!Array.isArray(item.cues)||item.cues.length>10000||!item.cues.every((c,i,a)=>text(c.text,1500)&&Number.isFinite(c.start)&&Number.isFinite(c.end)&&c.start>=0&&c.end>c.start&&(!i||c.start>=a[i-1].start))))throw invalid();
   }
   if(['writing','speaking','reading','situation'].includes(kind)&&!text(item.content,100000))throw invalid();
-  if(kind==='exam'&&(!['reading','listening','writing','speaking'].includes(item.skill)||!['Goethe','telc','ÖSD','ECL'].includes(item.exam)))throw invalid();
+  if(kind==='exam'&&collection.rawDocument===true){if(!text(item.content,500000)||item.rawDocument!==true)throw invalid();}
+  if(kind==='exam'&&collection.rawDocument!==true&&(!['reading','listening','writing','speaking'].includes(item.skill)||!['Goethe','telc','ÖSD','ECL'].includes(item.exam)))throw invalid();
  }
  if(new TextEncoder().encode(JSON.stringify(collection)).byteLength>1500000)throw coreError(413,'IMPORT_LIMIT','Chia tài liệu thành bộ nhỏ hơn.');
  return collection;

@@ -16,10 +16,14 @@ export function createImportBinding({client,isActive}){
   if(contentType==='vocabulary'){
    if(duplicateMode!=='skip')throw Error('Core chỉ tạo mới và bỏ qua trùng; không ghi đè hoặc điền vào bản ghi cũ.');kind='vocab';items=[];const ids=new Set();
    for(let index=0;index<rows.length;index++){const row=rows[index];if(row._valid===false||row._isDuplicate){skippedCount++;continue;}const de=String(row.german||row.de||'').trim(),vi=String(row.vietnamese||row.vi||'').trim();if(!de||!vi)throw Error('Từ vựng thiếu tiếng Đức hoặc nghĩa Việt.');let id=row._sourceId??row.source_id??row.id;if(id!==undefined&&(typeof id!=='string'||!id.trim()))throw Error('ID nguồn không hợp lệ; chưa tự đổi ID.');if(id===undefined)id='word-'+await digest(JSON.stringify([index,de,vi]));if(ids.has(id))throw Error('ID từ vựng nguồn bị trùng.');ids.add(id);const item=Object.fromEntries(Object.entries(row).filter(([k])=>!k.startsWith('_')));items.push({...item,id,de,vi,level:row.level||level});}
+  }else if(contentType==='listening'&&rows?.[0]?.content){
+   kind='listening';items=[{id:'document-'+await digest(rawText),title,level,content:rawText,rawDocument:true}];
   }else if(contentType==='listening'){
    kind='listening';const id=ListeningV2Core.id(youtubeUrl)||(/^[\w-]{11}$/.test(youtubeUrl)?youtubeUrl:null);if(!id)throw Error('URL YouTube không hợp lệ.');items=[{id,title,level,youtubeId:id,url:'https://www.youtube.com/watch?v='+id,cues:rows.map(r=>({start:r.start,end:r.end,text:r.de||r.text,vi:r.vi||''}))}];
   }else if(contentType==='grammar'){
    const collection=structuredClone(grammarContent?._collection);validateGrammarCollection(collection);check(owner);const result=await client.importCollection('grammar',collection,scope,organizerId);check(owner);if(typeof result.recordId!=='string'||(result.lessonCount??result.count)!==collection.items.length)throw Error('Server chưa xác nhận đủ bài ngữ pháp.');return {savedCount:result.lessonCount??result.count,skippedCount:0,updatedCount:0,recordId:result.recordId};
+  }else if(contentType==='exam'&&exams?.[0]?._rawDocument){
+   const content=String(rawText||'').trim();if(!content)throw Error('Đề chưa có văn bản gốc.');kind='exam';items=[{id:'document-'+await digest(content),title,level,skill:'reading',exam:'custom',content,rawDocument:true}];
   }else if(contentType==='exam'){
    if(!Array.isArray(exams)||exams.length!==1)throw Error('Nhập một bộ đề mỗi lần để tránh lưu dở nhiều bộ.');
    const preview=exams[0];if(!preview?._collection)throw Error('Thiếu cấu trúc đề nguồn.');const verified=reviewedExams(JSON.stringify(preview._collection))[0];kind='exam';items=verified._collection.items;
@@ -30,6 +34,6 @@ export function createImportBinding({client,isActive}){
    if(!content)throw Error('Chưa có văn bản gốc để nhập.');
    items=[{id:'document-'+await digest(content),title,level,content,...(situationContent?{situation:situationContent}:{})}];
   }else throw Error('Loại tài liệu chưa được hỗ trợ.');
-  if(!items.length)throw Error('Không có bản ghi mới hợp lệ để nhập.');const collection={id:'reviewed-import-'+await digest(JSON.stringify([kind,items])),name:title,items};check(owner);const result=await client.importCollection(kind,collection,scope,organizerId);check(owner);if(typeof result.recordId!=='string'||result.count!==items.length)throw Error('Server chưa xác nhận đầy đủ số bản ghi.');return {savedCount:result.count,skippedCount,updatedCount:0,recordId:result.recordId};
+  if(!items.length)throw Error('Không có bản ghi mới hợp lệ để nhập.');const collection={id:'reviewed-import-'+await digest(JSON.stringify([kind,items])),name:title,items,...(items[0]?.rawDocument?{rawDocument:true}:{})};check(owner);const result=await client.importCollection(kind,collection,scope,organizerId);check(owner);if(typeof result.recordId!=='string'||result.count!==items.length)throw Error('Server chưa xác nhận đầy đủ số bản ghi.');return {savedCount:result.count,skippedCount,updatedCount:0,recordId:result.recordId};
  }};
 }

@@ -2,7 +2,7 @@ import {activeCollectionId} from './collection-types.js';
 import {toast} from 'sonner';
 import {elioClient,elioAuthentication} from './elio-auth-runtime.js';
 import {createListeningBinding,listeningRouteIds} from '../core/elio/listening-binding.js';
-export const listeningCoreActive=()=>elioAuthentication()?.isActive()===true&&(elioAuthentication().configuration().uiListeningEnabled===true||!!activeCollectionId());
+export const listeningCoreActive=()=>elioAuthentication()?.isActive()===true;
 export const newListeningBinding=()=>createListeningBinding({client:elioClient,isActive:listeningCoreActive});
 let binding=null;
 export const elioListening=()=>binding;

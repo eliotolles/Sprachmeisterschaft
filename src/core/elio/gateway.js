@@ -1,3 +1,5 @@
+import {enrichDictionaryWord} from './dictionary-enrichment.js';
+import {readImportedPractice,updateImportedPractice} from './imported-practice.js';
 import {readEditableRecord,editRecord} from './record-editing.js';
 import {listCollections,createCollection,readCollection,moveCollectionRecord} from './collections.js';
 import {deleteRecord} from './record-deletion.js';
@@ -169,6 +171,9 @@ export async function handleElioCore(request, env) {
     if (path === '/api/core/listening/submit' && request.method === 'POST') {
       const result=await submitDictation(env,user,await body(request,15000));return json(result,result.conflict?409:200);
     }
+    if(path==='/api/core/dictionary/enrich'&&request.method==='POST'){await throttle(env,'dictionary-enrich:'+user.id,20,60000);return json(await enrichDictionaryWord(env,user,await body(request,8000)));}
+    if(path==='/api/core/practice'&&request.method==='GET')return json(await readImportedPractice(env,user,url.searchParams.get('id')));
+    if(path==='/api/core/practice'&&request.method==='POST'){const input=await body(request,180000);if(['extract','answer-draft','ai-grade'].includes(input.action))await throttle(env,'practice-ai:'+user.id,30,60000);return json(await updateImportedPractice(env,user,input));}
     if (path === '/api/core/exam/formats' && request.method === 'GET') return json(examFormats());
     if (path === '/api/core/exam/attempts' && request.method === 'GET') return json(await readExams(env,user));
     if (['/api/core/exam/start','/api/core/exam/answers','/api/core/exam/submit'].includes(path) && request.method === 'POST') {

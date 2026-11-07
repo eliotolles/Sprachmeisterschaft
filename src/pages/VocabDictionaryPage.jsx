@@ -14,7 +14,9 @@ import { toast } from 'sonner';
 
 export function VocabDictionaryPage() {
   const [search, setSearch] = useState('');
+  const [page,setPage]=useState(1);
   const [selectedLevel, setSelectedLevel] = useState('ALL');
+  useEffect(()=>setPage(1),[search,selectedLevel]);
   const [myCards, setMyCards] = useState(() => db.vocabulary.findMany());
 
   useEffect(()=>{const refresh=()=>setMyCards(db.vocabulary.findMany());window.addEventListener('sprach_db_change',refresh);window.addEventListener('elio:import-saved',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('elio:import-saved',refresh);};},[]);
@@ -33,6 +35,7 @@ export function VocabDictionaryPage() {
     );
   });
 
+  const pageCount=Math.max(1,Math.ceil(results.length/100)),currentPage=Math.min(page,pageCount);
   const handleSave = async (w) => {
     try {
     await db.vocabulary.create({
@@ -84,14 +87,16 @@ export function VocabDictionaryPage() {
       </div>
 
       <div className="text-xs font-mono text-muted-foreground">
-        Tìm thấy {results.length} mục từ phù hợp
+        Kho trong app: {results.length} mục từ phù hợp · 100 từ/trang · Trang {currentPage}/{pageCount}
       </div>
 
+      <p className="text-sm font-body text-muted-foreground">Kho ngoài: tra trực tiếp Wiktionary khi nhập từ ở trên, kể cả từ chưa có trong app. Số mục trong app không giới hạn phạm vi tra cứu kho ngoài.</p>
       <ExternalDictionaryResults query={search}/>
 
+      {pageCount>1&&<nav aria-label="Phân trang từ điển" className="flex flex-wrap items-center gap-3 font-body text-sm"><button disabled={currentPage===1} onClick={()=>setPage(currentPage-1)} className="tap border border-border px-3 py-2 disabled:opacity-50">Trước</button><label>Trang <select aria-label="Chọn trang từ điển" value={currentPage} onChange={event=>setPage(Number(event.target.value))} className="border border-border bg-card p-2">{Array.from({length:pageCount},(_,index)=><option key={index+1} value={index+1}>{index+1}</option>)}</select> / {pageCount}</label><button disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)} className="tap border border-border px-3 py-2 disabled:opacity-50">Sau</button></nav>}
       {/* Dictionary entries list */}
       <div className="surface divide-y divide-border">
-        {results.slice(0, 50).map((w, idx) => {
+        {results.slice((currentPage-1)*100,currentPage*100).map((w, idx) => {
           const key = `${(w.article || '').trim()} ${(w.german || '').trim()}`.toLowerCase();
           const isSaved = savedKeys.has(key);
 

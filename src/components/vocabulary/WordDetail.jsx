@@ -23,7 +23,13 @@ async function lookup(token) {
     const rows = await elioClient.vocabulary({ q: token, limit: 40 });
     word = rows.map(mapSharedElioCard).find(row => row.vietnamese && matches(row));
   }
-  if (!word) throw new Error('Chưa tìm thấy từ hoặc cụm này trong kho từ.');
+  if (!word) {
+    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:token}),{signal:AbortSignal.timeout(15000)});
+    if(response.ok){const external=await response.json();const vi=external.entries?.find(e=>e.language==='vi'),de=external.entries?.find(e=>e.language==='de');
+     if(vi||de)word={german:vi?.title||de.title,vietnamese:vi?.definitions.join('; ')||'',meaning_de:de?.definitions.join('; ')||'',ipa:vi?.ipa?.[0]||de?.ipa?.[0]||'',source:'external_dictionary',external_sources:external.entries.map(e=>({url:e.source,language:e.language})),level:'',topic:'Từ điển ngoài'};
+    }}catch{/* AI can still try the word if the external source is unavailable. */}
+  }
+  if (!word) word={german:token,vietnamese:'',source:'ai_lookup',level:'',topic:'Tra theo ngữ cảnh'};
   if (owner === db.auth.getUser()?.id) {
     if (cache.size >= 150) cache.delete(cache.keys().next().value);
     cache.set(key, word);
@@ -35,6 +41,7 @@ export function WordDetail({ target, onClose }) {
   const dialog = useRef(null);
   const [word, setWord] = useState(target.word || null);
   const [error, setError] = useState('');
+  const [enriching,setEnriching]=useState(false);
   const [retry, setRetry] = useState(0);
   const [decks, setDecks] = useState(null);
   const [deckId, setDeckId] = useState('');
@@ -67,8 +74,27 @@ export function WordDetail({ target, onClose }) {
     lookup(target.token).then(value => { if (current) setWord(value); }, failure => { if (current) setError(failure.message); });
     return () => { current = false; };
   }, [target, retry]);
+  const enriched=useRef(new Set());
+  useEffect(()=>{
+   if(!word||!db.auth.getUser()||!db.vocabulary.isCore?.())return;
+   const key=normalize(word.german);if(enriched.current.has(key))return;
+   const canonical={...word,...vocabularyDetails(word)};
+   const fields=['vietnamese','english','ipa','example_de','example_vi','synonyms','antonyms','collocations'].filter(field=>!canonical[field]||Array.isArray(canonical[field])&&!canonical[field].length);
+   if(!fields.length)return;enriched.current.add(key);let current=true;const account=db.auth.getUser()?.id;setEnriching(true);
+   (async()=>{
+    let externalFields={},externalSources=[];
+    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:lemma(word.german).replace(/^\(sich\)\s*/,'')}),{signal:AbortSignal.timeout(15000)});if(response.ok){const data=await response.json();const vi=data.entries?.find(e=>e.language==='vi'),de=data.entries?.find(e=>e.language==='de');if(fields.includes('ipa')&&(vi?.ipa?.[0]||de?.ipa?.[0]))externalFields.ipa=vi?.ipa?.[0]||de.ipa[0];if(fields.includes('vietnamese')&&vi?.definitions?.length)externalFields.vietnamese=vi.definitions.join('; ');externalSources=(data.entries||[]).map(e=>({url:e.source,language:e.language}));}}
+    catch{/* Keep local data and continue with explicitly labelled AI enrichment. */}
+    if(!current||account!==db.auth.getUser()?.id)return;
+    if(Object.keys(externalFields).length)setWord(previous=>({...previous,...externalFields,external_sources:[...(previous.external_sources||[]),...externalSources]}));
+    const missing=fields.filter(field=>!Object.hasOwn(externalFields,field));if(!missing.length)return;
+    const result=await elioClient.enrichWord({word:word.german,context:target.sentence?.slice(0,3000)||'',fields:missing});
+    if(current&&account===db.auth.getUser()?.id)setWord(previous=>({...previous,...Object.fromEntries(Object.entries(result.fields).filter(([field])=>missing.includes(field))),ai_fields:[...(previous.ai_fields||[]),...Object.keys(result.fields)],ai_warnings:result.warnings}));
+   })().catch(failure=>{if(current)setError('Dữ liệu gốc vẫn được giữ. AI chưa bổ sung được: '+failure.message);}).finally(()=>{if(current)setEnriching(false);});
+   return()=>{current=false;};
+  },[word?.german]);
   const owner = db.auth.getUser()?.id;
-  const canSave = db.vocabulary.isCore?.() ? word?.source === 'elio_shared' : Boolean(word);
+  const canSave = db.vocabulary.isCore?.() ? ['elio_shared','external_dictionary','ai_lookup'].includes(word?.source)&&!!word?.vietnamese : Boolean(word);
   const savedAlready = !db.vocabulary.isCore?.() && word && db.vocabulary.findMany().some(row => lemma(row.german) === lemma(word.german) && normalize(row.article) === normalize(word.article));
   async function chooseDeck() {
     setBusy(true); setError('');
@@ -84,7 +110,7 @@ export function WordDetail({ target, onClose }) {
     if (busy || saved || savedAlready) return;
     setBusy(true); setError('');
     try {
-      if (db.vocabulary.isCore?.()) {
+      if (db.vocabulary.isCore?.()&&word.source==='elio_shared') {
         const deck = await elioClient.vocabularyDeck(deckId);
         if (owner !== db.auth.getUser()?.id || !deck.canEdit || deck.shared) throw new Error('Bộ từ này không còn khả dụng.');
         const result = await elioClient.saveSharedWord({ sourceId: word.source_id, deckId, revision: deck.revision });
@@ -114,6 +140,7 @@ export function WordDetail({ target, onClose }) {
         <button type="button" onClick={onClose} aria-label="Đóng chi tiết từ" className="tap px-2 text-xl">×</button>
       </header>
       <div className="space-y-3 p-4">
+        {enriching&&<p role="status">Đang tra AI bổ sung các trường còn thiếu…</p>}
         {!word && !error && <p role="status">Đang tra từ…</p>}
         {word && <>
           {target.token && lemma(target.token) !== lemma(word.german) && <p lang="de">{target.token} → {word.german}</p>}
@@ -129,6 +156,8 @@ export function WordDetail({ target, onClose }) {
             {translation && <p className="text-sm text-muted-foreground">{translation}</p>}
             <SpeakButton text={sentence} size="sm" />
           </div>}
+          {word.external_sources&&<p className="text-sm">Nguồn ngoài: {word.external_sources.map(source=><a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="text-accent underline mr-2">Wiktionary {source.language} · CC BY-SA</a>)}</p>}
+          {word.ai_fields?.length>0&&<p className="text-sm text-muted-foreground">AI bổ sung (cần đối chiếu): {word.ai_fields.join(', ')}. Dữ liệu nguồn không bị ghi đè.</p>}
           <details open>
             <summary className="cursor-pointer font-medium">Xem chi tiết</summary>
             {word.english && <p>Tiếng Anh · {word.english}</p>}
@@ -141,7 +170,7 @@ export function WordDetail({ target, onClose }) {
           </details>
           {word.due_date && <p className="text-sm">Ôn tiếp ngày {word.due_date}{word.status ? ' · ' + word.status : ''}</p>}
           <div className="flex flex-wrap items-center gap-3">
-            {(saved || savedAlready) ? <span role="status">Đã lưu</span> : canSave && <button type="button" disabled={busy || Boolean(decks && !deckId)} onClick={db.vocabulary.isCore?.() && !decks ? chooseDeck : save} className="tap rounded-sm bg-accent px-3 py-2 text-accent-foreground">＋ Lưu vào Từ của tôi</button>}
+            {(saved || savedAlready) ? <span role="status">Đã lưu</span> : canSave && <button type="button" disabled={busy || Boolean(word.source==='elio_shared'&&decks && !deckId)} onClick={db.vocabulary.isCore?.() && word.source==='elio_shared' && !decks ? chooseDeck : save} className="tap rounded-sm bg-accent px-3 py-2 text-accent-foreground">＋ Lưu vào Từ của tôi</button>}
             {db.vocabulary.isCore?.() && word.id && <a href="#/review" className="text-accent underline">Mở ôn tập</a>}
           </div>
           {decks && !saved && (decks.length ? <label className="block text-sm">Bộ đích <select className="border border-border bg-card" value={deckId} onChange={e => setDeckId(e.target.value)}>{decks.map(deck => <option key={deck.id} value={deck.id}>{deck.title || deck.id}</option>)}</select></label> : <p>Chưa có bộ từ cá nhân để lưu.</p>)}
@@ -177,7 +206,7 @@ export const LookupText = React.memo(function LookupText({ text, translation, st
     setSelection({ token, range: [start, token.length], rect: range.getBoundingClientRect() });
   };
   return <>
-    <span lang="de" tabIndex={0} aria-label="Văn bản tiếng Đức, chọn từ để tra nghĩa" onKeyUp={event => { if (event.key === 'Enter') onSelect(event); }} onPointerUp={onSelect} onClick={event => {
+    <span data-lookup-root="true" lang="de" tabIndex={0} aria-label="Văn bản tiếng Đức, chọn từ để tra nghĩa" onKeyUp={event => { if (event.key === 'Enter') onSelect(event); }} onPointerUp={onSelect} onClick={event => {
       if (event.target.closest(excluded)) return;
       if (stopPropagation) event.stopPropagation();
       if (!window.getSelection()?.isCollapsed) return;

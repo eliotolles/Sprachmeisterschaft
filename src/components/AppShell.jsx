@@ -1,3 +1,4 @@
+import {ScreenWordLookup} from '@/components/vocabulary/ScreenWordLookup';
 import {CollectionToolbar} from '@/components/common/CollectionTools';
 import {toast} from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -432,6 +433,7 @@ export function AppShell({ children }) {
       <main className="flex-1 min-w-0 pb-20 md:pb-8 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-rise">
         <CollectionToolbar/>
         {children}
+        <ScreenWordLookup/>
       </main>
 
       {/* Mobile Bottom Navigation (5 quick items) */}

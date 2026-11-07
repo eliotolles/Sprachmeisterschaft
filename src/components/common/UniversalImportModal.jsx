@@ -1,3 +1,4 @@
+import {useRouter} from '@/lib/router';
 import {ImportCollectionTarget} from '@/components/common/CollectionTools';
 import {activeCollectionId} from '@/lib/collection-types';
 import {createPortal} from 'react-dom';
@@ -61,7 +62,13 @@ import {
   VOCAB_14_COLUMNS,
 } from '@/lib/document-parsers';
 
+async function extractCoreImportFile(file){
+ if(detectFileType(file)==='pdf'){const parsed=await parsePdfFile(file);const text=parsed.fullText||parsed.rawText||'';if(text.trim()&&!parsed.hasScannedPages)return {text,warnings:[]};}
+ return elioImport.extractFile(file);
+}
+
 export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, defaultCollectionId = null, onSuccess }) {
+ const {navigate}=useRouter();
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
   const [targetCollectionId,setTargetCollectionId]=useState(defaultCollectionId||activeCollectionId());
@@ -199,12 +206,12 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIssuesList([]);
 
     try {
-      if(['reading','writing','speaking'].includes(contentType)){
+      if(['reading','writing','speaking'].includes(contentType)||contentType==='listening'&&inputMethod==='file'&&selectedFile){
         let content=manualText;
         if(inputMethod==='file'&&selectedFile){
           const type=detectFileType(selectedFile);
           if(type==='docx')content=(await parseDocxFile(selectedFile)).rawText;
-          else if(type==='pdf')content=(await parsePdfFile(selectedFile)).fullText;
+          else if(type==='pdf'||type==='image')content=elioImport.isActive()?(await extractCoreImportFile(selectedFile)).text:(await parsePdfFile(selectedFile)).fullText;
           else content=await selectedFile.text();
         }
         if(!content?.trim())throw Error('Chưa có văn bản gốc để nhập.');
@@ -232,7 +239,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         setProcessProgress({ message: 'Phân tích bài giảng Markdown & bài tập...', percent: 50 });
         let ruleText = manualText;
         if (inputMethod === 'file' && selectedFile) {
-          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await elioImport.extractFile(selectedFile);ruleText=draft.text;
+          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await extractCoreImportFile(selectedFile);ruleText=draft.text;
           }else if (fileType === 'docx') {
             const docxRes = await parseDocxFile(selectedFile);
             ruleText = docxRes.rawText;
@@ -261,7 +268,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         let rawExamText = manualText;
         if (inputMethod === 'file') {
           if (!selectedFile) throw new Error('Vui lòng chọn tệp tin đề thi tải lên.');
-          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await elioImport.extractFile(selectedFile);rawExamText=draft.text;
+          if(elioImport.isActive()&&['pdf','image'].includes(fileType)){const draft=await extractCoreImportFile(selectedFile);rawExamText=draft.text;
           }else if (fileType === 'pdf') {
             setProcessProgress({ message: 'Đang trích xuất nội dung từ PDF đa đề thi...', percent: 45 });
             const pdfRes = await parsePdfFile(selectedFile, (p) => {
@@ -277,6 +284,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           }
         }
 
+        setManualText(rawExamText);
+        if(elioImport.isActive()&&!/^\s*[\[{]/.test(rawExamText)){assertCurrentDraft();setDetectedExams([]);setExamContent({title,level,_rawDocument:true});setIssuesList(['Văn bản đề được giữ nguyên. Sau khi lưu, mở phòng luyện để AI tách câu hỏi; có thể bổ sung PDF đáp án sau.']);setStep(2);setIsProcessing(false);return;}
         const multiRes = elioImport.isActive()?{success:true,exams:reviewedExams(rawExamText),issues:[]}:parseMultiExams(rawExamText, { level, provider: 'Goethe' });
         assertCurrentDraft();
         if (!multiRes.success || multiRes.exams.length === 0) {
@@ -314,7 +323,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         if (!selectedFile) throw new Error('Vui lòng chọn tệp tin cần tải lên.');
 
         if(elioImport.isActive()&&(fileType==='pdf'||fileType==='image')){
-          const draft=await elioImport.extractFile(selectedFile);const parsed=parseTxtVocab(draft.text);parsedVocab=parsed.items;issues=[...draft.warnings,...parsed.issues,'Bản nháp OCR: kiểm tra và sửa dữ liệu trước khi lưu.'];
+          const draft=await extractCoreImportFile(selectedFile);const parsed=parseTxtVocab(draft.text);parsedVocab=parsed.items;issues=[...draft.warnings,...parsed.issues,'Bản nháp OCR: kiểm tra và sửa dữ liệu trước khi lưu.'];
         }else if(elioImport.isActive()&&fileType==='json'){parsedVocab=importVocabularyJSON(await selectedFile.text());
         }else if (fileType === 'xlsx') {
           setProcessProgress({ message: `Đang đọc Sheet "${selectedSheet}"...`, percent: 40 });
@@ -450,7 +459,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
     try {
       if(targetCollectionId&&!elioImport.isActive())throw Error('Cần đăng nhập server để import vào bộ.');
-      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;
@@ -1348,7 +1357,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             )}
 
             {/* PREVIEW: LISTENING SUBTITLES */}
-            {contentType === 'listening' && (
+            {contentType === 'listening' && !extractedItems[0]?.content && (
               <div className="space-y-3">
                 <div className="p-3 bg-muted/30 border border-border rounded-sm text-xs font-mono flex items-center justify-between">
                   <span>YouTube ID: <strong>{extractYouTubeInfo(youtubeUrl).videoId}</strong></span>
@@ -1371,13 +1380,14 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
               </div>
             )}
 
+            {extractedItems[0]?.content&&<div className="border border-border rounded-sm p-4 space-y-2"><h3 className="font-heading font-semibold">Văn bản nguồn đã đọc</h3><pre className="whitespace-pre-wrap font-body text-sm max-h-96 overflow-auto">{extractedItems[0].content}</pre><p className="font-body text-sm">Sau khi lưu, hệ thống mở phòng luyện và tách câu hỏi. Đáp án có thể bổ sung sau.</p></div>}
             {/* PREVIEW: EXAM SIMULATION (MULTI-EXAM SUPPORT) */}
             {contentType === 'exam' && (detectedExams.length > 0 || examContent) && (
               <div className="space-y-4">
                 <div className="p-3 bg-accent/10 border border-accent/20 rounded-sm text-xs font-mono text-accent flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="font-bold flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4" />
-                    <span>Đã nhận diện: {detectedExams.length || 1} Bộ đề thi mô phỏng CEFR</span>
+                    <span>{examContent?._rawDocument?'Văn bản đề đã đọc · chờ tách câu hỏi sau khi lưu':<>Đã nhận diện: {detectedExams.length || 1} bộ đề có cấu trúc</>}</span>
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     Kho đề dùng chung: Tự xuất hiện tại Luyện viết, Luyện nói, Luyện đọc & Thi thử

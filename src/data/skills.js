@@ -1,4 +1,5 @@
 export const SKILLS = [
+ {id:"sprachbausteine",de:"telc Sprachbausteine",vi:"Sprachbausteine telc",icon:"FileText",tagline:"Luyện điền từ theo đề telc đã import.",desc:"Làm Teil 1/2, lưu bài làm và đối chiếu PDF đáp án hoặc nhận đề xuất AI."},
   {
     "id": "listening",
     "de": "Hören / Dictation",

@@ -27,3 +27,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Generated Python test caches
+__pycache__/
+*.pyc

@@ -81,7 +81,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   // Studio Mode State
-  const [activeTab, setActiveTab] = useState('video'); // 'video' | 'dictation' | 'shadowing' | 'quiz'
+  const [activeTab, setActiveTab] = useState(()=>{const mode=new URLSearchParams(window.location.hash.split('?')[1]||'').get('mode');return ['video','dictation','shadowing','quiz'].includes(mode)?mode:'video';}); // 'video' | 'dictation' | 'shadowing' | 'quiz'
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showGerman, setShowGerman] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(true);

@@ -281,7 +281,7 @@ export function ExamsListPage() {
                     4 Kỹ năng (Đọc, Nghe, Viết, Nói)
                   </span>
                   <Link
-                    to={`/exams/${exam.id}`}
+                    to={coreActive?`/practice/${exam.id}`:`/exams/${exam.id}`}
                     className="tap px-3.5 py-1.5 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 inline-flex items-center gap-1"
                   >
                     <span>Làm đề</span>

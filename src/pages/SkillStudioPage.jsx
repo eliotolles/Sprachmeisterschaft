@@ -1,3 +1,5 @@
+import {ImportedPracticePage} from '@/pages/ImportedPracticePage';
+import {elioAuthentication} from '@/lib/elio-auth-runtime';
 import {activeCollectionId} from '@/lib/collection-types';
 import {CollectionReadingStudio,CollectionSpeechStudio} from '@/components/skills/CollectionPractice';
 import React from 'react';
@@ -26,6 +28,7 @@ export function SkillStudioPage({ skillId }) {
     case 'speaking':
       return <ShadowingStudio onBack={handleBack} />;
     case 'reading':
+      if(elioAuthentication()?.isActive())return <ImportedPracticePage skill="reading"/>;
       return <ReadingStudio onBack={handleBack} />;
     case 'writing':
       return <WritingStudio onBack={handleBack} />;

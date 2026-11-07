@@ -22,3 +22,12 @@ test('text skill imports retain raw content and selected destination',async()=>{
   assert.equal(args[3],'folder');
  }
 });
+
+test('ungraded raw exam and listening documents retain source text for real practice extraction',async()=>{
+ const saved=[];const client={getUser:()=>({id:'u',role:'user'}),importCollection:async(kind,collection)=>{saved.push({kind,collection});return {recordId:'saved',count:collection.items.length};}};
+ const binding=createImportBinding({client,isActive:()=>true});
+ await binding.save({contentType:'exam',title:'PETRA',level:'B1',scope:'private',rows:[],exams:[{_rawDocument:true}],rawText:'Lesen Teil 1: Originaltext'});
+ assert.equal(saved[0].kind,'exam');assert.equal(saved[0].collection.rawDocument,true);assert.equal(saved[0].collection.items[0].content,'Lesen Teil 1: Originaltext');
+ await binding.save({contentType:'listening',title:'Hören',level:'B1',scope:'private',rows:[{content:'Original listening questions'}],rawText:'Original listening questions',youtubeUrl:'stale-url-ignored'});
+ assert.equal(saved[1].kind,'listening');assert.equal(saved[1].collection.items[0].content,'Original listening questions');assert.equal(saved[1].collection.items[0].cues,undefined);
+});

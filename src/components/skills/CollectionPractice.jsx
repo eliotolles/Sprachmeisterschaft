@@ -36,7 +36,7 @@ export function CollectionReadingStudio({collectionId}){
   {state.loading&&<p>Đang tải bài đọc…</p>}
   {state.error&&<p role="alert">{state.error}</p>}
   {!state.loading&&!state.error&&!readable.length&&<p>Chưa có bài đọc trong bộ. Import văn bản đọc hoặc đề thi có phần Lesen.</p>}
-  <div className="space-y-3">{readable.map(row=><button key={row.id} onClick={()=>row.kind==='exam'?navigate('/exams/'+encodeURIComponent(row.id)+'?collection='+collectionId):setSelected(row.id)} className={'surface w-full border border-border p-4 text-left font-heading '+(selected===row.id?'text-accent':'')}>{row.title} · {row.level} {row.kind==='exam'?'· Mở đề thi':''}</button>)}</div>
+  <div className="space-y-3">{readable.map(row=><button key={row.id} onClick={()=>navigate('/practice/'+encodeURIComponent(row.id))} className={'surface w-full border border-border p-4 text-left font-heading '+(selected===row.id?'text-accent':'')}>{row.title} · {row.level} {row.kind==='exam'?'· Mở đề thi':''}</button>)}</div>
   {data&&<article className="surface border border-border p-5 space-y-4">{(data.items||[data]).map((item,index)=><section key={item.id||index} className="space-y-3"><h2 className="font-heading text-xl">{item.title||record.title}</h2><div className="leading-relaxed whitespace-pre-wrap"><LookupText text={item.content||item.text||''}/></div><SpeakButton text={item.content||item.text||''}/></section>)}</article>}
  </div>;
 }

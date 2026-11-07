@@ -1,3 +1,4 @@
+import {ImportedPracticePage} from '@/pages/ImportedPracticePage';
 import {ExplorePage} from '@/pages/ExplorePage';
 import {CollectionsPage} from '@/pages/CollectionsPage';
 import React, { useEffect } from 'react';
@@ -90,6 +91,9 @@ export function App() {
 
   // Render routed view
   const renderView = () => {
+    if(currentPath==='/practice')return <ImportedPracticePage skill={new URLSearchParams(window.location.hash.split('?')[1]||'').get('skill')||null}/>;
+    if(currentPath==='/skills/sprachbausteine')return <ImportedPracticePage skill="sprachbausteine"/>;
+    if(currentPath.startsWith('/practice/'))return <ImportedPracticePage recordId={decodeURIComponent(currentPath.slice('/practice/'.length))}/>;
     if(currentPath==='/explore'||currentPath.startsWith('/explore/'))return <ExplorePage topic={currentPath.split('/')[2]||'sentence'}/>;
     if(currentPath.startsWith('/collections/view/'))return <CollectionsPage collectionId={decodeURIComponent(currentPath.slice('/collections/view/'.length))}/>;
     if(currentPath==='/collections'||currentPath.startsWith('/collections/'))return <CollectionsPage skill={currentPath.split('/')[2]||'all'}/>;

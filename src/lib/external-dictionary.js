@@ -18,8 +18,8 @@ export function parseDictionaryText(text,language){
   if(start<0)return {definitions:[],ipa:[]};
   section=text.slice(start).split(/\n==[^=]/)[0];
  }
- const definitions=(language==='vi'?[...section.matchAll(/^#(?![:*#])\s*(.+)$/gm)].map(m=>plainWiki(m[1])):[...section.matchAll(/\{\{Bedeutungen\}\}([\s\S]*?)(?=\n\{\{|$)/g)].flatMap(m=>[...m[1].matchAll(/^:\[([^\]]+)\]\s*(.+)$/gm)].map(n=>'['+n[1]+'] '+plainWiki(n[2])))).filter(v=>v&&!/[{}]/.test(v)).slice(0,12);
- const ipa=[...section.matchAll(language==='vi'?/\{\{IPA4\|de\|([^}|]+)/g:/\{\{Lautschrift\|([^}|]+)/g)].map(m=>m[1]).slice(0,4);
+ const definitions=(language==='vi'?[...section.matchAll(/^#(?![:*#])\s*(.+)$/gm)].map(m=>plainWiki(m[1])):[...section.matchAll(/\{\{Bedeutungen\}\}([\s\S]*?)(?=\n\{\{|$)/g)].flatMap(m=>[...m[1].matchAll(/^:\[([^\]]+)\]\s*(.+)$/gm)].map(n=>'['+n[1]+'] '+plainWiki(n[2])))).filter(v=>v&&!/[{}]/.test(v));
+ const ipa=[...section.matchAll(language==='vi'?/\{\{IPA4\|de\|([^}|]+)/g:/\{\{Lautschrift\|([^}|]+)/g)].map(m=>m[1]);
  return {definitions:[...new Set(definitions)],ipa:[...new Set(ipa)]};
 }
 export async function handleDictionaryLookup(request,fetcher=fetch){

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import {ImportedContentManager} from '@/components/common/ImportedContentManager';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
 import {elioImport} from '@/lib/elio-import-runtime';
 import {listeningCoreActive} from '@/lib/elio-listening-runtime';
@@ -30,6 +31,7 @@ import {
 
 export function ListeningOverviewPage({ initialTab = null }) {
   const { navigate } = useRouter();
+  const [mode,setMode]=useState('youtube'),[managing,setManaging]=useState(false);
   const [selectedLevel, setSelectedLevel] = useState('ALL');
   const [activeScopeTab, setActiveScopeTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -47,13 +49,14 @@ export function ListeningOverviewPage({ initialTab = null }) {
 
   useEffect(() => {
     const handleDbChange = () => {
-      setCollections(db.listening.getCollections({ level: selectedLevel }));
+      setCollections(db.listening.getCollections());
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, [selectedLevel]);
 
   const filteredCollections = collections.filter((c) => {
+    if(mode==='podcast'&&!/podcast|podcast|postcard/i.test([c.title,c.provider,c.description].join(' ')))return false;
     // 1. Level filter
     if (selectedLevel !== 'ALL' && c.level !== selectedLevel) return false;
 
@@ -66,6 +69,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
     }
   });
 
+  const allEpisodes=useMemo(()=>collections.flatMap(collection=>db.listening.getEpisodes(collection.id).map(episode=>({...episode,collection}))),[collections]);
+  const studioModes=[{id:'quiz',title:'Bài nghe & Quiz',description:'Nghe, hiểu và trả lời câu hỏi',icon:Headphones,count:allEpisodes.filter(e=>e.quiz?.length||e.questions?.length).length},{id:'youtube',title:'YouTube',description:'Dán link, học với phụ đề',icon:Youtube,count:allEpisodes.filter(e=>e.youtubeId).length},{id:'podcast',title:'Podcast',description:'Các tập nghe do bạn hoặc Admin thêm',icon:Headphones,count:allEpisodes.filter(e=>/podcast|postcard/i.test([e.collection.title,e.collection.provider].join(' '))).length},{id:'dictation',title:'Chép chính tả',description:'Nghe từng câu, gõ và đối chiếu',icon:Edit3,count:allEpisodes.filter(e=>e.subtitles?.length).length},{id:'shadowing',title:'Shadowing',description:'Nghe mẫu, ghi âm và nghe lại',icon:Video,count:allEpisodes.length}];
   const handleDeleteCollection = async (colId, colTitle) => {
     const ok = await showConfirmModal({
       title: 'Xóa bộ video',
@@ -150,6 +155,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
         }
       />
 
+      <section aria-label="Chế độ luyện nghe" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">{studioModes.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>item.id==='quiz'?navigate('/practice?skill=listening'):setMode(item.id)} className={'surface rounded-2xl border p-5 text-left min-h-44 flex flex-col gap-4 '+(mode===item.id?'border-accent':'border-border')}><Icon className="w-6 h-6 text-accent"/><div className="space-y-2"><h2 className="font-heading text-lg font-semibold">{item.title}</h2><p className="font-body text-sm text-muted-foreground leading-relaxed">{item.description} · {item.count} video</p></div></button>;})}</section>
       {/* Scope Navigation Tabs: Kho Chung vs Video Cá Nhân */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-2">
         <div className="flex items-center gap-2">
@@ -189,34 +195,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
         )}
       </div>
 
-      {/* Level Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <button
-          onClick={() => setSelectedLevel('ALL')}
-          className={`tap px-3 py-1.5 rounded-sm font-mono text-xs transition-all ${
-            selectedLevel === 'ALL'
-              ? 'bg-accent text-accent-foreground font-bold shadow-sm'
-              : 'border border-border bg-card hover:bg-muted text-muted-foreground'
-          }`}
-        >
-          Tất cả cấp độ
-        </button>
-        {LEVEL_IDS.map((lvl) => (
-          <button
-            key={lvl}
-            onClick={() => setSelectedLevel(lvl)}
-            className={`tap px-3 py-1.5 rounded-sm font-mono text-xs transition-all ${
-              selectedLevel === lvl
-                ? 'bg-accent text-accent-foreground font-bold shadow-sm ring-1 ring-accent'
-                : 'border border-border bg-card hover:bg-muted text-muted-foreground'
-            }`}
-          >
-            Trình độ {lvl}
-          </button>
-        ))}
-      </div>
-
-      {/* Empty State for Personal Videos */}
+      <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="font-heading text-2xl font-bold">Theo cấp độ</h2><button className="tap text-sm text-accent" onClick={()=>setSelectedLevel('ALL')}>Tất cả cấp độ</button></div><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">{LEVEL_IDS.map(level=><button key={level} onClick={()=>setSelectedLevel(level)} className={'surface rounded-2xl border p-5 text-left min-h-36 flex flex-col justify-between '+(selectedLevel===level?'border-accent':'border-border')}><ArrowRight className="w-6 h-6 text-accent -rotate-45"/><div><h3 className="font-heading text-lg font-semibold">{level}</h3><p className="text-sm font-body text-muted-foreground mt-1">{allEpisodes.filter(e=>(e.level||e.collection.level)===level).length} video</p></div></button>)}</div></section>
+      <h2 className="font-heading text-2xl font-bold">Bộ nghe của bạn</h2>
       {activeScopeTab === 'personal' && filteredCollections.length === 0 && (
         <div className="surface p-8 text-center border-2 border-dashed border-border rounded-sm space-y-4 max-w-xl mx-auto my-6">
           <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
@@ -241,21 +221,23 @@ export function ListeningOverviewPage({ initialTab = null }) {
       )}
 
       {/* Collections Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
         {filteredCollections.map((col) => {
           const episodes = db.listening.getEpisodes(col.id);
-          const firstEpisodeId = episodes[0]?.id || 'nw-a1-ep1';
+          const firstEpisodeId = episodes[0]?.id;
           const canManage = isAdmin || col.created_by === currentUser?.id;
 
           return (
             <div
               key={col.id}
-              className="surface overflow-hidden border border-border hover:border-accent/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col group"
+              className="surface rounded-2xl overflow-hidden border border-border hover:border-accent/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col group"
             >
               {/* Thumbnail with Level badge */}
               <div className="relative aspect-video bg-muted overflow-hidden">
                 <img
-                  src={col.thumbnail}
+                  src={col.thumbnail|| (episodes[0]?.youtubeId?'https://img.youtube.com/vi/'+episodes[0].youtubeId+'/hqdefault.jpg':undefined)}
+                  loading="lazy"
+                  onError={event=>{event.currentTarget.style.visibility='hidden';}}
                   alt={col.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
@@ -278,7 +260,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 </div>
 
                 <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-sm bg-black/75 text-white font-mono text-[11px]">
-                  {col.episodesCount || episodes.length} tập
+                  {episodes.length} tập
                 </div>
               </div>
 
@@ -292,7 +274,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
                     {canManage && (
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setEditingCollection({ ...col })}
+                          onClick={() => listeningCoreActive()?setManaging(true):setEditingCollection({ ...col })}
                           className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                           title="Sửa bộ video"
                         >
@@ -308,13 +290,13 @@ export function ListeningOverviewPage({ initialTab = null }) {
                       </div>
                     )}
                   </div>
-                  <h3 className="font-display text-xl font-bold text-foreground mb-1 group-hover:text-accent transition-colors leading-snug">
+                  <h3 className="font-heading text-lg font-semibold text-foreground mb-1 group-hover:text-accent transition-colors leading-snug">
                     {col.title}
                   </h3>
                   <p className="font-heading italic text-xs text-muted-foreground mb-3">
                     {col.deTitle}
                   </p>
-                  <p className="font-body text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                  <p className="font-body text-xs text-muted-foreground leading-relaxed">
                     {col.description}
                   </p>
                 </div>
@@ -325,7 +307,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
                   </span>
 
                   <button
-                    onClick={() => navigate(`/skills/listening/${col.id}/${firstEpisodeId}`)}
+                    disabled={!firstEpisodeId}
+                    onClick={() => firstEpisodeId&&navigate(`/skills/listening/${col.id}/${firstEpisodeId}?mode=${mode==='dictation'?'dictation':mode==='shadowing'?'shadowing':'video'}`)}
                     className="tap px-3 py-1.5 rounded-sm bg-accent/10 hover:bg-accent text-accent hover:text-accent-foreground font-mono text-xs font-semibold flex items-center gap-1.5 transition-colors"
                   >
                     <span>Vào luyện nghe</span>
@@ -338,6 +321,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
         })}
       </div>
 
+      {managing&&<ImportedContentManager onClose={()=>setManaging(false)}/>}
       {/* Universal Import Modal */}
       <UniversalImportModal
         isOpen={isImportOpen}
@@ -345,7 +329,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
         defaultType="listening"
         initialScope={activeScopeTab === 'personal' ? 'private' : 'public'}
         onSuccess={() => {
-          setCollections(db.listening.getCollections({ level: selectedLevel }));
+          setCollections(db.listening.getCollections());
         }}
       />
 
