@@ -3,9 +3,17 @@ const ROOTS=Object.freeze({gemini:'https://generativelanguage.googleapis.com/v1b
 export const PROVIDERS=Object.freeze(Object.keys(ROOTS));
 async function responseJSON(url,options={},deadlineAt=Date.now()+45000){
   let response,text;
-  try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(remaining)});if(response.ok)text=await response.text();}
+  try{const remaining=Math.min(45000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(remaining)});text=await response.text();}
   catch(error){if(['AbortError','TimeoutError'].includes(error.name)||deadlineAt<=Date.now())throw coreError(504,'AI_TIMEOUT','Provider AI hết thời gian chờ.');throw coreError(503,'AI_TRANSPORT','Không kết nối được provider AI.');}
-  if(!response.ok)throw Object.assign(coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.'),{providerStatus:response.status});
+  if(!response.ok){
+    // Interpret provider errors into fixed codes. Never return the original message or metadata.
+    let message='';
+    try{const data=JSON.parse(text);message=String(data.error?.message||'');}catch{}
+    const providerReason=response.status===404&&/no endpoints|no available provider/i.test(message)?'no_endpoint':
+      [400,403,404].includes(response.status)&&/data policy|privacy|data collection|data region/i.test(message)?'policy':
+      response.status===402?'payment':null;
+    throw Object.assign(coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.'),{providerStatus:response.status,providerReason});
+  }
   if(text.length>4000000)throw coreError(502,'AI_RESPONSE_SIZE','Provider trả dữ liệu quá lớn.');
   try{return JSON.parse(text);}catch{throw coreError(502,'AI_RESPONSE_JSON','Provider trả JSON không hợp lệ.');}
 }
@@ -42,7 +50,7 @@ export async function discoverModels(provider,key,{freeOnly=false,deadlineAt=Dat
 export async function providerGenerate(provider,key,model,input){
   if(!PROVIDERS.includes(provider)||!validModelId(model.id))throw coreError(400,'AI_MODEL','Model không hợp lệ.');
   const nativeJSON=input.jsonMode!==false&&input.nativeJSONMode!==false;
-  const maxTokens=Math.min(8000,model.outputLimit||8000),attachments=input.attachments||[];
+  const maxTokens=Math.min(input.maxOutputTokens||8000,model.outputLimit||8000),attachments=input.attachments||[];
   if(provider==='groq'&&model.inputModalities?.includes('audio'))throw coreError(422,'AI_MODEL_TASK','Model cần endpoint nhận dạng âm thanh.');
   let url=ROOTS[provider]+'/chat/completions',body;
   if(provider==='gemini'){
@@ -63,11 +71,21 @@ export async function providerGenerate(provider,key,model,input){
     if(provider==='openai'){delete body.temperature;delete body.max_tokens;body.max_completion_tokens=maxTokens;}
     if(provider==='openrouter'&&input.freeOnly)body.provider={max_price:{prompt:0,completion:0,request:0,image:0}};
   }
-  const data=await responseJSON(url,{method:'POST',headers:{...auth(provider,key),'Content-Type':'application/json'},body:JSON.stringify(body)},input.deadlineAt);
+  const generate=()=>responseJSON(url,{method:'POST',headers:{...auth(provider,key),'Content-Type':'application/json'},body:JSON.stringify(body)},input.deadlineAt);
+  let data,jsonModeUsed=!!(body.response_format||body.generationConfig?.responseMimeType);
+  try{data=await generate();}
+  catch(error){
+    const usedJSONMode=body.response_format||body.generationConfig?.responseMimeType;
+    if(!usedJSONMode||![400,422].includes(error.providerStatus)||input.continuation)throw error;
+    jsonModeUsed=false;
+    delete body.response_format;
+    if(body.generationConfig)delete body.generationConfig.responseMimeType;
+    data=await generate();
+  }
   const text=provider==='anthropic'?(data.content||[]).filter(x=>x.type==='text'&&typeof x.text==='string').map(x=>x.text).join(''):provider==='gemini'?(data.candidates?.[0]?.content?.parts||[]).filter(x=>!x.thought&&typeof x.text==='string').map(x=>x.text).join(''):data.choices?.[0]?.message?.content;
   const reason=provider==='anthropic'?data.stop_reason:provider==='gemini'?data.candidates?.[0]?.finishReason:data.choices?.[0]?.finish_reason;
   if(typeof text!=='string'||!text.trim())throw coreError(502,'AI_EMPTY','Model không trả nội dung.');
-  return {text,truncated:['MAX_TOKENS','length','max_tokens'].includes(reason),provider,model:model.id};
+  return {text,truncated:['MAX_TOKENS','length','max_tokens'].includes(reason),provider,model:model.id,jsonModeUsed};
 }
 export async function providerSpeech(provider,key,model,input){
  if(provider!=='gemini')throw coreError(422,'TTS_PROVIDER','Cấu hình giọng nói hiện cần provider hỗ trợ âm thanh tiếng Đức.');

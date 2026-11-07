@@ -112,10 +112,19 @@ export async function generateGermanSpeech(env,user,input){
 }
 function probeFailure(error) {
   const status=error.providerStatus||null;
+  const known={
+    no_endpoint:['no_endpoint','Provider chưa có endpoint phục vụ model theo cấu hình tài khoản hiện tại.'],
+    policy:['provider_policy','Chính sách dữ liệu hoặc vùng của tài khoản provider chặn yêu cầu.'],
+    payment:['payment_required','Provider yêu cầu số dư hoặc quyền thanh toán (402).'],
+  }[error.providerReason];
+  if(known)return {success:false,code:known[0],message:known[1],providerStatus:status};
   const [code,message]=({
     401:['authentication','Provider từ chối xác thực (401).'],
     403:['forbidden','Provider từ chối quyền truy cập (403).'],
     404:['model_not_found','Provider không tìm thấy model hoặc endpoint (404).'],
+    400:['invalid_request','Provider từ chối định dạng hoặc tham số yêu cầu (400).'],
+    422:['invalid_request','Provider không hỗ trợ nội dung hoặc tham số yêu cầu (422).'],
+    503:['unavailable','Provider hiện không khả dụng (503).'],
     429:['rate_limit','Provider giới hạn tần suất hoặc quota (429).'],
   })[status] || ({
     AI_TIMEOUT:['timeout','Provider hết thời gian chờ.'],
@@ -126,17 +135,17 @@ function probeFailure(error) {
   return {success:false,code,message,providerStatus:status};
 }
 const probeImage={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAX0lEQVR4nO3PQQ0AIBDAMMC/50MEj4ZkVbDtWX87OuBVA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA9oFUoUBf3Xr7AgAAAAASUVORK5CYII='};
-async function probeModel(env,row,key,vision,deadlineAt) {
+async function probeModel(env,row,key,vision,deadlineAt,catalog) {
   const policy=(await readAIRouting(env)).policies;
   const freeOnly=row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS;
-  const {items}=await discoverModels(row.provider,key,{deadlineAt});
+  const {items}=catalog||await discoverModels(row.provider,key,{deadlineAt});
   const model=items.find(item=>item.id===row.model);
   if(!model)return {success:false,code:'model_not_found',message:'Model không có trong danh mục của provider cho khóa này.'};
   if(freeOnly&&model.free===false)return {success:false,code:'paid_blocked',message:'Chính sách miễn phí chặn model này.'};
   if(vision&&model.inputModalities&&!model.inputModalities.includes('image'))return {success:false,code:'vision_unsupported',message:'Danh mục provider xác nhận model không nhận ảnh.'};
   const generate=jsonMode=>providerGenerate(row.provider,key,model,{
     systemPrompt:vision?'Inspect the attached image. Reply with a JSON object with one key "color", containing the dominant color in English.':'Connection test only. Return exactly JSON {"ok":true}.',
-    userPrompt:vision?'What color is the image?':'Confirm JSON generation.',jsonMode,freeOnly,deadlineAt,attachments:vision?[probeImage]:[],
+    userPrompt:vision?'What color is the image?':'Confirm JSON generation.',jsonMode,freeOnly,deadlineAt,maxOutputTokens:2048,attachments:vision?[probeImage]:[],
   });
   const passes=result=>{
     if(!result||result.truncated)return false;
@@ -150,9 +159,9 @@ async function probeModel(env,row,key,vision,deadlineAt) {
     try{result=await generate(true);}
     catch(error){if(![400,422].includes(error.providerStatus)&&error.code!=='AI_EMPTY')throw error;}
   }
-  const native=passes(result);
-  if(!native)result=await generate(false);
-  const json=native||passes(result);
+  const native=passes(result)&&result.jsonModeUsed===true;
+  if(!passes(result))result=await generate(false);
+  const json=passes(result);
   const code=json?(native?'operational':'prompt_json_only'):'text_only';
   const message=json?(native?'Provider trả JSON hợp lệ ở chế độ JSON.':'Provider trả JSON theo prompt, chưa xác nhận JSON mode.'):'Model sinh văn bản nhưng bài thử chưa trả JSON hợp lệ.';
   return {success:json,code,message,text:true,json,jsonMode:native&&json,vision:vision&&json,testedScope:json?(vision?'json-generation-with-image':'json-generation'):'text-generation'};
@@ -172,17 +181,29 @@ export async function testAIConfig(env,user,data){
   let result,backupTestResult;
   try{
     const key=row.id?await decryptSecret(env,row.secret).catch(error=>{throw error.code?error:coreError(503,'AI_SECRET_INVALID','Không đọc được khóa.');}):data.key.trim();
-    const run=(model,vision)=>probeModel(env,{...row,model},key,vision,started+30000)
-      .catch(probeFailure)
-      .then(probe=>({...probe,model,checkedAt:started,latencyMs:Date.now()-started}));
+    const deadlineAt=started+60000;
+    const catalog=await discoverModels(row.provider,key,{deadlineAt});
+    const run=async model=>{
+      let probe;
+      try{
+        probe=await probeModel(env,{...row,model},key,false,deadlineAt,catalog);
+        if(probe.success&&data.vision===true){
+          const visionProbe=await probeModel(env,{...row,model},key,true,deadlineAt,catalog).catch(probeFailure);
+          probe={...probe,vision:visionProbe.vision===true,visionStatus:visionProbe.code,
+            message:probe.message+' '+(visionProbe.vision?'Đọc ảnh thử thành công.':'Ảnh chưa đạt: '+visionProbe.message)};
+        }
+      }catch(error){probe=probeFailure(error);}
+      return {...probe,model,checkedAt:started,latencyMs:Date.now()-started};
+    };
     [result,backupTestResult]=await Promise.all([
-      run(row.model,data.vision===true),
-      row.backupModel&&row.backupModel!==row.model?run(row.backupModel,data.vision===true):null,
+      run(row.model),
+      row.backupModel&&row.backupModel!==row.model?run(row.backupModel):null,
     ]);
   }catch(error){result=probeFailure(error);}
   if(!result.checkedAt)result={...result,model:row.model,checkedAt:started,latencyMs:Date.now()-started};
   if(row.id){
-    await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=?',[JSON.stringify({...row,testResult:result,backupTestResult:backupTestResult||null}),PREFIX+row.id,JSON.stringify(row)]);
+    const saved=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[JSON.stringify({...row,testResult:result,backupTestResult:backupTestResult||null}),PREFIX+row.id,JSON.stringify(row)]);
+    if(!saved.rows.length)throw coreError(409,'AI_CONFIG_CHANGED','Cấu hình đổi trong lúc kiểm tra. Hãy kiểm tra lại cấu hình mới.');
   }
   return result;
 }

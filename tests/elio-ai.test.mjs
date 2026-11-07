@@ -135,3 +135,84 @@ test('automatic routing rotates equal priorities and a quota failure skips all m
   assert.deepEqual(calls.filter(([auth])=>auth==='Bearer key-one'),[['Bearer key-one','primary']]);
  }finally{db.close();globalThis.fetch=original;}
 });
+
+test('text JSON connection remains successful when configured vision fails, with one shared catalog',async()=>{
+ const {testAIConfig}=await import('../src/core/elio/ai.js');
+ const {db,env}=fixture(),original=globalThis.fetch;
+ let discoveries=0;
+ globalThis.fetch=async(url,options)=>{
+  if(String(url).endsWith('/models')){
+   discoveries++;
+   return Response.json({data:[{id:'fresh-model',architecture:{input_modalities:['text']}}]});
+  }
+  assert.equal(typeof JSON.parse(options.body).messages[1].content,'string');
+  return Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});
+ };
+ try{
+  const {config}=await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model',hasVision:true});
+  discoveries=0;
+  const result=await testAIConfig(env,owner,{id:config.id,vision:true});
+  assert.equal(result.success,true);
+  assert.equal(result.json,true);
+  assert.equal(result.vision,false);
+  assert.equal(result.visionStatus,'vision_unsupported');
+  assert.equal(discoveries,1);
+  assert.deepEqual((await listAIConfigs(env,owner)).items[0].testResult,result);
+ }finally{db.close();globalThis.fetch=original;}
+});
+
+test('OpenRouter missing routes and billing are not reported as invalid keys or JSON',async()=>{
+ const {testAIConfig}=await import('../src/core/elio/ai.js');
+ const {db,env}=fixture(),original=globalThis.fetch;
+ try{
+  for(const [status,message,code] of [
+   [404,'No endpoints found supporting your data policy. private-token','no_endpoint'],
+   [403,'Privacy and data collection settings block this request. private-token','provider_policy'],
+   [402,'Insufficient credits: private-token','payment_required'],
+  ]){
+   globalThis.fetch=async(url)=>String(url).endsWith('/models')
+    ?Response.json({data:[{id:'free-model',pricing:{prompt:'0',completion:'0'}}]})
+    :Response.json({error:{message}},{status});
+   const result=await testAIConfig(env,owner,{provider:'openrouter',key:'fixture-key',model:'free-model'});
+   assert.equal(result.code,code);
+   assert.equal(result.providerStatus,status);
+   assert(!JSON.stringify(result).includes('private-token'));
+   assert(!JSON.stringify(result).includes('fixture-key'));
+  }
+ }finally{db.close();globalThis.fetch=original;}
+});
+
+test('provider response-body timeouts are classified and slow-model budget exceeds fifteen seconds',async()=>{
+ const {testAIConfig}=await import('../src/core/elio/ai.js');
+ const {db,env}=fixture(),original=globalThis.fetch,originalTimeout=AbortSignal.timeout;
+ const budgets=[];
+ AbortSignal.timeout=ms=>(budgets.push(ms),originalTimeout(ms));
+ globalThis.fetch=async url=>String(url).endsWith('/models')?Response.json(catalog()):{
+  ok:true,
+  text:async()=>{throw new DOMException('fixture deadline','TimeoutError');},
+ };
+ try{
+  const result=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});
+  assert.equal(result.code,'timeout');
+  assert(budgets.some(ms=>ms>15000));
+ }finally{db.close();globalThis.fetch=original;AbortSignal.timeout=originalTimeout;}
+});
+
+test('normal generation retries rejected native JSON once and retains actual JSON output validation',async()=>{
+ const original=globalThis.fetch;
+ const bodies=[];
+ globalThis.fetch=async(url,options)=>{
+  const body=JSON.parse(options.body);bodies.push(body);
+  return bodies.length===1?Response.json({error:{message:'unsupported format'}},{status:400}):
+   Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});
+ };
+ try{
+  const result=await providerGenerate('openrouter','fixture-key',{id:'free-fixture',jsonMode:true},{systemPrompt:'Return JSON',userPrompt:'Confirm',jsonMode:true,freeOnly:true});
+  assert.equal(bodies.length,2);
+  assert.deepEqual(bodies[0].response_format,{type:'json_object'});
+  assert.equal(bodies[1].response_format,undefined);
+  assert.equal(bodies[1].provider.max_price.prompt,0);
+  assert.equal(result.jsonModeUsed,false);
+  assert.equal(JSON.parse(result.text).ok,true);
+ }finally{globalThis.fetch=original;}
+});
