@@ -620,6 +620,16 @@ export function AdminPage() {
     toast.success('Đã cập nhật vai trò người dùng!');
   };
 
+  const deleteContent = async (remove, refresh, message) => {
+    try{
+      const result=await remove();
+      if(result===false)throw new Error('Thao tác xóa chưa được xác nhận.');
+      refresh();
+      toast.success(message);
+      return true;
+    }catch(error){toast.error(error.message);return false;}
+  };
+
   const handleDeleteUser = async (id) => {
     const ok = await showConfirmModal({
       title: 'Xóa tài khoản người dùng',
@@ -628,9 +638,7 @@ export function AdminPage() {
       variant: 'danger',
     });
     if (ok) {
-      db.users.delete(id);
-      setUsersList(db.users.findAll());
-      toast.success('Đã xóa tài khoản!');
+      await deleteContent(()=>db.users.delete(id),()=>setUsersList(db.users.findAll()),'Đã xóa tài khoản!');
     }
   };
 
@@ -1518,9 +1526,7 @@ export function AdminPage() {
                         variant: 'danger',
                       });
                       if (ok) {
-                        db.universal.clearAll();
-                        setUniversalItems([]);
-                        toast.success('Đã dọn sạch toàn bộ gói import!');
+                        await deleteContent(()=>db.universal.clearAll(),()=>setUniversalItems(db.universal.findMany()),'Đã dọn sạch toàn bộ gói import!');
                       }
                     }}
                     className="tap px-2.5 py-1 text-xs font-mono text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-sm flex items-center gap-1"
@@ -1578,9 +1584,7 @@ export function AdminPage() {
                                   variant: 'danger',
                                 });
                                 if (ok) {
-                                  db.universal.delete(item.id);
-                                  setUniversalItems(db.universal.findMany());
-                                  toast.success('Đã xóa gói nội dung!');
+                                  await deleteContent(()=>db.universal.delete(item.id),()=>setUniversalItems(db.universal.findMany()),'Đã xóa gói nội dung!');
                                 }
                               }}
                               className="tap text-rose-600 hover:text-rose-700 p-1 hover:bg-rose-50 rounded-sm"
@@ -1666,9 +1670,7 @@ export function AdminPage() {
                                   variant: 'danger',
                                 });
                                 if (ok) {
-                                  db.exams.delete(ex.id);
-                                  setExamsList(getAllExams());
-                                  toast.success(`Đã xóa đề thi: ${ex.title}`);
+                                  await deleteContent(()=>db.exams.delete(ex.id),()=>setExamsList(getAllExams()),`Đã xóa đề thi: ${ex.title}`);
                                 }
                               }}
                               className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
@@ -1751,9 +1753,7 @@ export function AdminPage() {
                                   variant: 'danger',
                                 });
                                 if (ok) {
-                                  db.grammar.delete(g.id);
-                                  setGrammarDeletedIds(db.grammar.getDeletedIds());
-                                  toast.success(`Đã xóa chủ điểm: ${g.title_vi}`);
+                                  await deleteContent(()=>db.grammar.delete(g.id),()=>setGrammarDeletedIds(db.grammar.getDeletedIds()),`Đã xóa chủ điểm: ${g.title_vi}`);
                                 }
                               }}
                               className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
@@ -1839,9 +1839,7 @@ export function AdminPage() {
                                     variant: 'danger',
                                   });
                                   if (ok) {
-                                    db.listening.deleteCollection(col.id);
-                                    setListeningCols(db.listening.getCollections());
-                                    toast.success(`Đã xóa bộ video: ${col.title}`);
+                                    await deleteContent(()=>db.listening.deleteCollection(col.id),()=>setListeningCols(db.listening.getCollections()),`Đã xóa bộ video: ${col.title}`);
                                   }
                                 }}
                                 className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
@@ -1923,9 +1921,7 @@ export function AdminPage() {
                                   variant: 'danger',
                                 });
                                 if (ok) {
-                                  db.situations.delete(s.id);
-                                  setSituationDeletedIds(db.situations.getDeletedIds());
-                                  toast.success(`Đã xóa tình huống: ${s.title_vi}`);
+                                  await deleteContent(()=>db.situations.delete(s.id),()=>setSituationDeletedIds(db.situations.getDeletedIds()),`Đã xóa tình huống: ${s.title_vi}`);
                                 }
                               }}
                               className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
@@ -1960,9 +1956,7 @@ export function AdminPage() {
                         variant: 'danger',
                       });
                       if (ok) {
-                        db.vocabulary.clearAll();
-                        setVocabCards([]);
-                        toast.success('Đã xóa toàn bộ thẻ từ vựng!');
+                        await deleteContent(()=>db.vocabulary.clearAll(),()=>setVocabCards(db.vocabulary.findMany()),'Đã xóa toàn bộ thẻ từ vựng!');
                       }
                     }}
                     className="tap px-2.5 py-1 text-xs font-mono text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-sm flex items-center gap-1"
@@ -1994,10 +1988,8 @@ export function AdminPage() {
                           <td className="p-3 text-muted-foreground">{c.topic || 'Chung'}</td>
                           <td className="p-3 text-right">
                             <button
-                              onClick={() => {
-                                db.vocabulary.delete(c.id);
-                                setVocabCards(db.vocabulary.findMany());
-                                toast.success(`Đã xóa từ: ${c.german}`);
+                              onClick={async () => {
+                                await deleteContent(()=>db.vocabulary.delete(c.id),()=>setVocabCards(db.vocabulary.findMany()),`Đã xóa từ: ${c.german}`);
                               }}
                               className="tap p-1 hover:bg-rose-50 text-muted-foreground hover:text-rose-600 rounded"
                               title="Xóa từ này"

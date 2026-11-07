@@ -1,3 +1,4 @@
+import {deleteRecord} from './record-deletion.js';
 import {getAIRouting,updateAIRouting} from './ai-routing.js';
 import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
 import {readVocabularyDeck,saveSharedWord,editVocabulary} from './personal-vocabulary.js';
@@ -237,6 +238,7 @@ export async function handleElioCore(request, env) {
       if (result.conflict) return json({ code: 'VERSION_CONFLICT', error: 'Có tiến độ mới hơn; lần ôn chưa được ghi lại.', version: result.version }, 409);
       return json(result);
     }
+    if(path==='/api/core/records/delete'&&request.method==='POST')return json(await deleteRecord(env,user,await body(request,1000)));
     if (path === '/api/core/records' && request.method === 'GET') {
       const kind = url.searchParams.get('kind');
       if (!['grammar', 'vocab', 'writing', 'speaking', 'listening', 'exam'].includes(kind)) throw coreError(400, 'RECORD_KIND', 'Loại tài liệu không hợp lệ.');

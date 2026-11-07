@@ -47,7 +47,6 @@ export function ExamsListPage() {
   useEffect(()=>{if(!coreActive)return;let epoch=0,cancelled=false;const load=async()=>{const current=++epoch;core.reset();setAllExamsList([]);setExamResults([]);try{const [exams,history]=await Promise.all([core.catalog(),core.history()]);if(!cancelled&&current===epoch){setAllExamsList(exams);setExamResults(history.attempts.filter(a=>a.status==='submitted'&&Number.isFinite(a.percent)&&Number.isFinite(a.submittedAt)).sort((a,b)=>b.submittedAt-a.submittedAt).map(a=>({id:a.id,exam_id:encodeURIComponent(a.recordId),total:a.percent,passed:false,officialScore:false})));}}catch(error){if(!cancelled)toast.error(error.message);}};load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{cancelled=true;core.reset();window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};},[coreActive]);
 
   const handleDeleteExam = async (examId, examTitle) => {
-    if(coreActive)return toast.error('Xóa đề chưa được phép trong core mới; dữ liệu được giữ nguyên.');
     const ok = await showConfirmModal({
       title: 'Xóa đề thi',
       message: `Bạn có chắc chắn muốn xóa đề thi "${examTitle}" không?`,
@@ -55,9 +54,15 @@ export function ExamsListPage() {
       variant: 'danger',
     });
     if (ok) {
-      db.exams.delete(examId);
-      setAllExamsList(getAllExams());
-      toast.success(`Đã xóa đề thi: "${examTitle}"!`);
+      try{
+        if(coreActive){
+          const exam=allExamsList.find(item=>item.id===examId);
+          if(!exam)throw Error('Không tìm thấy đề thi đang chọn.');
+          await core.deleteExam(exam);
+          setAllExamsList(await core.catalog());
+        }else{await db.exams.delete(examId);setAllExamsList(getAllExams());}
+        toast.success(`Đã xóa đề thi: "${examTitle}"!`);
+      }catch(error){toast.error(error.message);}
     }
   };
 

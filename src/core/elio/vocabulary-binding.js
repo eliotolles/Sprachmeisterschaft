@@ -2,7 +2,7 @@ import {mapSharedElioCard} from '../../lib/shared-vocabulary.js';
 import {scheduleReview,toSprachReview} from './srs.js';
 const REVIEW='sprach_vocabulary_reviews',ratings=['again','hard','good','easy'];
 export function createVocabularyBinding({client,legacy,isActive,notify=()=>{}}){
- let owner=null,epoch=0,cards=[],loaded=false,pending=null,warnings=[];
+ let owner=null,epoch=0,cards=[],loaded=false,pending=null,warnings=[],mutations=Promise.resolve();
  const error=(code,message)=>Object.assign(new Error(message),{code});
  const identity=()=>client.getUser()?.id||null;
  const scope=()=>{if(owner!==identity()){owner=identity();epoch++;cards=[];warnings=[];loaded=false;pending=null;}};
@@ -27,7 +27,45 @@ export function createVocabularyBinding({client,legacy,isActive,notify=()=>{}}){
  }
  async function createWords(words){scope();const captured=owner;await hydrate();if(captured!==identity())throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');const result=await client.editVocabulary({action:'create',words:structuredClone(words)});if(captured!==identity()||result.userId!==captured)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');if(!Array.isArray(result.added))throw error('INVALID_RESPONSE','Server chưa xác nhận từ mới.');loaded=false;await hydrate();return cards.filter(c=>c.coreDeckId===result.deckId&&result.added.includes(c.coreSourceId)).map(c=>({...c}));}
  async function editWord(action,id,updates){scope();const card=cards.find(c=>c.id===id);if(!card?.coreDeckId)throw error('PRIVATE_WORD_REQUIRED','Chỉ sửa/xóa từ trong bộ riêng; giữ nguyên nguồn chung.');const captured=owner,deck=await client.vocabularyDeck(card.coreDeckId);if(deck.canEdit===false)throw error('LEGACY_DECK_READ_ONLY','Giữ nguyên bộ nguồn cũ; hãy lưu bản sao vào bộ riêng để chỉnh sửa.');if(captured!==identity())throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');await client.editVocabulary({action,deckId:card.coreDeckId,wordId:card.coreSourceId,revision:deck.revision,...(updates?{word:{...card,...updates}}:{})});if(captured!==identity())throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');loaded=false;await hydrate();return true;}
- const api={create:word=>!isActive()?legacy.create(word):createWords([word]).then(rows=>rows[0]||null),createMany:words=>!isActive()?legacy.createMany(words):createWords(words),delete:id=>!isActive()?legacy.delete(id):editWord('delete',id),update:(id,updates)=>!isActive()?legacy.update(id,updates):editWord('update',id,updates),findMany:list,findById:id=>isActive()?list().find(c=>c.id===id)||null:legacy.findById(id),
+ async function deleteCards(ids,filter={}){
+  scope();const captured=owner,current=epoch;
+  const selectedIds=ids?[...new Set(ids)]:null;
+  const task=mutations.catch(()=>{}).then(async()=>{
+   if(captured!==identity()||current!==epoch)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+   await hydrate();
+   const selected=selectedIds?selectedIds.map(id=>cards.find(card=>card.id===id)).filter(Boolean):list(filter);
+   if(selected.some(card=>!card.coreSourceId))throw error('SOURCE_ID_MISSING','Từ thiếu ID nguồn; chưa xóa.');
+   if(selected.some(card=>!card.coreDeckId)&&!['admin','super_admin'].includes(client.getUser()?.role))throw error('ADMIN_REQUIRED','Chỉ Admin được xóa từ nguồn chung.');
+   const groups=new Map();
+   for(const card of selected){const key=card.coreDeckId||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(card.coreSourceId);}
+   let completed=0;
+   try{
+    for(const [deckId,sourceIds] of groups){
+     if(captured!==identity()||current!==epoch)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+     const wordIds=[...new Set(sourceIds)];
+     const deck=deckId?await client.vocabularyDeck(deckId):null;
+     if(captured!==identity()||current!==epoch)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+     const result=await client.editVocabulary(deckId?{action:'delete',deckId,wordIds,revision:deck.revision}:{action:'deleteShared',wordIds});
+     if(result.userId!==captured||captured!==identity()||current!==epoch)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+     if(!Array.isArray(result.deleted)||deckId&&result.deckId!==deckId)throw error('DELETE_NOT_CONFIRMED','Máy chủ chưa xác nhận đúng dữ liệu đã xóa.');
+     completed++;
+    }
+   }catch(failure){
+    if(completed&&failure.code!=='ACCOUNT_CHANGED')failure.message='Một phần đã được xóa. '+failure.message;
+    throw failure;
+   }finally{
+    if(captured===identity()&&current===epoch){loaded=false;await hydrate();}
+   }
+   if(captured!==identity()||current!==epoch)throw error('ACCOUNT_CHANGED','Tài khoản đã thay đổi.');
+   if(selected.some(card=>cards.some(remaining=>remaining.id===card.id)))throw error('DELETE_NOT_CONFIRMED','Từ vẫn còn trên máy chủ; chưa xác nhận xóa thành công.');
+   return true;
+  });
+  mutations=task;return task;
+ }
+ const api={create:word=>!isActive()?legacy.create(word):createWords([word]).then(rows=>rows[0]||null),createMany:words=>!isActive()?legacy.createMany(words):createWords(words),delete:id=>!isActive()?legacy.delete(id):deleteCards([id]),update:(id,updates)=>!isActive()?legacy.update(id,updates):editWord('update',id,updates),findMany:list,findById:id=>isActive()?list().find(c=>c.id===id)||null:legacy.findById(id),
+  clearAll:()=>!isActive()?legacy.clearAll():deleteCards(null),
+  deleteByTopic:topic=>!isActive()?legacy.deleteByTopic(topic):deleteCards(null,{topic}),
+  deleteByLevel:level=>!isActive()?legacy.deleteByLevel(level):deleteCards(null,{level}),
   isCore:()=>isActive(),warnings:()=>warnings.map(w=>({...w})),
   previewReview:(card,grade)=>toSprachReview(scheduleReview({ease:card.ease_factor??2.5,repetitions:card.repetitions??0,intervalDays:card.interval_days??0,lapses:card.lapses??0},ratings[grade])),
   async review(id,grade){scope();if(!isActive())throw error('CORE_DISABLED','Core từ vựng chưa bật.');if(!Number.isInteger(grade)||grade<0||grade>3)throw error('REVIEW_INPUT','Mức ôn không hợp lệ.');const card=cards.find(c=>c.id===id);if(!card)throw error('WORD_NOT_FOUND','Không tìm thấy thẻ đang ôn.');if(!card.coreSourceId)throw error('SOURCE_ID_MISSING','Từ cũ chưa có ID nguồn; chưa ghi lịch ôn hoặc tự tạo ID.');const captured=owner,current=epoch;

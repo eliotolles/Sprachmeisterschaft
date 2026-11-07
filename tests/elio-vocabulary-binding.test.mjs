@@ -12,3 +12,17 @@ test('late hydration cannot expose previous account cards and disabled binding r
  let id='alice',resolve;const client={getUser:()=>({id}),vocabulary:()=>new Promise(r=>resolve=r),records:async()=>[],loadState:async()=>({})};const legacy={findMany:()=>[{id:'legacy'}],findById:()=>({id:'legacy'}),update:()=>true};const binding=createVocabularyBinding({client,legacy,isActive:()=>true});const pending=binding.hydrate();id='bob';assert.deepEqual(binding.api.findMany(),[]);resolve([row]);await assert.rejects(pending,e=>e.code==='ACCOUNT_CHANGED');assert.deepEqual(binding.api.findMany(),[]);
  const disabled=createVocabularyBinding({client,legacy,isActive:()=>false});assert.equal(disabled.api.findMany()[0].id,'legacy');assert.equal(disabled.api.update('legacy',{}),true);
 });
+test('deleting a shared word never reports success when the server keeps returning it',async()=>{
+ const client={
+  getUser:()=>({id:'owner',role:'admin'}),
+  vocabulary:async()=>[row],
+  records:async()=>[],
+  loadState:async()=>({}),
+  editVocabulary:async()=>({userId:'owner',deleted:[]}),
+ };
+ const binding=createVocabularyBinding({client,legacy:{},isActive:()=>true});
+ await binding.hydrate();
+ const card=binding.api.findMany()[0];
+ await assert.rejects(binding.api.delete(card.id),error=>error.code==='DELETE_NOT_CONFIRMED');
+ assert.equal(binding.api.findMany().length,1);
+});

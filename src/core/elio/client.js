@@ -137,6 +137,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
+    async deleteRecord(data){requireUser();return request('/records/delete',{method:'POST',data});},
     async records(kind,{limit=200,offset=0}={}) {
       requireUser(); return (await request('/records?'+new URLSearchParams({kind,limit:String(limit),offset:String(offset)}))).items;
     },

@@ -67,7 +67,6 @@ export function ListeningOverviewPage({ initialTab = null }) {
   });
 
   const handleDeleteCollection = async (colId, colTitle) => {
-    if(listeningCoreActive())return toast.error('Thao tác này chưa nối server; dữ liệu hiện tại được giữ nguyên.');
     const ok = await showConfirmModal({
       title: 'Xóa bộ video',
       message: `Bạn có chắc chắn muốn xóa bộ video "${colTitle}" cùng toàn bộ các tập con không?`,
@@ -75,8 +74,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
       variant: 'danger',
     });
     if (ok) {
-      db.listening.deleteCollection(colId);
-      toast.success(`Đã xóa bộ video: "${colTitle}"`);
+      try{await db.listening.deleteCollection(colId);toast.success(`Đã xóa bộ video: "${colTitle}"`);}catch(error){toast.error(error.message);}
     }
   };
 

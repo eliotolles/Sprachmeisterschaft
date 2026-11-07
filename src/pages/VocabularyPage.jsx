@@ -129,8 +129,10 @@ export function VocabularyPage() {
                     variant: 'danger',
                   });
                   if (ok) {
-                    db.vocabulary.clearAll();
-                    toast.success('Đã xóa toàn bộ bộ thẻ từ vựng!');
+                    try{
+                      await db.vocabulary.clearAll();
+                      toast.success('Đã xóa toàn bộ bộ thẻ từ vựng!');
+                    }catch(error){toast.error(error.message);}
                   }
                 }}
                 className="tap px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 border border-rose-300 dark:border-rose-900 text-xs font-mono font-medium rounded-sm shadow-sm inline-flex items-center gap-1.5"

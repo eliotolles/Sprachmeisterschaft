@@ -384,10 +384,11 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       variant: 'danger',
     });
     if (ok) {
-      if(coreActive)return toast.error('Xóa video chưa được phép; dữ liệu được giữ nguyên.');
-      db.listening.deleteEpisode(currentEpisode.id);
-      toast.success('Đã xóa video thành công!');
-      navigate('/skills/listening');
+      try{
+        await db.listening.deleteEpisode(currentEpisode.id);
+        toast.success('Đã xóa video thành công!');
+        navigate('/skills/listening');
+      }catch(error){toast.error(error.message);}
     }
   };
 
