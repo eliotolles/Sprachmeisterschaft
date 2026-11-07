@@ -1,7 +1,6 @@
-Warning: truncated output (original token count: 33298)
-Total output lines: 2641
+Warning: truncated output (original token count: 33283)
+Total output lines: 2643
 
-import {previewModelSuggestions} from '@/lib/model-previews.js';
 import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
@@ -149,7 +148,7 @@ export function AdminPage() {
   });
   const [smartRecs, setSmartRecs] = useState(() => {
     const cached = getCachedCatalog('gemini');
-    return cached?.models ? getSmartRecommendations(cached.models) : elioAIAdmin()?.isActive()?previewModelSuggestions('gemini'):[];
+    return cached?.models ? getSmartRecommendations(cached.models) : [];
   });
   const [discoveryMeta, setDiscoveryMeta] = useState(() => {
     const cached = getCachedCatalog('gemini');
@@ -238,16 +237,17 @@ export function AdminPage() {
       currentModels = cached.models;
     } else {
       setDiscoveredModels([]);
-      setSmartRecs(elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):[]);
+      setSmartRecs([]);
       setDiscoveryMeta(null);
-      currentModels = elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):FREE_AI_MODELS.filter((m) => m.provider === providerType);
+      currentModels = elioAIAdmin()?.isActive()?[]:FREE_AI_MODELS.filter((m) => m.provider === providerType);
       if(elioAIAdmin()?.isActive())setSelectedModel('');
     }
 
     // Auto-select the top newest model for this provider if current model doesn't belong to it
     const exists = currentModels.some((m) => m.id === selectedModel);
     if (!exists && currentModels.length > 0) {
-      const topModel = currentModels[0];
+      const topModel = elioAIAdmin()?.isActive()?currentModels.find(m=>m.pricing?.isFree):currentModels[0];
+      if(!topModel){setSelectedModel('');return;}
       setSelectedModel(topModel.id);
       setHasVision(Boolean(topModel.capabilities?.vision || topModel.hasVision));
     }
@@ -262,7 +262,7 @@ export function AdminPage() {
     if (cached?.models?.length > 0) {
       return cached.models;
     }
-    if(elioAIAdmin()?.isActive())return previewModelSuggestions(providerType);
+    if(elioAIAdmin()?.isActive())return [];
     // Safe initial seed from catalog
     return FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
       id: m.id,
@@ -315,11 +315,13 @@ export function AdminPage() {
         source: res.source,
       });
 
-      if (res.recommendations?.[0]) {
-        setSelectedModel(res.recommendations[0].id);
-        if(!elioAIAdmin()?.isActive()||res.recommendations[0].capabilities?.vision!==undefined)setHasVision(Boolean(res.recommendations[0].capabilities?.vision));
-        if (res.recommendations[1]) {
-          setBackupModel(res.recommendations[1].id);
+      const eligible = elioAIAdmin()?.isActive()?res.recommendations?.filter(m=>m.pricing?.isFree):res.recommendations;
+      setBackupModel('');
+      if (eligible?.[0]) {
+        setSelectedModel(eligible[0].id);
+        if(!elioAIAdmin()?.isActive()||eligible[0].capabilities?.vision!==undefined)setHasVision(Boolean(eligible[0].capabilities?.vision));
+        if (eligible[1]) {
+          setBackupModel(eligible[1].id);
         }
       }
 
@@ -1089,7 +1091,370 @@ export function AdminPage() {
               {/* Priority & Vision & Actions */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
                 <div className="sm:col-span-4">
-                  <label className="block text-[11px] font-mon…8298 tokens truncated…óa đề thi',
+                  <label className="block text-[11px] font-mono text-foreground mb-1">
+                    Mức ưu tiên gọi (1 = cao nhất)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
+                  />
+                </div>
+
+                <div className="sm:col-span-8 flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-foreground pb-2">
+                    <input
+                      type="checkbox"
+                      checked={hasVision}
+                      onChange={(e) => setHasVision(e.target.checked)}
+                      className="rounded-sm border-border text-accent focus:ring-accent"
+                    />
+                    <span>Hỗ trợ đọc ảnh (Multimodal Vision: Gemini / Claude / GPT-4o / Groq Vision / OpenRouter)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-border/80">
+                <button
+                  type="button"
+                  disabled={testingAi || (!apiKey.trim() && providerType !== 'custom')}
+                  onClick={handleTestDraftConfig}
+                  className="tap px-3.5 py-2 rounded-sm border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>{testingAi ? 'Đang kiểm tra...' : 'Kiểm tra kết nối (Test Key)'}</span>
+                </button>
+
+                <button
+                  type="submit"
+                  className="tap px-5 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold shadow-sm flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Thêm API AI</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Configured AI List */}
+            <div className="space-y-3 pt-2">
+              <div className="text-xs font-mono font-bold text-foreground flex items-center justify-between">
+                <span>Danh sách API AI đang hoạt động ({aiConfigs.length}):</span>
+                <span className="text-[11px] text-muted-foreground font-normal">
+                  Khóa được bảo vệ · Click "Đổi model" để chọn từ danh mục khám phá
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                {aiConfigs.map((cfg) => {
+                  const latestTest = testResults[cfg.id];
+                  const testRes = latestTest?.model === cfg.model ? latestTest : cfg.testResult;
+                  const cooldown = db.aiConfig?.getKeyCooldown?.(cfg.id);
+                  const inCooldown = cooldown && cooldown.until > Date.now();
+                  const cooldownSec = inCooldown ? Math.ceil((cooldown.until - Date.now()) / 1000) : 0;
+
+                  return (
+                    <div
+                      key={cfg.id}
+                      className="p-3.5 rounded-sm border border-border bg-card flex flex-wrap items-center justify-between gap-3 text-xs font-mono shadow-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            inCooldown
+                              ? 'bg-amber-500 ring-2 ring-amber-300 animate-pulse'
+                              : testRes
+                              ? testRes.success
+                                ? 'bg-emerald-500 ring-2 ring-emerald-300'
+                                : 'bg-rose-500 ring-2 ring-rose-300'
+                              : 'bg-emerald-500'
+                          }`}
+                        />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-foreground">{cfg.name}</span>
+                            <span className="px-1.5 py-0.5 rounded-sm bg-accent/10 text-accent font-bold text-[10px]">
+                              {cfg.provider.toUpperCase()}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded-sm bg-muted text-foreground font-bold text-[10px]">
+                              {cfg.model}
+                            </span>
+                            {cfg.backupModel && (
+                              <span className="px-1.5 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px]">
+                                Backup: {cfg.backupModel}
+                              </span>
+                            )}
+                            {cfg.hasVision && (
+                              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                                📷 Vision
+                              </span>
+                            )}
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              ({cfg.maskedKey || maskApiKey(cfg.apiKey)})
+                            </span>
+                          </div>
+                          {inCooldown && (
+                            <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-bold">
+                              ⏸️ Đang giãn cách Cooldown {cooldown.status||429} ({cooldownSec}s còn lại) · Tự động dùng key dự phòng
+                            </div>
+                          )}
+                          {testRes && (
+                            <div
+                              className={`text-[10px] mt-0.5 ${
+                                testRes.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              }`}
+                            >
+                              {testRes.message}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-[11px] mr-1">
+                          Ưu tiên: #{cfg.priority}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCatalogModal(cfg)}
+                          className="tap px-2.5 py-1.5 rounded-sm bg-accent/10 hover:bg-accent/20 text-accent font-bold text-[11px] flex items-center gap-1 border border-accent/30"
+                          title="Mở danh mục để đổi model chính hoặc dự phòng"
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>Đổi model</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSyncConfigModels(cfg)}
+                          className="tap px-2 py-1.5 rounded-sm bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] flex items-center gap-1 border border-border"
+                          title="Đồng bộ danh mục model thực tế từ API"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Đồng bộ</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleTestActiveConfig(cfg)}
+                          className="tap px-2.5 py-1.5 rounded-sm bg-muted/50 hover:bg-muted text-foreground font-semibold text-[11px] flex items-center gap-1 border border-border"
+                          title="Kiểm tra tín hiệu kết nối tới model này"
+                        >
+                          <Zap className="w-3 h-3" />
+                          <span>Test Live</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAIConfig(cfg.id)}
+                          className="text-rose-600 hover:text-rose-700 p-1.5 rounded-sm hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          title="Xóa cấu hình này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Phân công chi tiết & hỗ trợ tự động (Matching Image 3) */}
+          <div className="surface p-6 border border-border space-y-4">
+            <div>
+              <div className="eyebrow mb-1">RÀ SOÁT TÁC VỤ ỨNG DỤNG</div>
+              <h3 className="font-display text-xl font-bold text-foreground">
+                Phân công theo Nhóm Tác vụ & Danh sách Key Dự phòng
+              </h3>
+              <p className="font-body text-xs text-muted-foreground mt-0.5">
+                Mỗi công việc có danh sách các Key riêng (Ưu tiên #1, #2, #3). Tự chuyển key khác cùng nhóm khi 429/Timeout, không gọi nhầm nhóm khác.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {APP_AI_TASKS.map((task) => {
+                const pooledConfigs = db.aiConfig?.getTaskPool?.(task.id) || [];
+                const eligibleToAdd = aiConfigs.filter((cf…3283 tokens truncated…ground font-bold shadow-sm'
+                      : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <SubIcon className="w-3.5 h-3.5" />
+                  <span>{sub.label}</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${isActive ? 'bg-black/20 text-accent-foreground' : 'bg-muted text-foreground'}`}>
+                    {sub.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          )}
+          {/* Subtab 1: Universal Imports */}
+          {activeTab === 'imports' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Gói tài liệu Universal đã nạp ({universalItems.length}):
+                </span>
+                {universalItems.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      const ok = await showConfirmModal({
+                        title: 'Xóa toàn bộ tài liệu Universal',
+                        message: 'Bạn có chắc muốn xóa toàn bộ các gói tài liệu Universal đã import không? Thao tác này không thể hoàn tác.',
+                        confirmText: 'Xóa toàn bộ',
+                        variant: 'danger',
+                      });
+                      if (ok) {
+                        db.universal.clearAll();
+                        setUniversalItems([]);
+                        toast.success('Đã dọn sạch toàn bộ gói import!');
+                      }
+                    }}
+                    className="tap px-2.5 py-1 text-xs font-mono text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-sm flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa tất cả</span>
+                  </button>
+                )}
+              </div>
+
+              {universalItems.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Loại</th>
+                        <th className="p-3">Tiêu đề</th>
+                        <th className="p-3">Level</th>
+                        <th className="p-3">Phạm vi (Scope)</th>
+                        <th className="p-3">Người tạo</th>
+                        <th className="p-3 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {universalItems.filter(item => matches(contentSearch, item.title, item.type, item.level, item.scope)).map((item) => (
+                        <tr key={item.id} className="hover:bg-muted/30">
+                          <td className="p-3 uppercase font-bold text-accent">{item.type}</td>
+                          <td className="p-3 font-semibold text-foreground">{item.title}</td>
+                          <td className="p-3 font-bold">{item.level}</td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-sm text-[10px] font-bold ${
+                                item.scope === 'public'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+                                  : item.scope === 'admin_only'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200'
+                              }`}
+                            >
+                              {item.scope === 'public'
+                                ? '🌐 Toàn hệ thống'
+                                : item.scope === 'admin_only'
+                                ? '🔒 Nội bộ Admin'
+                                : '👤 Cá nhân'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-muted-foreground">{item.created_by_name}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa gói tài liệu',
+                                  message: `Bạn có chắc muốn xóa gói tài liệu "${item.title}" (${item.content_type?.toUpperCase() || 'Tài liệu'}) không?`,
+                                  confirmText: 'Xóa gói này',
+                                  variant: 'danger',
+                                });
+                                if (ok) {
+                                  db.universal.delete(item.id);
+                                  setUniversalItems(db.universal.findMany());
+                                  toast.success('Đã xóa gói nội dung!');
+                                }
+                              }}
+                              className="tap text-rose-600 hover:text-rose-700 p-1 hover:bg-rose-50 rounded-sm"
+                              title="Xóa gói này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs font-mono text-muted-foreground border border-dashed border-border rounded-sm">
+                  Chưa có gói import nào. Bấm "Import mới" để đưa tài liệu vào.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Subtab 2: Exams */}
+          {activeTab === 'content' && contentSubTab === 'exams' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-foreground">
+                  Danh sách đề thi Goethe, telc, ÖSD ({examsList.length}):
+                </span>
+                <button
+                  onClick={async () => {
+                    const ok = await showConfirmModal({
+                      title: 'Khôi phục danh sách đề thi',
+                      message: 'Khôi phục danh sách toàn bộ đề thi chuẩn gốc của hệ thống (Goethe, telc, ÖSD)? Các đề thi tự tạo sẽ được bảo toàn.',
+                      confirmText: 'Khôi phục đề gốc',
+                      variant: 'warning',
+                    });
+                    if (ok) {
+                      db.exams.resetDefaults();
+                      setExamsList(getAllExams());
+                      toast.success('Đã khôi phục các đề thi gốc!');
+                    }
+                  }}
+                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục đề gốc</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-muted/50 border-y border-border text-muted-foreground uppercase text-[10px] sticky top-0 bg-muted">
+                    <tr>
+                      <th className="p-3">Kỳ thi</th>
+                      <th className="p-3">Level</th>
+                      <th className="p-3">Tên đề thi</th>
+                      <th className="p-3">Thời gian</th>
+                      <th className="p-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {examsList.filter(ex => matches(contentSearch, ex.title, ex.name, ex.level, ex.provider)).map((ex) => (
+                      <tr key={ex.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-bold text-accent uppercase">{ex.provider}</td>
+                        <td className="p-3 font-bold">{ex.level}</td>
+                        <td className="p-3 font-semibold text-foreground">{ex.title}</td>
+                        <td className="p-3 text-muted-foreground">{ex.minutes} phút</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setAdminEditingItem({ type: 'exam', data: { ...ex } })}
+                              className="tap p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded"
+                              title="Sửa đề thi"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const ok = await showConfirmModal({
+                                  title: 'Xóa đề thi',
+                                  message: `Bạn có chắc muốn xóa đề thi "${ex.title}" (${ex.provider} ${ex.level})?`,
+                                  confirmText: 'Xóa đề thi',
                                   variant: 'danger',
                                 });
                                 if (ok) {

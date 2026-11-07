@@ -30,7 +30,7 @@ export async function discoverModels(provider,key,{freeOnly=false,deadlineAt=Dat
       if(freeOnly&&free===false)continue;
       items.push({id,name:model.displayName||model.display_name||model.name||id,free,created:Number(model.created)||(model.created_at?Date.parse(model.created_at)/1000:null),
         outputLimit:Number(model.outputTokenLimit||model.top_provider?.max_completion_tokens)||null,
-        inputModalities:model.architecture?.input_modalities||null,outputModalities:model.architecture?.output_modalities||null,contextLimit:Number(model.inputTokenLimit||model.context_length||model.context_window||model.context_length)||null,reasoning:Array.isArray(model.supported_parameters)?model.supported_parameters.includes('reasoning'):null,
+        inputModalities:model.architecture?.input_modalities||model.input_modalities||(provider==='groq'&&/^whisper-/.test(id)?['audio']:null),outputModalities:model.architecture?.output_modalities||model.output_modalities||(provider==='groq'&&/^whisper-/.test(id)?['text']:null),contextLimit:Number(model.inputTokenLimit||model.context_length||model.context_window||model.context_length)||null,reasoning:Array.isArray(model.supported_parameters)?model.supported_parameters.includes('reasoning'):null,
         jsonMode:provider==='openrouter'?!!model.supported_parameters?.includes('response_format'):true});
     }
     token=provider==='gemini'?data.nextPageToken:provider==='anthropic'&&data.has_more?data.last_id:'';
@@ -41,11 +41,13 @@ export async function discoverModels(provider,key,{freeOnly=false,deadlineAt=Dat
 }
 export async function providerGenerate(provider,key,model,input){
   if(!PROVIDERS.includes(provider)||!validModelId(model.id))throw coreError(400,'AI_MODEL','Model không hợp lệ.');
+  const nativeJSON=input.jsonMode!==false&&input.nativeJSONMode!==false;
   const maxTokens=Math.min(8000,model.outputLimit||8000),attachments=input.attachments||[];
+  if(provider==='groq'&&model.inputModalities?.includes('audio'))throw coreError(422,'AI_MODEL_TASK','Model cần endpoint nhận dạng âm thanh.');
   let url=ROOTS[provider]+'/chat/completions',body;
   if(provider==='gemini'){
     url=ROOTS.gemini+'/models/'+encodeURIComponent(model.id)+':generateContent';
-    body={systemInstruction:{parts:[{text:input.systemPrompt}]},contents:[{role:'user',parts:[{text:input.userPrompt},...attachments.map(x=>({inlineData:{mimeType:x.mimeType,data:x.data}}))]}],generationConfig:{temperature:0.2,maxOutputTokens:maxTokens,...(input.jsonMode!==false?{responseMimeType:'application/json'}:{})}};
+    body={systemInstruction:{parts:[{text:input.systemPrompt}]},contents:[{role:'user',parts:[{text:input.userPrompt},...attachments.map(x=>({inlineData:{mimeType:x.mimeType,data:x.data}}))]}],generationConfig:{temperature:0.2,maxOutputTokens:maxTokens,...(nativeJSON?{responseMimeType:'application/json'}:{})}};
     if(input.continuation)body.contents.push({role:'model',parts:[{text:input.continuation.text}]},{role:'user',parts:[{text:'Continue exactly from the final character of your previous response. Do not repeat any prefix or restart the JSON.'}]});
   }else if(provider==='anthropic'){
     if(attachments.some(x=>!x.mimeType.startsWith('image/')))throw coreError(422,'AI_ATTACHMENT_UNSUPPORTED','Provider này cần ảnh trang, không nhận PDF thô.');
@@ -56,7 +58,7 @@ export async function providerGenerate(provider,key,model,input){
     if(attachments.some(x=>!x.mimeType.startsWith('image/')))throw coreError(422,'AI_ATTACHMENT_UNSUPPORTED','Provider này cần ảnh trang, không nhận PDF thô.');
     if(attachments.length&&model.inputModalities&&!model.inputModalities.includes('image'))throw coreError(422,'AI_ATTACHMENT_UNSUPPORTED','Model không nhận ảnh.');
     const content=attachments.length?[{type:'text',text:input.userPrompt},...attachments.map(x=>({type:'image_url',image_url:{url:'data:'+x.mimeType+';base64,'+x.data}}))]:input.userPrompt;
-    body={model:model.id,messages:[{role:'system',content:input.systemPrompt},{role:'user',content}],temperature:0.2,max_tokens:maxTokens,...(input.jsonMode!==false&&model.jsonMode?{response_format:{type:'json_object'}}:{})};
+    body={model:model.id,messages:[{role:'system',content:input.systemPrompt},{role:'user',content}],temperature:0.2,max_tokens:maxTokens,...(nativeJSON&&model.jsonMode?{response_format:{type:'json_object'}}:{})};
     if(input.continuation)body.messages.push({role:'assistant',content:input.continuation.text},{role:'user',content:'Continue exactly from the final character of your previous response. Do not repeat any prefix or restart the JSON.'});
     if(provider==='openai'){delete body.temperature;delete body.max_tokens;body.max_completion_tokens=maxTokens;}
     if(provider==='openrouter'&&input.freeOnly)body.provider={max_price:{prompt:0,completion:0,request:0,image:0}};
