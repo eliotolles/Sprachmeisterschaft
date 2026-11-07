@@ -7,7 +7,7 @@ import {makeContinuation,verifyContinuation} from './ai-continuation.js';
 import {digest} from './passwords.js';
 const PREFIX='sprach:ai:';
 function admin(user){if(!['admin','super_admin'].includes(user.role))throw coreError(403,'ADMIN_REQUIRED','Chỉ Admin được quản lý khóa AI.');}
-function metadata(row){return {id:row.id,label:row.label,provider:row.provider,model:row.model,task:row.task||'text',enabled:row.enabled,priority:row.priority,freeOnly:row.freeOnly,hasVision:!!row.hasVision||row.task==='vision',backupModel:row.backupModel||null,archived:!!row.archived};}
+function metadata(row){return {id:row.id,label:row.label,provider:row.provider,model:row.model,task:row.task||'text',enabled:row.enabled,priority:row.priority,freeOnly:row.freeOnly,hasVision:!!row.hasVision||row.task==='vision',backupModel:row.backupModel||null,archived:!!row.archived,testResult:row.testResult||null};}
 async function configs(env){
   const rows=(await query(env,"SELECT key,value FROM ee_config WHERE key GLOB 'sprach:ai:*' ORDER BY key")).rows;
   return rows.map(row=>{let value;try{value=JSON.parse(row.value);}catch{return null;}return value&&value.id===row.key.slice(PREFIX.length)&&PROVIDERS.includes(value.provider)&&validModelId(value.model)&&typeof value.secret==='string'?value:null;}).filter(Boolean);
@@ -40,6 +40,7 @@ export async function updateAIConfig(env,user,data){
   const row=(await configs(env)).find(x=>x.id===data.id);if(!row)throw coreError(404,'AI_CONFIG_NOT_FOUND','Không tìm thấy cấu hình AI.');
   if(data.model!==undefined||data.backupModel){const policy=(await readAIRouting(env)).policies;const catalog=await discoverModels(row.provider,await decryptSecret(env,row.secret),{freeOnly:(data.freeOnly??row.freeOnly)||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS});if(data.model!==undefined&&!catalog.items.some(x=>x.id===data.model)||data.backupModel&&!catalog.items.some(x=>x.id===data.backupModel))throw coreError(400,'AI_MODEL_NOT_AVAILABLE','Model không còn khả dụng.');}
   const previous=JSON.stringify(row),next={...row,...data,...(data.archived===true?{enabled:false}:{})};
+  if(next.model!==row.model||next.hasVision!==row.hasVision||next.freeOnly!==row.freeOnly)delete next.testResult;
   const result=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[JSON.stringify(next),PREFIX+row.id,previous]);
   if(!result.rows.length)throw coreError(409,'AI_CONFIG_CHANGED','Cấu hình đã thay đổi; chưa ghi đè.');return {config:metadata(next)};
 }
@@ -85,15 +86,66 @@ export async function generateGermanSpeech(env,user,input){
  for(const row of rows.slice(0,5)){if(Date.now()>=deadlineAt)break;try{const key=await decryptSecret(env,row.secret),catalog=await discoverModels(row.provider,key,{freeOnly:row.freeOnly,deadlineAt});for(const id of [...new Set([row.model,row.backupModel].filter(Boolean))]){if(Date.now()>=deadlineAt)break;const model=catalog.items.find(x=>x.id===id);if(model)try{return await providerSpeech(row.provider,key,model,{...input,deadlineAt});}catch{}}}catch{}}
  throw coreError(503,'TTS_UNAVAILABLE','Chưa tạo được âm thanh tiếng Đức hoàn chỉnh.');
 }
+function probeFailure(error) {
+  const status=error.providerStatus||null;
+  const [code,message]=({
+    401:['authentication','Provider từ chối xác thực (401).'],
+    403:['forbidden','Provider từ chối quyền truy cập (403).'],
+    404:['model_not_found','Provider không tìm thấy model hoặc endpoint (404).'],
+    429:['rate_limit','Provider giới hạn tần suất hoặc quota (429).'],
+  })[status] || ({
+    AI_TIMEOUT:['timeout','Provider hết thời gian chờ.'],
+    AI_TRANSPORT:['unavailable','Không kết nối được provider.'],
+    AI_SECRET_INVALID:['key_unreadable','Máy chủ không đọc được khóa đã lưu.'],
+  })[error.code] || ['provider_error',status?'Provider trả HTTP '+status+'.':'Máy chủ không hoàn tất kiểm tra AI.'];
+  return {success:false,code,message,providerStatus:status};
+}
+const probeImage={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII='};
+async function probeModel(env,row,key,vision,deadlineAt) {
+  const policy=(await readAIRouting(env)).policies;
+  const freeOnly=row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS;
+  const {items}=await discoverModels(row.provider,key,{deadlineAt});
+  const model=items.find(item=>item.id===row.model);
+  if(!model)return {success:false,code:'model_not_found',message:'Model không có trong danh mục của provider cho khóa này.'};
+  if(freeOnly&&model.free===false)return {success:false,code:'paid_blocked',message:'Chính sách miễn phí chặn model này.'};
+  if(vision&&model.inputModalities&&!model.inputModalities.includes('image'))return {success:false,code:'vision_unsupported',message:'Danh mục provider xác nhận model không nhận ảnh.'};
+  const generate=jsonMode=>providerGenerate(row.provider,key,model,{
+    systemPrompt:'Connection test only. Return exactly JSON {"ok":true}.',
+    userPrompt:'Confirm JSON generation.',jsonMode,freeOnly,deadlineAt,attachments:vision?[probeImage]:[],
+  });
+  let result;
+  if(model.jsonMode!==false){
+    try{result=await generate(true);}
+    catch(error){if(![400,422].includes(error.providerStatus))throw error;}
+  }
+  const native=!!result;
+  result ||= await generate(false);
+  let json=false;
+  try{json=!result.truncated&&JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))?.ok===true;}catch{}
+  const code=json?(native?'operational':'prompt_json_only'):'text_only';
+  const message=json?(native?'Provider trả JSON hợp lệ ở chế độ JSON.':'Provider trả JSON theo prompt, chưa xác nhận JSON mode.'):'Model sinh văn bản nhưng bài thử chưa trả JSON hợp lệ.';
+  return {success:json,code,message,text:true,json,jsonMode:native&&json,vision:vision&&json,testedScope:json?(vision?'json-generation-with-image':'json-generation'):'text-generation'};
+}
 export async function testAIConfig(env,user,data){
- admin(user);
- if(!data||Object.keys(data).some(k=>!['id','provider','key','model','vision'].includes(k))||data.vision!==undefined&&typeof data.vision!=='boolean')throw coreError(400,'AI_TEST_INPUT','Yêu cầu kiểm tra AI không hợp lệ.');
- let row,key;if(data.id){row=(await configs(env)).find(x=>x.id===data.id);if(!row)throw coreError(404,'AI_CONFIG_NOT_FOUND','Không tìm thấy cấu hình AI.');key=await decryptSecret(env,row.secret);}
- else{if(!PROVIDERS.includes(data.provider)||typeof data.key!=='string'||!data.key.trim()||data.key.length>2000||!validModelId(data.model))throw coreError(400,'AI_TEST_INPUT','Provider, key hoặc model chưa hợp lệ.');row={provider:data.provider,model:data.model,freeOnly:data.provider==='openrouter'};key=data.key.trim();}
- try{
-  const policy=(await readAIRouting(env)).policies,deadlineAt=Date.now()+30000,catalog=await discoverModels(row.provider,key,{freeOnly:row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS,deadlineAt}),model=catalog.items.find(m=>m.id===row.model);if(!model)throw Error();
-  const result=await providerGenerate(row.provider,key,model,{systemPrompt:'Connection test only. Return exactly JSON {"ok":true}. Do not claim a learning assessment.',userPrompt:'Confirm JSON generation.',jsonMode:true,freeOnly:row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS,deadlineAt,attachments:data.vision?[{mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII='}]:[]});
-  if(result.truncated||JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))?.ok!==true)throw Error();
-  return {success:true,testedScope:data.vision?'json-generation-with-image':'json-generation',message:'Provider trả JSON kiểm tra hợp lệ'+(data.vision?' và nhận ảnh thử':'')+'. Chưa đánh giá chất lượng chấm bài/phụ đề.'};
- }catch{throw coreError(503,'AI_TEST_UNAVAILABLE','Chưa kiểm tra được khả năng sinh JSON của model. Không có kết quả giả lập.');}
+  admin(user);
+  if(!data||Object.keys(data).some(k=>!['id','provider','key','model','vision'].includes(k))||data.vision!==undefined&&typeof data.vision!=='boolean')throw coreError(400,'AI_TEST_INPUT','Yêu cầu kiểm tra AI không hợp lệ.');
+  let row;
+  if(data.id){
+    row=(await configs(env)).find(x=>x.id===data.id&&!x.archived);
+    if(!row)throw coreError(404,'AI_CONFIG_NOT_FOUND','Không tìm thấy cấu hình AI.');
+  }else{
+    if(!PROVIDERS.includes(data.provider)||typeof data.key!=='string'||!data.key.trim()||data.key.length>2000||!validModelId(data.model))throw coreError(400,'AI_TEST_INPUT','Provider, key hoặc model chưa hợp lệ.');
+    row={provider:data.provider,model:data.model,freeOnly:data.provider==='openrouter'};
+  }
+  const started=Date.now();
+  let result;
+  try{
+    const key=row.id?await decryptSecret(env,row.secret):data.key.trim();
+    result=await probeModel(env,row,key,data.vision===true,started+30000);
+  }catch(error){result=probeFailure(error);}
+  result={...result,model:row.model,checkedAt:started,latencyMs:Date.now()-started};
+  if(row.id){
+    await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=?',[JSON.stringify({...row,testResult:result}),PREFIX+row.id,JSON.stringify(row)]);
+  }
+  return result;
 }

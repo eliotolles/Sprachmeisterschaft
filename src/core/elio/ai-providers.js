@@ -2,11 +2,11 @@ import { coreError } from './database.js';
 const ROOTS=Object.freeze({gemini:'https://generativelanguage.googleapis.com/v1beta',groq:'https://api.groq.com/openai/v1',openrouter:'https://openrouter.ai/api/v1',openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com/v1',deepseek:'https://api.deepseek.com',mistral:'https://api.mistral.ai/v1',cerebras:'https://api.cerebras.ai/v1',together:'https://api.together.xyz/v1'});
 export const PROVIDERS=Object.freeze(Object.keys(ROOTS));
 async function responseJSON(url,options={},deadlineAt=Date.now()+45000){
-  let response;
-  try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(remaining)});}
-  catch{throw coreError(503,'AI_TRANSPORT','Provider AI chưa phản hồi hoặc hết thời gian chờ.');}
+  let response,text;
+  try{const remaining=Math.min(15000,deadlineAt-Date.now());if(remaining<=0)throw Error('Deadline');response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(remaining)});if(response.ok)text=await response.text();}
+  catch(error){if(['AbortError','TimeoutError'].includes(error.name)||deadlineAt<=Date.now())throw coreError(504,'AI_TIMEOUT','Provider AI hết thời gian chờ.');throw coreError(503,'AI_TRANSPORT','Không kết nối được provider AI.');}
   if(!response.ok)throw Object.assign(coreError([401,403].includes(response.status)?502:response.status===429?429:503,'AI_PROVIDER','Provider AI từ chối yêu cầu hoặc đang bận.'),{providerStatus:response.status});
-  const text=await response.text();if(text.length>4000000)throw coreError(502,'AI_RESPONSE_SIZE','Provider trả dữ liệu quá lớn.');
+  if(text.length>4000000)throw coreError(502,'AI_RESPONSE_SIZE','Provider trả dữ liệu quá lớn.');
   try{return JSON.parse(text);}catch{throw coreError(502,'AI_RESPONSE_JSON','Provider trả JSON không hợp lệ.');}
 }
 function auth(provider,key){return provider==='gemini'?{'x-goog-api-key':key}:provider==='anthropic'?{'x-api-key':key,'anthropic-version':'2023-06-01'}:{Authorization:'Bearer '+key};}
@@ -62,7 +62,7 @@ export async function providerGenerate(provider,key,model,input){
     if(provider==='openrouter'&&input.freeOnly)body.provider={max_price:{prompt:0,completion:0,request:0,image:0}};
   }
   const data=await responseJSON(url,{method:'POST',headers:{...auth(provider,key),'Content-Type':'application/json'},body:JSON.stringify(body)},input.deadlineAt);
-  const text=provider==='anthropic'?(data.content||[]).filter(x=>x.type==='text'&&typeof x.text==='string').map(x=>x.text).join(''):provider==='gemini'?(data.candidates?.[0]?.content?.parts||[]).filter(x=>typeof x.text==='string').map(x=>x.text).join(''):data.choices?.[0]?.message?.content;
+  const text=provider==='anthropic'?(data.content||[]).filter(x=>x.type==='text'&&typeof x.text==='string').map(x=>x.text).join(''):provider==='gemini'?(data.candidates?.[0]?.content?.parts||[]).filter(x=>!x.thought&&typeof x.text==='string').map(x=>x.text).join(''):data.choices?.[0]?.message?.content;
   const reason=provider==='anthropic'?data.stop_reason:provider==='gemini'?data.candidates?.[0]?.finishReason:data.choices?.[0]?.finish_reason;
   if(typeof text!=='string'||!text.trim())throw coreError(502,'AI_EMPTY','Model không trả nội dung.');
   return {text,truncated:['MAX_TOKENS','length','max_tokens'].includes(reason),provider,model:model.id};
