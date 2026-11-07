@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 33283)
-Total output lines: 2643
-
 import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
@@ -1278,7 +1275,223 @@ export function AdminPage() {
             <div className="space-y-4">
               {APP_AI_TASKS.map((task) => {
                 const pooledConfigs = db.aiConfig?.getTaskPool?.(task.id) || [];
-                const eligibleToAdd = aiConfigs.filter((cf…3283 tokens truncated…ground font-bold shadow-sm'
+                const eligibleToAdd = aiConfigs.filter((cfg) => {
+                  const notInPool = !pooledConfigs.some((p) => p.id === cfg.id);
+                  if (task.needsVision && !cfg.hasVision) return false;
+                  return notInPool;
+                });
+
+                return (
+                  <div
+                    key={task.id}
+                    className="p-4 rounded-sm border border-border bg-card space-y-3 shadow-xs"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/70 pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {task.name}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-sm bg-muted text-[10px] font-mono text-muted-foreground">
+                            {task.category}
+                          </span>
+                          {task.needsVision && (
+                            <span className="px-1.5 py-0.2 rounded-sm bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-[10px] font-mono font-bold flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3" />
+                              <span>Bắt buộc Vision</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-body text-xs text-muted-foreground leading-relaxed">
+                          {task.desc}
+                        </p>
+                      </div>
+
+                      {/* Dropdown to add Key to this task */}
+                      {eligibleToAdd.length > 0 && (
+                        <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
+                          <select
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddToTaskPool(task.id, e.target.value);
+                                e.target.value = '';
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-sm border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 text-accent font-mono text-xs font-bold cursor-pointer"
+                          >
+                            <option value="">+ Gán thêm Key vào nhóm này...</option>
+                            {eligibleToAdd.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} ({c.provider.toUpperCase()} · {c.model})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Assigned Keys List in Priority Order */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-mono font-bold text-muted-foreground flex flex-wrap items-center justify-between gap-1">
+                        <span>Danh sách Key trong nhóm này ({pooledConfigs.length} Key):</span>
+                        <span className="text-[10px] font-normal italic">
+                          Tự chuyển Key dự phòng khi gặp 429/Timeout • Cooldown 30s
+                        </span>
+                      </div>
+
+                      {pooledConfigs.length === 0 ? (
+                        <div className="p-3 rounded-sm border border-dashed border-border bg-muted/20 text-xs font-mono text-muted-foreground flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                          <span>Chưa có Key nào gán riêng. Tác vụ này sẽ dùng danh sách API tổng thể theo thứ tự ưu tiên.</span>
+                          {eligibleToAdd.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleAddToTaskPool(task.id, eligibleToAdd[0].id)}
+                              className="text-accent underline font-bold text-xs"
+                            >
+                              Gán {eligibleToAdd[0].name} ngay
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2">
+                          {pooledConfigs.map((cfg, cIdx) => {
+                            const testKey = `${task.id}_${cfg.id}`;
+                            const testRes = taskPoolResults[testKey];
+                            const cooldown = db.aiConfig?.getKeyCooldown?.(cfg.id);
+                            const inCooldown = cooldown && cooldown.until > Date.now();
+                            const cooldownSec = inCooldown ? Math.ceil((cooldown.until - Date.now()) / 1000) : 0;
+
+                            return (
+                              <div
+                                key={cfg.id}
+                                className="p-2.5 rounded-sm border border-border bg-background flex flex-col gap-2 text-xs font-mono"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent font-bold text-[10px]">
+                                      #{cIdx + 1} {cIdx === 0 ? 'Chính' : `Dự phòng ${cIdx}`}
+                                    </span>
+                                    <span className="font-bold text-foreground">{cfg.name}</span>
+                                    <span className="text-muted-foreground text-[11px]">
+                                      ({cfg.provider.toUpperCase()} · {cfg.model})
+                                    </span>
+                                    {cfg.hasVision && (
+                                      <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                                        Vision
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    {inCooldown ? (
+                                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200 text-[10px] font-bold">
+                                        ⏸️ Cooldown {cooldown.status||429} ({cooldownSec}s)
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 text-[10px] font-bold flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span>Sẵn sàng</span>
+                                      </span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleTestTaskKey(task.id, cfg.id)}
+                                      disabled={testingAi}
+                                      className="tap px-2 py-1 rounded bg-accent/10 hover:bg-accent/20 text-accent font-bold text-[11px] flex items-center gap-1"
+                                      title="Gửi dữ liệu thử nghiệm đúng tác vụ này"
+                                    >
+                                      <Sparkles className="w-3 h-3" />
+                                      <span>Test tác vụ này</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFromTaskPool(task.id, cfg.id)}
+                                      className="text-rose-600 hover:text-rose-700 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[11px]"
+                                      title="Gỡ khỏi nhóm tác vụ này"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Task test result alert */}
+                                {testRes && (
+                                  <div
+                                    className={`p-2 rounded text-[11px] ${
+                                      testRes.loading
+                                        ? 'bg-muted/40 text-muted-foreground'
+                                        : testRes.success
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900'
+                                        : 'bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-900'
+                                    }`}
+                                  >
+                                    {testRes.loading ? '⏳ Đang gửi payload thử nghiệm đúng tác vụ...' : testRes.message}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: NỘI DUNG HỌC & TOÀN QUYỀN SỬA/XÓA ADMIN */}
+      {/* ========================================================================= */}
+      {(activeTab === 'content' || activeTab === 'imports') && (
+        <div className="surface p-6 border border-border space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+            <div>
+              <div className="eyebrow mb-1">KHO TRI THỨC TOÀN HỆ THỐNG</div>
+              <h3 className="font-display text-2xl font-bold text-foreground">
+                {activeTab === 'imports' ? 'Import và tài liệu' : 'Quản lý nội dung học tập'}
+              </h3>
+              <p className="font-body text-xs text-muted-foreground mt-0.5">
+                Chọn mục cần quản lý. Các thao tác khả dụng được hiển thị cạnh từng nội dung.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="tap px-3.5 py-2 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Import mới</span>
+              </button>
+            </div>
+          </div>
+
+          <label className="block text-sm">Tìm nội dung<input type="search" value={contentSearch} onChange={e => setContentSearch(e.target.value)} className="mt-1 block w-full rounded-sm border border-border bg-card p-2 sm:max-w-sm" /></label>
+          {/* Content Category Subtabs */}
+          {activeTab === 'content' && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border text-xs font-mono">
+            {[
+              { id: 'exams', label: 'Bộ đề thi', count: examsList.length, icon: FileText },
+              { id: 'grammar', label: 'Ngữ pháp', count: computedGrammarList.length, icon: BookOpen },
+              { id: 'listening', label: 'Luyện nghe', count: listeningCols.length, icon: Headphones },
+              { id: 'situations', label: 'Tình huống', count: computedSituationsList.length, icon: MessageSquare },
+              { id: 'vocab', label: 'Từ vựng SRS', count: vocabCards.length, icon: Sparkles },
+            ].map((sub) => {
+              const SubIcon = sub.icon;
+              const isActive = contentSubTab === sub.id;
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => setContentSubTab(sub.id)}
+                  className={`tap px-3 py-1.5 rounded-sm flex items-center gap-2 transition-all shrink-0 ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground font-bold shadow-sm'
                       : 'bg-card border border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
