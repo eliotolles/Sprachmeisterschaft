@@ -50,7 +50,8 @@ export async function discoverModels(provider,key,{freeOnly=false,deadlineAt=Dat
 export async function providerGenerate(provider,key,model,input){
   if(!PROVIDERS.includes(provider)||!validModelId(model.id))throw coreError(400,'AI_MODEL','Model không hợp lệ.');
   const nativeJSON=input.jsonMode!==false&&input.nativeJSONMode!==false;
-  const maxTokens=Math.min(input.maxOutputTokens||8000,model.outputLimit||8000),attachments=input.attachments||[];
+  const requestedTokens=Number.isSafeInteger(input.maxOutputTokens)&&input.maxOutputTokens>0?input.maxOutputTokens:8000;
+  const maxTokens=Math.min(8000,requestedTokens,model.outputLimit||8000),attachments=input.attachments||[];
   if(provider==='groq'&&model.inputModalities?.includes('audio'))throw coreError(422,'AI_MODEL_TASK','Model cần endpoint nhận dạng âm thanh.');
   let url=ROOTS[provider]+'/chat/completions',body;
   if(provider==='gemini'){
