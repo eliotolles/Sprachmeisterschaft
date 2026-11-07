@@ -131,6 +131,7 @@ export function AdminPage() {
   const [hasVision, setHasVision] = useState(true);
   const [testingAi, setTestingAi] = useState(false);
   const [testResults, setTestResults] = useState({});
+  const activeAiTests = useRef(new Set());
   const [taskPoolResults, setTaskPoolResults] = useState({});
 
   // Dynamic Model Discovery & Policies State
@@ -467,17 +468,23 @@ export function AdminPage() {
   };
 
   const handleTestActiveConfig = async (cfg) => {
-    toast.info(`Đang kiểm tra API ${cfg.name}...`);
-    const res = await testAiConnection(cfg);
-    setTestResults((prev) => ({
-      ...prev,
-      [cfg.id]: res,
-    }));
-    if (res.success) {
-      toast.success(`[${cfg.name}]: ${res.message}`);
-    } else {
-      toast.error(`[${cfg.name}]: ${res.message}`);
-    }
+    if(activeAiTests.current.has(cfg.id))return;
+    activeAiTests.current.add(cfg.id);
+    const userId=db.auth.getUser()?.id;
+    const toastId='ai-live-'+cfg.id;
+    setTestResults(prev=>({...prev,[cfg.id]:{model:cfg.model,loading:true,message:'Đang gọi model thật và chờ phản hồi, tối đa 65 giây…'}}));
+    toast.loading('Đang kiểm tra '+cfg.name+'…',{id:toastId});
+    try{
+      const res=await testAiConnection(cfg);
+      if(db.auth.getUser()?.id!==userId){toast.dismiss(toastId);return;}
+      setTestResults(prev=>({...prev,[cfg.id]:{...res,model:cfg.model,loading:false}}));
+      toast[res.success?'success':'error']('['+cfg.name+']: '+res.message,{id:toastId});
+    }catch(error){
+      if(db.auth.getUser()?.id!==userId){toast.dismiss(toastId);return;}
+      const res={success:false,loading:false,model:cfg.model,message:error.message||'Chưa nhận được kết quả kiểm tra AI.'};
+      setTestResults(prev=>({...prev,[cfg.id]:res}));
+      toast.error(res.message,{id:toastId});
+    }finally{activeAiTests.current.delete(cfg.id);}
   };
 
   const handleAddAIConfig = async (e) => {
@@ -1226,6 +1233,7 @@ export function AdminPage() {
                         <button
                           type="button"
                           onClick={() => handleTestActiveConfig(cfg)}
+                          disabled={testRes?.loading === true}
                           className="tap px-2.5 py-1.5 rounded-sm bg-muted/50 hover:bg-muted text-foreground font-semibold text-[11px] flex items-center gap-1 border border-border"
                           title="Kiểm tra tín hiệu kết nối tới model này"
                         >

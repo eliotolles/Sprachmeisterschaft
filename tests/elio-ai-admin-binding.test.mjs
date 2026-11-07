@@ -17,3 +17,11 @@ test('Admin task pools and policies use server revisions and never local configu
 test('generic AI proxy sends data to core and refuses to fabricate YouTube captions from URLs',async()=>{
  const sent=[];const binding=createAIAdminBinding({client:{getUser:()=>({id:'u',role:'user'}),generateAI:async input=>(sent.push(input),{value:{ok:true}})},legacy:{},isActive:()=>true});assert.equal((await binding.generate({taskId:'ocr_image',systemPrompt:'S',userPrompt:'U',imageBase64:'YQ=='})).ok,true);assert.equal(sent[0].task,'vision');assert.equal(sent[0].purpose,'ocr_image');assert.equal(sent[0].key,undefined);await assert.rejects(binding.generate({taskId:'audio_subtitles',systemPrompt:'S',userPrompt:'https://youtube.com/...'}));assert.equal(sent.length,1);
 });
+test('AI timeout results retain the model identity required by the Admin status row',async()=>{
+ const binding=createAIAdminBinding({client:{getUser:()=>({id:'owner',role:'admin'}),testAIConfig:async()=>{throw Object.assign(new Error('Hết thời gian chờ'),{code:'REQUEST_TIMEOUT'});}},legacy:{},isActive:()=>true});
+ const result=await binding.test({provider:'gemini',apiKey:'fixture',model:'fixture-model'});
+ assert.equal(result.success,false);
+ assert.equal(result.model,'fixture-model');
+ assert.equal(result.code,'REQUEST_TIMEOUT');
+ assert.equal(result.message,'Hết thời gian chờ');
+});

@@ -7,15 +7,23 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
   const writes = new Map();
   function fail(code, message, extra = {}) { return Object.assign(new Error(message), { code, ...extra }); }
   async function request(path, { method = 'GET', data, expectedEpoch = epoch, user = identity, deadlineMs = timeoutMs } = {}) {
-    const response = await fetcher('/api/core' + path, {
+    let response;
+    try{response = await fetcher('/api/core' + path, {
       method, credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(deadlineMs),
       headers: { Accept: 'application/json', ...(data !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(user ? { 'X-Elio-User': user.id } : {}) },
       body: data !== undefined ? JSON.stringify(data) : undefined,
-    });
+    });}catch(error){
+      if(expectedEpoch!==epoch)throw fail('ACCOUNT_CHANGED','Tài khoản đã thay đổi; không áp dụng kết quả cũ.');
+      if(['TimeoutError','AbortError'].includes(error.name))throw fail('REQUEST_TIMEOUT','Yêu cầu hết thời gian chờ. Máy chủ chưa xác nhận hoàn tất.');
+      throw fail('NETWORK_ERROR','Không nhận được phản hồi từ máy chủ. Hãy kiểm tra kết nối.');
+    }
     if (expectedEpoch !== epoch) throw fail('ACCOUNT_CHANGED', 'Tài khoản đã thay đổi; không áp dụng kết quả cũ.');
     let payload;
-    try { payload = await response.json(); } catch { throw fail('INVALID_RESPONSE', 'Máy chủ trả dữ liệu không hợp lệ.'); }
+    try { payload = await response.json(); } catch(error) {
+      if(['TimeoutError','AbortError'].includes(error.name)||[504,524].includes(response.status))throw fail('REQUEST_TIMEOUT','Yêu cầu hết thời gian chờ khi nhận kết quả.');
+      throw fail('INVALID_RESPONSE', 'Máy chủ trả dữ liệu không hợp lệ.',{status:response.status});
+    }
     if (expectedEpoch !== epoch) throw fail('ACCOUNT_CHANGED', 'Tài khoản đã thay đổi; không áp dụng kết quả cũ.');
     if (!response.ok) throw fail(payload.code || 'REQUEST_FAILED', payload.error || 'Yêu cầu chưa thành công.', { status: response.status, latest: payload.latest });
     return payload;
