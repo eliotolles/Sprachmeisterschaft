@@ -151,8 +151,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async renameCollection(data){requireUser();return request('/collections',{method:'PATCH',data});},
     async createCollection(data){requireUser();return request('/collections',{method:'POST',data,deadlineMs:45000});},
     async moveCollectionRecord(data){requireUser();return request('/collections/move',{method:'POST',data,deadlineMs:65000});},
-    async records(kind,{limit=200,offset=0,collectionId=activeCollectionId()}={}) {
-      requireUser(); return (await request('/records?'+new URLSearchParams({kind,limit:String(limit),offset:String(offset),...(collectionId?{collection:collectionId}:{})}))).items;
+    async records(kind,{limit=200,offset=0,collectionId=activeCollectionId(),catalog=false}={}) {
+      requireUser(); return (await request('/records?'+new URLSearchParams({kind,limit:String(limit),offset:String(offset),...(catalog?{catalog:'1'}:{}),...(collectionId?{collection:collectionId}:{})}))).items;
     },
     async aiRouting(){requireUser();return request('/admin/ai/routing');},
     async updateAIRouting(data){requireUser();return request('/admin/ai/routing',{method:'PATCH',data,deadlineMs:60000});},

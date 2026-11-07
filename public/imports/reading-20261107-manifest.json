@@ -1,0 +1,111 @@
+{
+  "id": "reading-screenshots-20261107",
+  "files": [
+    "reading-20261107-00.json",
+    "reading-20261107-01.json",
+    "reading-20261107-02.json",
+    "reading-20261107-03.json",
+    "reading-20261107-04.json",
+    "reading-20261107-05.json",
+    "reading-20261107-06.json",
+    "reading-20261107-07.json",
+    "reading-20261107-08.json",
+    "reading-20261107-09.json",
+    "reading-20261107-10.json"
+  ],
+  "folders": 33,
+  "records": 33,
+  "questions": 570,
+  "missing": [
+    {
+      "name": "Đề mới TELC 2",
+      "availableParts": [
+        1,
+        2
+      ],
+      "missingParts": [
+        3
+      ]
+    },
+    {
+      "name": "Đề mới TELC 3",
+      "availableParts": [
+        1
+      ],
+      "missingParts": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "Alex und Cora",
+      "availableParts": [
+        1,
+        3
+      ],
+      "missingParts": [
+        2
+      ]
+    },
+    {
+      "name": "Nadia",
+      "availableParts": [
+        1
+      ],
+      "missingParts": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "EVA",
+      "availableParts": [
+        1
+      ],
+      "missingParts": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "Petra",
+      "availableParts": [
+        1,
+        3
+      ],
+      "missingParts": [
+        2
+      ]
+    },
+    {
+      "name": "Đọc bổ sung 3",
+      "availableParts": [
+        2
+      ],
+      "missingParts": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Nadja/Claudia",
+      "availableParts": [
+        2,
+        3
+      ],
+      "missingParts": [
+        1
+      ]
+    },
+    {
+      "name": "EVA1",
+      "availableParts": [
+        2,
+        3
+      ],
+      "missingParts": [
+        1
+      ]
+    }
+  ]
+}

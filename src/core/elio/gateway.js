@@ -268,7 +268,8 @@ export async function handleElioCore(request, env) {
       if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0)throw coreError(400,'PAGINATION','Phân trang không hợp lệ.');
       const collectionId=url.searchParams.get('collection');
       if(collectionId)await readCollection(env,user,collectionId);
-      const rows=(await query(env, 'SELECT id,owner,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1)'+(collectionId?" AND json_extract(data,'$.organizerId')=?":'')+' ORDER BY id LIMIT ? OFFSET ?', [kind,user.id,...(collectionId?[collectionId]:[]),limit,offset])).rows;
+      const catalog=url.searchParams.get('catalog')==='1';
+      const rows=(await query(env, 'SELECT id,owner,kind,title,level,public,'+(catalog?"json_object('organizerId',json_extract(data,'$.organizerId')) AS data":'data')+' FROM ee_records WHERE kind=? AND (owner=? OR public=1)'+(collectionId?" AND json_extract(data,'$.organizerId')=?":'')+' ORDER BY id LIMIT ? OFFSET ?', [kind,user.id,...(collectionId?[collectionId]:[]),limit,offset])).rows;
       return json({items:rows.map(row=>kind==='exam'?{...row,data:examCatalogData(row.data)}:row),limit,offset});
     }
     if (path === '/api/core/admin/users' && request.method === 'GET') {

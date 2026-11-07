@@ -1,0 +1,4 @@
+// Only same-origin retained exam assets and bounded raster uploads are displayable.
+export function examSourceImage(value){return typeof value==='string'&&(value.startsWith('/telc18/')&&!value.includes('..')&&!/[?#]/.test(value)||value.length<=600000&&/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))?value:null;}
+export function questionSheet(value){return value&&examSourceImage(value.image)&&Number.isInteger(value.width)&&value.width>0&&value.width<=5000&&Number.isInteger(value.height)&&value.height>0&&value.height<=5000?{image:examSourceImage(value.image),width:value.width,height:value.height}:null;}
+export function questionBounds(value,sheet){return sheet&&value&&Number.isInteger(value.y)&&value.y>=0&&Number.isInteger(value.height)&&value.height>0&&value.y+value.height<=sheet.height?{y:value.y,height:value.height}:null;}
