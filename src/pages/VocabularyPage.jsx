@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import {useProgressiveItems} from '@/hooks/useProgressiveItems';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -43,7 +44,7 @@ export function VocabularyPage() {
   const today = formatDate();
 
   // Filter cards
-  const filteredCards = cards.filter((c) => {
+  const filteredCards = useMemo(()=>cards.filter((c) => {
     if (statusFilter === 'due') {
       if (c.due_date && c.due_date > today) return false;
     } else if (statusFilter !== 'all' && c.status !== statusFilter) {
@@ -57,7 +58,8 @@ export function VocabularyPage() {
       return de.includes(q) || vi.includes(q);
     }
     return true;
-  });
+  }),[cards,statusFilter,search]);
+  const {visible:visibleCards,lastItemRef}=useProgressiveItems(filteredCards,JSON.stringify([db.auth.getUser()?.id,statusFilter,search]));
 
   // Status stats
   const stats = {
@@ -213,9 +215,10 @@ export function VocabularyPage() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredCards.map((card) => (
+          {visibleCards.map((card,index) => (
             <div
               key={card.id}
+              ref={index===visibleCards.length-1?lastItemRef:null}
               className="surface p-4 flex flex-col justify-between hover:border-accent/40 transition-colors"
             >
               <div>

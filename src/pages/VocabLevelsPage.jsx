@@ -1,3 +1,4 @@
+import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
@@ -36,10 +37,13 @@ export function VocabLevelsPage() {
   useEffect(()=>{const refresh=()=>setDecks(readDecks());refresh();window.addEventListener('sprach_db_change',refresh);window.addEventListener('sprach_auth_change',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('sprach_auth_change',refresh);};},[]);
 
   // Filter decks
-  const filteredDecks = decks.filter((d) => {
-    if (selectedLevel !== 'ALL' && !(d.levels||[d.level]).includes(selectedLevel)) return false;
-    return true;
+  const filteredDecks = decks.filter(deck=>selectedLevel==='ALL'||(deck.levels||[deck.level]).includes(selectedLevel)).map(deck=>{
+    if(selectedLevel==='ALL')return {...deck,totalCardsCount:deck.cardsCount};
+    const words=deck.words.filter(word=>String(word.level||deck.level).toUpperCase().match(/\b[A-C][12]\b/g)?.includes(selectedLevel));
+    return {...deck,words,cardsCount:words.length,totalCardsCount:deck.cardsCount};
   });
+  const expandedWords=filteredDecks.find(deck=>deck.id===expandedDeckId)?.words||[];
+  const {visible:visibleWords,lastItemRef}=useProgressiveItems(expandedWords,JSON.stringify([currentUser?.id,expandedDeckId,selectedLevel]));
 
   const handleAddDeckToCards = async (deck) => {
     try {
@@ -126,7 +130,7 @@ export function VocabLevelsPage() {
                       {deck.level}
                     </span>
                     <span className="text-xs font-mono text-muted-foreground">
-                      {deck.cardsCount} thẻ từ vựng
+                      {deck.cardsCount === deck.totalCardsCount ? deck.cardsCount : deck.cardsCount+' / '+deck.totalCardsCount} thẻ từ vựng
                     </span>
                   </div>
 
@@ -176,9 +180,10 @@ export function VocabLevelsPage() {
                 <div className="mt-5 pt-4 border-t border-border animate-fade-in">
                   <div className="eyebrow mb-3">DANH SÁCH TỪ VỰNG TRONG BỘ ({deck.words.length} TỪ)</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {deck.words.map((w, idx) => (
+                    {visibleWords.map((w, idx) => (
                       <div
-                        key={idx}
+                        key={w.id||idx}
+                        ref={idx===visibleWords.length-1?lastItemRef:null}
                         className="p-3 rounded-sm bg-card/60 border border-border flex items-start justify-between gap-3"
                       >
                         <div>

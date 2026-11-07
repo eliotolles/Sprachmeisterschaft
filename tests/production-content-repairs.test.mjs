@@ -58,3 +58,16 @@ test('uncategorized and range-level source words remain visible without inventin
 
 import {readFileSync} from 'node:fs';
 test('deploy retains owner-managed Dashboard variables',()=>{const config=JSON.parse(readFileSync(new URL('../wrangler.json',import.meta.url),'utf8'));assert.equal(config.keep_vars,true);});
+
+test('a 300-word source deck stays complete when its words span different CEFR levels',()=>{
+ const rows=Array.from({length:300},(_,index)=>({
+  id:'word-'+index,german:'Wort '+index,is_shared:true,
+  source_deck_id:'one-source-file',topic:'Đầu bếp',level:['A1','A2','B1','B2'][index%4],
+ }));
+ const decks=buildLevelDecks(rows);
+ assert.equal(decks.length,1);
+ assert.equal(decks[0].cardsCount,300);
+ assert.equal(decks[0].words.length,300);
+ assert.deepEqual(decks[0].levels,['A1','A2','B1','B2']);
+ assert.equal(new Set(decks[0].words.map(word=>word.id)).size,300);
+});

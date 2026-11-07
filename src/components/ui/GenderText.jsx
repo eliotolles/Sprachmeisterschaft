@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function GenderText({ article, german, wordType, className = '' }) {
+export function GenderText({ article, german, word, text, wordType, className = '' }) {
   const art = (article || '').toLowerCase().trim();
 
   // Color-coded token styling
@@ -30,7 +30,7 @@ export function GenderText({ article, german, wordType, className = '' }) {
         </span>
       ) : null}
       <span className="font-heading font-semibold text-foreground tracking-tight">
-        {german}
+        {german ?? word ?? text ?? ''}
       </span>
     </span>
   );

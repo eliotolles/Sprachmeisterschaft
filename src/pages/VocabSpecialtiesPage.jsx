@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import {sourceSpecialtyWords} from '@/lib/specialty-vocabulary';
+import {useProgressiveItems} from '@/hooks/useProgressiveItems';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { VocabTabs } from '@/components/vocabulary/VocabTabs';
@@ -84,8 +86,10 @@ export function VocabSpecialtiesPage() {
     myCards.map((c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase())
   );
 
+  const coreActive=db.vocabulary.isCore?.()===true;
+  const specialties=useMemo(()=>coreActive?SPECIALTIES.map(specialty=>({...specialty,words:sourceSpecialtyWords(myCards,specialty)})):SPECIALTIES,[myCards,coreActive]);
   const currentSpecialty =
-    SPECIALTIES.find((s) => s.id === selectedSpecialtyId) || SPECIALTIES[0];
+    specialties.find((s) => s.id === selectedSpecialtyId) || specialties[0];
 
   // Filter words by Level and Search query
   const filteredWords = (currentSpecialty.words || []).filter((w) => {
@@ -100,6 +104,8 @@ export function VocabSpecialtiesPage() {
     }
     return true;
   });
+
+  const {visible:visibleWords,lastItemRef}=useProgressiveItems(filteredWords,JSON.stringify([db.auth.getUser()?.id,selectedSpecialtyId,selectedLevel,search]));
 
   const handleSaveWord = async (word) => {
     try {
@@ -193,7 +199,7 @@ export function VocabSpecialtiesPage() {
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-3 pt-1 scrollbar-thin">
-          {SPECIALTIES.map((spec) => {
+          {specialties.map((spec) => {
             const Icon = SPECIALTY_ICONS[spec.icon] || Briefcase;
             const isSelected = spec.id === selectedSpecialtyId;
             return (
@@ -291,14 +297,15 @@ export function VocabSpecialtiesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredWords.map((word, idx) => {
+          {visibleWords.map((word, idx) => {
             const isSaved = savedKeys.has(
               `${(word.article || '').trim()} ${(word.german || '').trim()}`.toLowerCase()
             );
 
             return (
               <div
-                key={`${word.german}-${idx}`}
+                key={word.id||`${word.german}-${idx}`}
+                ref={idx===visibleWords.length-1?lastItemRef:null}
                 className="surface p-4 rounded-sm border border-border space-y-3 flex flex-col justify-between hover:border-accent/40 transition-colors shadow-xs"
               >
                 <div className="space-y-2">
