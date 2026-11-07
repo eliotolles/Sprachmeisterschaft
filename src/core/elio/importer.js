@@ -1,3 +1,4 @@
+import {validateCollectionTarget} from './collections.js';
 import {coreError,query} from './database.js';
 import {digest} from './passwords.js';
 import {generateAI} from './ai.js';
@@ -8,13 +9,15 @@ const kinds=['vocab','exam','listening','writing','speaking'];
 const invalid=()=>coreError(400,'IMPORT_INPUT','Dữ liệu nhập chưa hợp lệ.');
 const text=(s,max=10000)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export async function importCollection(env,user,input){
- if(input.kind==='grammar')return importGrammar(env,user,{collection:input.collection,visibility:input.visibility});
- const collection=validateImport(input.kind,input.collection);
+ await validateCollectionTarget(env,user,input.organizerId,input.kind,input.visibility||'private');
+ const source={...input.collection};delete source.organizerId;
+ if(input.kind==='grammar')return importGrammar(env,user,{collection:{...source,...(input.organizerId?{organizerId:input.organizerId}:{})},visibility:input.visibility});
+ const collection={...validateImport(input.kind,source),...(input.organizerId?{organizerId:input.organizerId}:{})};
  if(input.visibility!==undefined&&!['public','private'].includes(input.visibility))throw invalid();
  const shared=input.visibility==='public';if(shared&&!['admin','super_admin'].includes(user.role))throw coreError(403,'ADMIN_REQUIRED','Chỉ Admin được nhập tài liệu chung.');
- const duplicate=(await query(env,'SELECT id,data FROM ee_records WHERE owner=? AND kind=?',[user.id,input.kind])).rows.find(row=>{try{return JSON.parse(row.data).id===collection.id;}catch{return false;}});
+ const duplicate=(await query(env,'SELECT id,data FROM ee_records WHERE owner=? AND kind=?',[user.id,input.kind])).rows.find(row=>{try{return JSON.parse(row.data).id===collection.id&&(JSON.parse(row.data).organizerId||null)===(collection.organizerId||null);}catch{return false;}});
  if(duplicate)throw coreError(409,'IMPORT_EXISTS','ID nguồn đã có trong tài khoản; chưa ghi đè hoặc nhân đôi.');
- const recordId='sprach-import-'+await digest(JSON.stringify([user.id,input.kind,collection.id])),data=input.kind==='vocab'?{...collection,words:collection.items}:collection;
+ const recordId='sprach-import-'+await digest(JSON.stringify([user.id,input.kind,collection.id,collection.organizerId||null])),data=input.kind==='vocab'?{...collection,words:collection.items}:collection;
  const written=await query(env,'INSERT INTO ee_records(id,owner,kind,title,level,public,data,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id',[recordId,user.id,input.kind,collection.name,collection.items[0].level,shared?1:0,JSON.stringify(data),new Date().toISOString()]);
  if(!written.rows.length)throw coreError(409,'IMPORT_EXISTS','ID nguồn đã được nhập; chưa ghi đè.');
  return {recordId,collectionId:collection.id,count:collection.items.length,visibility:shared?'public':'private'};

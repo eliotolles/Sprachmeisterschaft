@@ -3,7 +3,8 @@ import { useRouter, Link } from '@/lib/router';
 import { BookMarked, Layers, Library, Search, MessageSquare, Briefcase } from 'lucide-react';
 
 export function VocabTabs() {
-  const { currentPath } = useRouter();
+  const { currentPath,search } = useRouter();
+  const collectionId=new URLSearchParams(search).get('collection');
 
   const tabs = [
     { path: '/vocabulary', label: 'Bộ thẻ của tôi', icon: BookMarked },
@@ -22,7 +23,7 @@ export function VocabTabs() {
         return (
           <Link
             key={tab.path}
-            to={tab.path}
+            to={tab.path+(collectionId?'?collection='+encodeURIComponent(collectionId):'')}
             className={`tap px-3.5 py-2 rounded-t-sm text-xs font-mono font-medium flex items-center gap-2 border-b-2 transition-all shrink-0 ${
               isActive
                 ? 'border-accent text-accent bg-accent/5 font-semibold'

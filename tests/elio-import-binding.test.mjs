@@ -8,3 +8,17 @@ test('OCR is a server review draft, not an automatic database write; unavailable
 test('late OCR drafts cannot be shown or saved as another account',async()=>{
  let user={id:'a',role:'user'},resolve;const b=createImportBinding({isActive:()=>true,client:{getUser:()=>user,extractDocument:()=>new Promise(r=>resolve=r)}});const pending=b.extractFile({name:'scan.pdf',type:'application/pdf',size:1,arrayBuffer:async()=>new Uint8Array([1]).buffer});await new Promise(r=>setTimeout(r,0));user={id:'b',role:'user'};resolve({requiresReview:true,saved:false,draft:{pages:[{text:'private draft'}]}});await assert.rejects(pending,/Tài khoản đã thay đổi/);assert.throws(()=>importVocabularyJSON('[{"id":"a","source_id":"b","de":"gut","vi":"tốt"}]'),/mâu thuẫn/);
 });
+
+test('text skill imports retain raw content and selected destination',async()=>{
+ const {createImportBinding}=await import('../src/core/elio/import-binding.js');
+ const sent=[];
+ const binding=createImportBinding({client:{getUser:()=>({id:'owner',role:'admin'}),importCollection:async(...args)=>(sent.push(args),{recordId:'record',count:1})},isActive:()=>true});
+ for(const contentType of ['reading','writing','speaking']){
+  const result=await binding.save({contentType,title:'Source',level:'B1',scope:'private',rows:[],rawText:'German source text.',organizerId:'folder'});
+  assert.equal(result.savedCount,1);
+  const args=sent.at(-1);
+  assert.equal(args[0],contentType);
+  assert.equal(args[1].items[0].content,'German source text.');
+  assert.equal(args[3],'folder');
+ }
+});

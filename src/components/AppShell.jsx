@@ -1,3 +1,4 @@
+import {CollectionToolbar} from '@/components/common/CollectionTools';
 import {toast} from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, Link } from '@/lib/router';
@@ -94,6 +95,8 @@ export function AppShell({ children }) {
         { path: '/', label: 'Hôm nay', icon: Calendar },
         { path: '/review', label: 'Ôn thẻ', icon: RotateCw },
         { path: '/vocabulary', label: 'Từ vựng', icon: BookMarked },
+        { path: '/explore', label: 'Học & khám phá', icon: Compass },
+        { path: '/collections/all', label: 'Các bộ học', icon: BookOpen },
       ],
     },
     {
@@ -427,6 +430,7 @@ export function AppShell({ children }) {
 
       {/* Main Content Viewport */}
       <main className="flex-1 min-w-0 pb-20 md:pb-8 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-rise">
+        <CollectionToolbar/>
         {children}
       </main>
 

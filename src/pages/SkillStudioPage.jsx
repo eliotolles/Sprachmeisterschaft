@@ -1,3 +1,5 @@
+import {activeCollectionId} from '@/lib/collection-types';
+import {CollectionReadingStudio,CollectionSpeechStudio} from '@/components/skills/CollectionPractice';
 import React from 'react';
 import { useRouter } from '@/lib/router';
 import { DictationStudio } from '@/components/skills/DictationStudio';
@@ -15,6 +17,9 @@ export function SkillStudioPage({ skillId }) {
     navigate('/skills');
   };
 
+  const collectionId=activeCollectionId();
+  if(collectionId&&skillId==='reading')return <CollectionReadingStudio collectionId={collectionId}/>;
+  if(collectionId&&['speaking','pronunciation'].includes(skillId))return <CollectionSpeechStudio collectionId={collectionId} pronunciation={skillId==='pronunciation'}/>;
   switch (skillId) {
     case 'listening':
       return <DictationStudio onBack={handleBack} />;

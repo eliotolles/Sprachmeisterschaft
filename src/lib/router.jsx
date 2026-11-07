@@ -14,10 +14,12 @@ function getCleanPath() {
 
 export function RouterProvider({ children }) {
   const [currentPath, setCurrentPath] = useState(getCleanPath);
+  const [search,setSearch]=useState(()=>typeof window==='undefined'?'':window.location.hash.split('?')[1]||'');
 
   useEffect(() => {
     const handlePopState = () => {
       setCurrentPath(getCleanPath());
+      setSearch(window.location.hash.split('?')[1]||'');
     };
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('hashchange', handlePopState);
@@ -28,15 +30,16 @@ export function RouterProvider({ children }) {
   }, []);
 
   const navigate = (to) => {
-    if (to === currentPath) return;
+    if (to === currentPath+(search?'?'+search:'')) return;
     // Use hash for 100% reliable local preview & Vite hosting without server rewrite
     window.location.hash = to.startsWith('/') ? to : `/${to}`;
-    setCurrentPath(to);
+    setCurrentPath(to.split('?')[0]);
+    setSearch(to.split('?')[1]||'');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <RouterContext.Provider value={{ currentPath, navigate }}>
+    <RouterContext.Provider value={{ currentPath, navigate, search }}>
       {children}
     </RouterContext.Provider>
   );

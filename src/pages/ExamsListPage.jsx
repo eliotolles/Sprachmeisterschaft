@@ -144,7 +144,7 @@ export function ExamsListPage() {
               </button>
             )}
             <button
-              onClick={() => coreActive?toast.error('Xem trước Import đề thi chưa nối server.'):setIsImportOpen(true)}
+              onClick={() => setIsImportOpen(true)}
               className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
@@ -184,7 +184,7 @@ export function ExamsListPage() {
           <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
             <button
               type="button"
-              onClick={() => coreActive?toast.error('Xem trước Import đề thi chưa nối server.'):setIsImportOpen(true)}
+              onClick={() => setIsImportOpen(true)}
               className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-mono font-semibold rounded-sm inline-flex items-center gap-1.5 shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />

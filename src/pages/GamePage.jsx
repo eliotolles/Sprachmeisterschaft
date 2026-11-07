@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import {activeCollectionId} from '@/lib/collection-types';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -11,13 +12,18 @@ import { toast } from 'sonner';
 export function GamePage() {
   const { navigate } = useRouter();
 
-  // Combine static words and user imported cards
-  const userNouns = db.vocabulary.findMany().filter(
-    (w) => ['der', 'die', 'das'].includes((w.article || '').toLowerCase())
-  );
-  const nounPool = [...WORDS, ...userNouns].filter(
-    (w) => ['der', 'die', 'das'].includes((w.article || '').toLowerCase())
-  );
+  const [sourceCards,setSourceCards]=useState(()=>db.vocabulary.findMany());
+  const nextQuestionTimer=useRef(null);
+  useEffect(()=>{
+    const refresh=()=>setSourceCards(db.vocabulary.findMany());
+    window.addEventListener('sprach_db_change',refresh);
+    return()=>{window.removeEventListener('sprach_db_change',refresh);if(nextQuestionTimer.current)clearTimeout(nextQuestionTimer.current);};
+  },[]);
+  const collectionId=activeCollectionId();
+  const nounPool=useMemo(()=>{
+    const cards=collectionId?sourceCards:[...WORDS,...sourceCards];
+    return cards.filter(word=>['der','die','das'].includes((word.article||'').toLowerCase()));
+  },[sourceCards,collectionId]);
 
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -29,8 +35,7 @@ export function GamePage() {
   const [isFinished, setIsFinished] = useState(false);
 
   // Initialize 15 random nouns
-  const initGame = () => {
-    if (nounPool.length === 0) return;
+  const initGame = useCallback(() => {
     const shuffled = [...nounPool].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 15);
     setQuestions(selected);
@@ -41,37 +46,12 @@ export function GamePage() {
     setCorrectCount(0);
     setAnswerState(null);
     setIsFinished(false);
-  };
+  },[nounPool]);
 
   useEffect(() => {
     initGame();
-  }, []);
+  }, [initGame]);
 
-  if (nounPool.length === 0) {
-    return (
-      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise my-8">
-        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
-          <Gamepad2 className="w-6 h-6" />
-        </div>
-        <div>
-          <h3 className="font-display text-xl font-bold text-foreground">
-            Chưa có danh từ nào để chơi game Der / Die / Das
-          </h3>
-          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
-            Toàn bộ data mẫu đã được xóa sạch. Hãy import bộ từ vựng (chứa mạo từ der/die/das) vào hệ thống để bắt đầu trò chơi phản xạ mạo từ.
-          </p>
-        </div>
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <button
-            onClick={() => navigate('/vocabulary')}
-            className="tap px-4 py-2 text-xs font-mono font-semibold rounded-sm bg-accent text-accent-foreground shadow-sm"
-          >
-            Đến Quản lý Từ vựng
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const currentQ = questions[currentIndex];
 
@@ -115,7 +95,8 @@ export function GamePage() {
     setAnswerState({ chosen: articleChosen, correct: correctArticle, isCorrect });
 
     // Move to next question after 800ms
-    setTimeout(() => {
+    if(nextQuestionTimer.current)clearTimeout(nextQuestionTimer.current);
+    nextQuestionTimer.current=setTimeout(() => {
       setAnswerState(null);
       setTimeLeft(6);
       if (currentIndex + 1 < questions.length) {
@@ -145,6 +126,32 @@ export function GamePage() {
       }
     }, 800);
   };
+
+  if (nounPool.length === 0) {
+    return (
+      <div className="surface p-8 max-w-xl mx-auto text-center space-y-4 rounded-sm border border-border animate-rise my-8">
+        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
+          <Gamepad2 className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="font-display text-xl font-bold text-foreground">
+            Chưa có danh từ nào để chơi game Der / Die / Das
+          </h3>
+          <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
+            Toàn bộ data mẫu đã được xóa sạch. Hãy import bộ từ vựng (chứa mạo từ der/die/das) vào hệ thống để bắt đầu trò chơi phản xạ mạo từ.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => navigate('/vocabulary')}
+            className="tap px-4 py-2 text-xs font-mono font-semibold rounded-sm bg-accent text-accent-foreground shadow-sm"
+          >
+            Đến Quản lý Từ vựng
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isFinished) {
     const finalScore = Math.round((correctCount / questions.length) * 100);

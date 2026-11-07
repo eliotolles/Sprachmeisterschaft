@@ -1,3 +1,5 @@
+import {ExplorePage} from '@/pages/ExplorePage';
+import {CollectionsPage} from '@/pages/CollectionsPage';
 import React, { useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
@@ -88,6 +90,9 @@ export function App() {
 
   // Render routed view
   const renderView = () => {
+    if(currentPath==='/explore'||currentPath.startsWith('/explore/'))return <ExplorePage topic={currentPath.split('/')[2]||'sentence'}/>;
+    if(currentPath.startsWith('/collections/view/'))return <CollectionsPage collectionId={decodeURIComponent(currentPath.slice('/collections/view/'.length))}/>;
+    if(currentPath==='/collections'||currentPath.startsWith('/collections/'))return <CollectionsPage skill={currentPath.split('/')[2]||'all'}/>;
     // Exact routes
     if (currentPath === '/' || currentPath === '') return <HomePage />;
     if (currentPath === '/review') return <ReviewPage />;
@@ -136,7 +141,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <AuthGate>
-        <AppShell>{renderView()}</AppShell>
+        <AppShell><React.Fragment key={currentPath+'?'+(window.location.hash.split('?')[1]||'')}>{renderView()}</React.Fragment></AppShell>
       </AuthGate>
       <GlobalConfirmModal />
     </ErrorBoundary>

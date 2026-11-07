@@ -1,8 +1,8 @@
 // Reuse authenticated vocabulary, retaining source IDs and account isolation.
-export function buildLevelDecks(cards=[]) {
+export function buildLevelDecks(cards=[],{includePrivate=false}={}) {
  const groups=new Map(),seen=new Set();
  for(const card of cards){
-  if(!card||!card.is_shared||!card.id||!card.german||seen.has(card.id))continue;
+  if(!card||!card.is_shared&&!includePrivate||!card.id||!card.german||seen.has(card.id))continue;
   seen.add(card.id);
   const rawLevel=String(card.level||'').trim().toUpperCase();
   const level=rawLevel||'Chưa phân cấp',levels=[...new Set(rawLevel.match(/\b[A-C][12]\b/g)||[])];

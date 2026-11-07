@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { SKILLS } from '@/data/skills';
 import {
+  Compass,
   Headphones,
   Mic,
   BookOpen,
@@ -132,6 +133,12 @@ export function SkillsOverviewPage() {
             </div>
           );
         })}
+        <button onClick={()=>navigate('/explore')} className="surface p-5 border border-border space-y-3 text-left">
+          <Compass className="w-6 h-6 text-accent"/>
+          <h2 className="font-heading text-xl font-semibold">Học & khám phá</h2>
+          <p className="font-body text-sm text-muted-foreground">Cấu trúc câu, phát âm, giao tiếp, văn hóa và tiếng Đức nâng cao.</p>
+          <span className="font-heading text-sm text-accent">Mở chủ điểm <ArrowRight className="inline w-4 h-4"/></span>
+        </button>
       </div>
 
       <UniversalImportModal

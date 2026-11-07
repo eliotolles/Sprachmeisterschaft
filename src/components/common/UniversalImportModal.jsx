@@ -1,3 +1,5 @@
+import {ImportCollectionTarget} from '@/components/common/CollectionTools';
+import {activeCollectionId} from '@/lib/collection-types';
 import {createPortal} from 'react-dom';
 import {reviewedGrammar,reviewedExams} from '@/core/elio/reviewed-import';
 // ====================================================================
@@ -59,9 +61,10 @@ import {
   VOCAB_14_COLUMNS,
 } from '@/lib/document-parsers';
 
-export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, onSuccess }) {
+export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, defaultCollectionId = null, onSuccess }) {
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
+  const [targetCollectionId,setTargetCollectionId]=useState(defaultCollectionId||activeCollectionId());
   const draftOwner=useRef(null), draftGeneration=useRef(0), savingImport=useRef(false);
   useEffect(()=>{const reset=()=>{if(elioImport.isActive()){draftGeneration.current++;draftOwner.current=null;savingImport.current=false;setIsSubmitting(false);setIsProcessing(false);setGrammarExercisesJson('');setExtractedItems([]);setSelectedFile(null);setManualText('');setTitle('');setYoutubeUrl('');setYoutubeSubtitles('');setIssuesList([]);setSyncReport(null);setExcelSheets([]);setDetectedExams([]);setExamContent(null);setSituationContent(null);setGrammarContent({rule:'',exercises:[]});setCurrentUser(db.auth.getUser());setIsAdminState(db.auth.isAdmin());setScope(db.auth.isAdmin()?'public':'private');setStep(1);}};window.addEventListener('sprach_auth_change',reset);return()=>window.removeEventListener('sprach_auth_change',reset);},[]);
 
@@ -109,6 +112,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     draftGeneration.current++;
     if (isOpen) {
       setContentType(defaultType);
+      setTargetCollectionId(defaultCollectionId||activeCollectionId());
       if(elioImport.isActive()){setDuplicateMode('skip');draftOwner.current=db.auth.getUser()?.id;}
       setStep(1);
       setExtractedItems([]);
@@ -127,7 +131,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         setScope(currentAdmin ? 'public' : 'private');
       }
     }
-  }, [isOpen, defaultType, initialScope]);
+  }, [isOpen, defaultType, initialScope,defaultCollectionId]);
 
   useEffect(()=>{if(!isOpen||typeof document==='undefined')return;const previous=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=previous;};},[isOpen]);
 
@@ -195,7 +199,17 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIssuesList([]);
 
     try {
-      if(elioImport.isActive()&&!['vocabulary','listening','grammar','exam'].includes(contentType))throw Error('Loại tài liệu này chưa nối màn xem trước với server.');
+      if(['reading','writing','speaking'].includes(contentType)){
+        let content=manualText;
+        if(inputMethod==='file'&&selectedFile){
+          const type=detectFileType(selectedFile);
+          if(type==='docx')content=(await parseDocxFile(selectedFile)).rawText;
+          else if(type==='pdf')content=(await parsePdfFile(selectedFile)).fullText;
+          else content=await selectedFile.text();
+        }
+        if(!content?.trim())throw Error('Chưa có văn bản gốc để nhập.');
+        assertCurrentDraft();setManualText(content);setExtractedItems([{id:'document',title,level,content,_valid:true}]);setStep(2);setIsProcessing(false);return;
+      }
       // CASE A: LISTENING (YouTube)
       if (contentType === 'listening') {
         const info = extractYouTubeInfo(youtubeUrl);
@@ -286,6 +300,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         }
         const parsedSit = parseSituationInput(textOrJson);
         setSituationContent(parsedSit);
+        setManualText(textOrJson);
         setStep(2);
         setIsProcessing(false);
         return;
@@ -434,7 +449,8 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIsSubmitting(true);
 
     try {
-      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent]});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
+      if(targetCollectionId&&!elioImport.isActive())throw Error('Cần đăng nhập server để import vào bộ.');
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;
@@ -687,6 +703,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
         </div>
 
         {/* ================= STEP 1: CONFIG & INPUT ================= */}
+        {step < 3 && <ImportCollectionTarget contentType={contentType} value={targetCollectionId} onChange={setTargetCollectionId} onScopeChange={setScope}/>}
         {step === 1 && (
           <div className="overflow-y-auto flex-1 py-4 space-y-4 pr-1">
             {/* Category and Level */}

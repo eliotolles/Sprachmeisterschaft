@@ -1,5 +1,5 @@
 const coreError=(status,code,message)=>Object.assign(new Error(message),{status,code});
-const kinds=['vocab','exam','listening','writing','speaking'];
+const kinds=['vocab','exam','listening','writing','speaking','reading','situation'];
 const invalid=()=>coreError(400,'IMPORT_INPUT','Dữ liệu nhập chưa hợp lệ.');
 const text=(s,max=10000)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export function validateImport(kind,collection){
@@ -11,7 +11,7 @@ export function validateImport(kind,collection){
    if(item.url!==undefined){let u;try{u=new URL(item.url);}catch{throw invalid();}if(u.protocol!=='https:'||u.username||u.password)throw invalid();}
    if(item.cues!==undefined&&(!Array.isArray(item.cues)||item.cues.length>10000||!item.cues.every((c,i,a)=>text(c.text,1500)&&Number.isFinite(c.start)&&Number.isFinite(c.end)&&c.start>=0&&c.end>c.start&&(!i||c.start>=a[i-1].start))))throw invalid();
   }
-  if(['writing','speaking'].includes(kind)&&!text(item.content,100000))throw invalid();
+  if(['writing','speaking','reading','situation'].includes(kind)&&!text(item.content,100000))throw invalid();
   if(kind==='exam'&&(!['reading','listening','writing','speaking'].includes(item.skill)||!['Goethe','telc','ÖSD','ECL'].includes(item.exam)))throw invalid();
  }
  if(new TextEncoder().encode(JSON.stringify(collection)).byteLength>1500000)throw coreError(413,'IMPORT_LIMIT','Chia tài liệu thành bộ nhỏ hơn.');

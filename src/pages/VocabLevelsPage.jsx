@@ -1,3 +1,4 @@
+import {activeCollectionId} from '@/lib/collection-types';
 import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
@@ -32,7 +33,7 @@ export function VocabLevelsPage() {
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
 
-  const readDecks=()=>db.vocabulary.isCore?.()?buildLevelDecks(db.vocabulary.findMany()):LEVEL_DECKS;
+  const readDecks=()=>db.vocabulary.isCore?.()?buildLevelDecks(db.vocabulary.findMany(),{includePrivate:!!activeCollectionId()}):LEVEL_DECKS;
   const [decks,setDecks]=useState(readDecks);
   useEffect(()=>{const refresh=()=>setDecks(readDecks());refresh();window.addEventListener('sprach_db_change',refresh);window.addEventListener('sprach_auth_change',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('sprach_auth_change',refresh);};},[]);
 

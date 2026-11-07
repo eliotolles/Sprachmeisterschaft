@@ -1,3 +1,5 @@
+import {readCollection} from './collections.js';
+import {collectionAccepts} from '../../lib/collection-types.js';
 import {coreError,query} from './database.js';import {digest} from './passwords.js';
 export const LEGACY_VOCAB_DECK='legacy-vocab';
 const missing=()=>coreError(404,'DECK_NOT_FOUND','Không tìm thấy bộ từ được phép đọc.');
@@ -43,9 +45,12 @@ export async function editVocabulary(env,user,input){
  if(input.action==='create'){
   if(!Array.isArray(input.words)||!input.words.length||input.words.length>500)throw coreError(400,'WORD_INPUT','Nhập từ 1 đến 500 từ mỗi lần.');
   const incoming=input.words.map(w=>{const value=lexicalWord(w),id=w.source_id??w.id??crypto.randomUUID();if(typeof id!=='string'||!id||id.length>256)throw coreError(400,'WORD_INPUT','ID từ nguồn không hợp lệ.');return {...value,id};});
-  const id='personal-vocabulary-'+await digest(user.id),empty={id,name:'Từ của tôi',words:[]};
-  await query(env,'INSERT INTO ee_records(id,owner,kind,title,level,public,data,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',[id,user.id,'vocab',empty.name,'',0,JSON.stringify(empty),new Date().toISOString()]);
-  const row=(await query(env,"SELECT data FROM ee_records WHERE id=? AND owner=? AND kind='vocab' AND public=0",[id,user.id])).rows[0];if(!row)throw coreError(409,'DECK_INVALID','Bộ cá nhân chưa hợp lệ.');let data;try{data=JSON.parse(row.data);}catch{throw coreError(409,'DECK_INVALID','Bộ cá nhân chưa đọc được.');}if(!Array.isArray(data.words))throw coreError(409,'DECK_INVALID','Bộ cá nhân thiếu words.');
+  const target=input.organizerId?await readCollection(env,user,input.organizerId,{write:true}):null;
+  if(target&&!collectionAccepts(target.skill,'vocab'))throw coreError(400,'COLLECTION_KIND','Bộ đã chọn không nhận từ vựng.');
+  const shared=target?.visibility==='public'?1:0;
+  const id='personal-vocabulary-'+await digest(target?user.id+'|'+target.id:user.id),empty={id,name:target?target.name:'Từ của tôi',words:[],...(target?{organizerId:target.id}:{})};
+  await query(env,'INSERT INTO ee_records(id,owner,kind,title,level,public,data,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',[id,user.id,'vocab',empty.name,'',shared,JSON.stringify(empty),new Date().toISOString()]);
+  const row=(await query(env,"SELECT data FROM ee_records WHERE id=? AND owner=? AND kind='vocab' AND public=?",[id,user.id,shared])).rows[0];if(!row)throw coreError(409,'DECK_INVALID','Bộ cá nhân chưa hợp lệ.');let data;try{data=JSON.parse(row.data);}catch{throw coreError(409,'DECK_INVALID','Bộ cá nhân chưa đọc được.');}if(!Array.isArray(data.words))throw coreError(409,'DECK_INVALID','Bộ cá nhân thiếu words.');
   const added=[];for(const word of incoming){if(data.words.some(w=>w.id===word.id||w.de===word.de&&w.vi===word.vi&&(w.article||'')===(word.article||'')))continue;data.words.push(word);added.push(word.id);}
   if(!added.length)return {userId:user.id,deckId:id,added:[]};const value=JSON.stringify(data);if(new TextEncoder().encode(value).byteLength>1500000)throw coreError(413,'DECK_LIMIT','Bộ từ đã đầy; chưa xóa từ cũ.');
   const saved=await query(env,"UPDATE ee_records SET data=?,updated_at=? WHERE id=? AND owner=? AND data=? RETURNING id",[value,new Date().toISOString(),id,user.id,row.data]);if(!saved.rows.length)throw coreError(409,'DECK_CONFLICT','Bộ từ thay đổi ở thiết bị khác; chưa ghi đè.');return {userId:user.id,deckId:id,added};

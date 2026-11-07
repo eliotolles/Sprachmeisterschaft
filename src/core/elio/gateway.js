@@ -1,3 +1,4 @@
+import {listCollections,createCollection,readCollection,moveCollectionRecord} from './collections.js';
 import {deleteRecord} from './record-deletion.js';
 import {getAIRouting,updateAIRouting} from './ai-routing.js';
 import {startGoogleAuth,completeGoogleAuth,googleStateCookie} from './google-auth.js';
@@ -220,7 +221,7 @@ export async function handleElioCore(request, env) {
     }
     if (path === '/api/core/grammar' && request.method === 'GET') return json(await listGrammar(env, user, url));
     if (path === '/api/core/grammar/lesson' && request.method === 'GET') {
-      return json(await readGrammarLesson(env, user, url.searchParams.get('collection'), url.searchParams.get('id')));
+      return json(await readGrammarLesson(env, user, url.searchParams.get('collection'), url.searchParams.get('id'),url.searchParams.get('organizer')));
     }
     if (path === '/api/core/grammar/import' && request.method === 'POST') {
       return json(await importGrammar(env, user, await body(request, 1500000)));
@@ -238,13 +239,24 @@ export async function handleElioCore(request, env) {
       if (result.conflict) return json({ code: 'VERSION_CONFLICT', error: 'Có tiến độ mới hơn; lần ôn chưa được ghi lại.', version: result.version }, 409);
       return json(result);
     }
+    if(path==='/api/core/collections/content'&&request.method==='GET'){
+      const {raw,...collection}=await readCollection(env,user,url.searchParams.get('id'));
+      const rows=(await query(env,"SELECT id,owner,kind,title,level,public,data FROM ee_records WHERE (owner=? OR public=1) AND json_extract(data,'$.organizerId')=? ORDER BY updated_at DESC,id LIMIT 1001",[user.id,collection.id])).rows;
+      if(rows.length>1000)throw coreError(413,'COLLECTION_LIMIT','Bộ có quá nhiều tài liệu; hãy chia thành bộ nhỏ hơn.');
+      return json({collection:{...collection,canEdit:collection.owner===user.id||collection.visibility==='public'&&publicUser(user).role==='admin'},items:rows.map(row=>row.kind==='exam'?{...row,data:examCatalogData(row.data)}:row)});
+    }
+    if(path==='/api/core/collections'&&request.method==='GET')return json(await listCollections(env,user));
+    if(path==='/api/core/collections'&&request.method==='POST')return json(await createCollection(env,user,await body(request,2000)));
+    if(path==='/api/core/collections/move'&&request.method==='POST')return json(await moveCollectionRecord(env,user,await body(request,1000)));
     if(path==='/api/core/records/delete'&&request.method==='POST')return json(await deleteRecord(env,user,await body(request,1000)));
     if (path === '/api/core/records' && request.method === 'GET') {
       const kind = url.searchParams.get('kind');
-      if (!['grammar', 'vocab', 'writing', 'speaking', 'listening', 'exam'].includes(kind)) throw coreError(400, 'RECORD_KIND', 'Loại tài liệu không hợp lệ.');
+      if (!['grammar', 'vocab', 'writing', 'speaking', 'listening', 'exam', 'reading', 'situation'].includes(kind)) throw coreError(400, 'RECORD_KIND', 'Loại tài liệu không hợp lệ.');
       const limit=Number(url.searchParams.get('limit')??100),offset=Number(url.searchParams.get('offset')??0);
       if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0)throw coreError(400,'PAGINATION','Phân trang không hợp lệ.');
-      const rows=(await query(env, 'SELECT id,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1) ORDER BY id LIMIT ? OFFSET ?', [kind, user.id,limit,offset])).rows;
+      const collectionId=url.searchParams.get('collection');
+      if(collectionId)await readCollection(env,user,collectionId);
+      const rows=(await query(env, 'SELECT id,owner,kind,title,level,public,data FROM ee_records WHERE kind=? AND (owner=? OR public=1)'+(collectionId?" AND json_extract(data,'$.organizerId')=?":'')+' ORDER BY id LIMIT ? OFFSET ?', [kind,user.id,...(collectionId?[collectionId]:[]),limit,offset])).rows;
       return json({items:rows.map(row=>kind==='exam'?{...row,data:examCatalogData(row.data)}:row),limit,offset});
     }
     if (path === '/api/core/admin/users' && request.method === 'GET') {
