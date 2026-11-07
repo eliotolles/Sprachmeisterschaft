@@ -8,7 +8,13 @@ function fixture(){const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE e
  const env={AI_ENCRYPTION_KEY:'long-isolated-fixture-not-a-provider-secret',TEST_CORE_DB:async(sql,args=[])=>{const s=db.prepare(sql);if(/^SELECT/i.test(sql)||/RETURNING/.test(sql))return {rows:s.all(...args),changes:0};return {rows:[],changes:Number(s.run(...args).changes)};}};return {db,env};}
 const input=()=>({task:'Write about learning German.',text,level:'B1',examProvider:'telc',language:'en',version:0});
 const models=()=>Response.json({data:[{id:'fixture-model'}]});
-async function configure(env){await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fixture-model'});}
+async function configure(env){
+ const {config}=await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fixture-model'});
+ const key='sprach:ai:'+config.id;
+ const row=(await env.TEST_CORE_DB('SELECT value FROM ee_config WHERE key=?',[key])).rows[0];
+ const verified={...JSON.parse(row.value),testResult:{model:config.model,json:true,jsonMode:true}};
+ await env.TEST_CORE_DB('UPDATE ee_config SET value=? WHERE key=?',[JSON.stringify(verified),key]);
+}
 test('DetailedFeedback validates four evidence-based practice criteria and calculates /20 on server',()=>{
  const result=validateFeedback(feedback(),text);assert.equal(result.total,12);assert.equal(result.maxTotal,20);assert.equal(result.officialScore,false);assert.equal(result.wordCount,3);
  const bad=feedback();bad.scores.Strukturen.score=99;assert.throws(()=>validateFeedback(bad,text));

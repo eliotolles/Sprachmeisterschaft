@@ -1,4 +1,3 @@
-import {previewModelSuggestions} from '@/lib/model-previews.js';
 import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
@@ -142,7 +141,7 @@ export function AdminPage() {
   });
   const [smartRecs, setSmartRecs] = useState(() => {
     const cached = getCachedCatalog('gemini');
-    return cached?.models ? getSmartRecommendations(cached.models) : elioAIAdmin()?.isActive()?previewModelSuggestions('gemini'):[];
+    return cached?.models ? getSmartRecommendations(cached.models) : [];
   });
   const [discoveryMeta, setDiscoveryMeta] = useState(() => {
     const cached = getCachedCatalog('gemini');
@@ -231,16 +230,17 @@ export function AdminPage() {
       currentModels = cached.models;
     } else {
       setDiscoveredModels([]);
-      setSmartRecs(elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):[]);
+      setSmartRecs([]);
       setDiscoveryMeta(null);
-      currentModels = elioAIAdmin()?.isActive()?previewModelSuggestions(providerType):FREE_AI_MODELS.filter((m) => m.provider === providerType);
+      currentModels = elioAIAdmin()?.isActive()?[]:FREE_AI_MODELS.filter((m) => m.provider === providerType);
       if(elioAIAdmin()?.isActive())setSelectedModel('');
     }
 
     // Auto-select the top newest model for this provider if current model doesn't belong to it
     const exists = currentModels.some((m) => m.id === selectedModel);
     if (!exists && currentModels.length > 0) {
-      const topModel = currentModels[0];
+      const topModel = elioAIAdmin()?.isActive()?currentModels.find(m=>m.pricing?.isFree):currentModels[0];
+      if(!topModel){setSelectedModel('');return;}
       setSelectedModel(topModel.id);
       setHasVision(Boolean(topModel.capabilities?.vision || topModel.hasVision));
     }
@@ -255,7 +255,7 @@ export function AdminPage() {
     if (cached?.models?.length > 0) {
       return cached.models;
     }
-    if(elioAIAdmin()?.isActive())return previewModelSuggestions(providerType);
+    if(elioAIAdmin()?.isActive())return [];
     // Safe initial seed from catalog
     return FREE_AI_MODELS.filter((m) => m.provider === providerType).map((m) => ({
       id: m.id,
@@ -308,11 +308,13 @@ export function AdminPage() {
         source: res.source,
       });
 
-      if (res.recommendations?.[0]) {
-        setSelectedModel(res.recommendations[0].id);
-        if(!elioAIAdmin()?.isActive()||res.recommendations[0].capabilities?.vision!==undefined)setHasVision(Boolean(res.recommendations[0].capabilities?.vision));
-        if (res.recommendations[1]) {
-          setBackupModel(res.recommendations[1].id);
+      const eligible = elioAIAdmin()?.isActive()?res.recommendations?.filter(m=>m.pricing?.isFree):res.recommendations;
+      setBackupModel('');
+      if (eligible?.[0]) {
+        setSelectedModel(eligible[0].id);
+        if(!elioAIAdmin()?.isActive()||eligible[0].capabilities?.vision!==undefined)setHasVision(Boolean(eligible[0].capabilities?.vision));
+        if (eligible[1]) {
+          setBackupModel(eligible[1].id);
         }
       }
 
@@ -1133,7 +1135,8 @@ export function AdminPage() {
 
               <div className="grid grid-cols-1 gap-2.5">
                 {aiConfigs.map((cfg) => {
-                  const testRes = testResults[cfg.id];
+                  const latestTest = testResults[cfg.id];
+                  const testRes = latestTest?.model === cfg.model ? latestTest : cfg.testResult;
                   const cooldown = db.aiConfig?.getKeyCooldown?.(cfg.id);
                   const inCooldown = cooldown && cooldown.until > Date.now();
                   const cooldownSec = inCooldown ? Math.ceil((cooldown.until - Date.now()) / 1000) : 0;

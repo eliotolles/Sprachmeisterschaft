@@ -21,7 +21,7 @@ test('German TTS uses the dynamically selected speech model and accepts only com
 });
 test('German STT uses the selected transcription model and multipart audio, without saving raw audio',async()=>{
  const {db,env}=fixture(),original=globalThis.fetch;globalThis.fetch=async(url,options)=>{
-  if(String(url).endsWith('/models'))return Response.json({data:[{id:'transcription-model-from-api'}]});
+  if(String(url).endsWith('/models'))return Response.json({data:[{id:'transcription-model-from-api',input_modalities:['audio']}]});
   assert(String(url).endsWith('/audio/transcriptions'));assert.equal(options.body.get('language'),'de');assert.equal(options.body.get('model'),'transcription-model-from-api');return Response.json({text:'Ich lerne Deutsch.'});
  };
  try{await addAIConfig(env,owner,{provider:'groq',model:'transcription-model-from-api',key:'fixture',task:'transcription'});const result=await transcribeGerman(env,alice,{mimeType:'audio/webm',data:'YQ=='});assert.equal(result.text,'Ich lerne Deutsch.');assert.equal(result.language,'de');assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ee_state').get().n,0);}finally{db.close();globalThis.fetch=original;}

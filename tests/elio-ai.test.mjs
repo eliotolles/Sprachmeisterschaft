@@ -73,16 +73,65 @@ test('backup continuation stays on the signed backup model and rejects configura
  }finally{db.close();globalThis.fetch=original;}
 });
 test('explicit vision support lets one text key handle image tasks while keeping secrets server-side',async()=>{
- const {db,env}=fixture(),original=globalThis.fetch;globalThis.fetch=async(url,options)=>{if(String(url).includes('/models?'))return Response.json({models:[{name:'models/vision-fixture',supportedGenerationMethods:['generateContent']}]});const body=JSON.parse(options.body);assert.equal(body.contents[0].parts[1].inlineData.mimeType,'image/png');return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'{"ok":true}'}]}}]});};
+ const {db,env}=fixture(),original=globalThis.fetch;globalThis.fetch=async(url,options)=>{if(String(url).includes('/models?'))return Response.json({models:[{name:'models/vision-fixture',input_modalities:['text','image'],supportedGenerationMethods:['generateContent']}]});const body=JSON.parse(options.body);assert.equal(body.contents[0].parts[1].inlineData.mimeType,'image/png');return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'{"ok":true}'}]}}]});};
  try{const cfg=await addAIConfig(env,owner,{provider:'gemini',key:'fixture-key',model:'vision-fixture',hasVision:true});assert.equal(cfg.config.task,'text');assert.equal(cfg.config.hasVision,true);const result=await generateAI(env,student,{task:'vision',systemPrompt:'S',userPrompt:'U',attachments:[{mimeType:'image/png',data:'YQ=='}]});assert.equal(result.value.ok,true);}finally{db.close();globalThis.fetch=original;}
 });
 test('Admin connection diagnostic actually generates JSON and never returns provider errors or raw keys',async()=>{
  const {testAIConfig}=await import('../src/core/elio/ai.js');const {db,env}=fixture(),original=globalThis.fetch;let generations=0;globalThis.fetch=async(url)=>String(url).endsWith('/models')?Response.json(catalog()):(generations++,Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]}));
- try{await assert.rejects(testAIConfig(env,student,{provider:'groq',key:'fixture-key',model:'fresh-model'}),e=>e.status===403);const result=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});assert.equal(result.success,true);assert.equal(result.testedScope,'json-generation');assert.equal(generations,1);assert(!JSON.stringify(result).includes('fixture-key'));globalThis.fetch=async()=>new Response('private-key-in-upstream-error',{status:500});await assert.rejects(testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'}),e=>e.code==='AI_TEST_UNAVAILABLE'&&!e.message.includes('private-key'));
+ try{await assert.rejects(testAIConfig(env,student,{provider:'groq',key:'fixture-key',model:'fresh-model'}),e=>e.status===403);const result=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});assert.equal(result.success,true);assert.equal(result.testedScope,'json-generation');assert.equal(generations,1);assert(!JSON.stringify(result).includes('fixture-key'));globalThis.fetch=async()=>new Response('private-key-in-upstream-error',{status:500});const failure=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});assert.equal(failure.providerStatus,500);assert(!JSON.stringify(failure).includes('private-key'));
  }finally{db.close();globalThis.fetch=original;}
 });
 test('provider rate limits cool down a model for 30 seconds and expired cooldowns allow retry',async()=>{
  const {db,env}=fixture(),original=globalThis.fetch;let busy=true,generations=0,catalogs=0;globalThis.fetch=async(url)=>{if(String(url).endsWith('/models')){catalogs++;return Response.json(catalog());}generations++;return busy?new Response('private quota detail',{status:429}):Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});};
  try{await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));const before=catalogs;await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));assert.equal(generations,1);assert.equal(catalogs,before);const metadata=(await listAIConfigs(env,owner)).items[0];assert.equal(metadata.cooldown.status,429);assert(metadata.cooldown.until>Date.now());assert(!JSON.stringify(metadata).includes('private quota detail'));const row=db.prepare("SELECT key,value FROM ee_config WHERE key GLOB 'sprach:ai-cooldown:*'").get(),value=JSON.parse(row.value);value.until=Date.now()-1;db.prepare('UPDATE ee_config SET value=? WHERE key=?').run(JSON.stringify(value),row.key);busy=false;assert.equal((await generateAI(env,student,{systemPrompt:'S',userPrompt:'U'})).value.ok,true);assert.equal(generations,2);
+ }finally{db.close();globalThis.fetch=original;}
+});
+
+test('Live diagnostics persist safe results and distinguish missing models, quota and prompt-only JSON',async()=>{
+ const {testAIConfig}=await import('../src/core/elio/ai.js');
+ const {db,env}=fixture(),original=globalThis.fetch;
+ try {
+  globalThis.fetch=async()=>Response.json(catalog());
+  const {config}=await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});
+  for(const [status,code] of [[401,'authentication'],[403,'forbidden'],[404,'model_not_found'],[429,'rate_limit']]){
+   globalThis.fetch=async()=>new Response('upstream secret', {status});
+   const result=await testAIConfig(env,owner,{id:config.id});
+   assert.equal(result.code,code);
+   assert.deepEqual((await listAIConfigs(env,owner)).items[0].testResult,result);
+   assert(!JSON.stringify(result).includes('upstream secret'));
+  }
+  globalThis.fetch=async(url,options)=>String(url).endsWith('/models')?Response.json(catalog()):
+   JSON.parse(options.body).response_format?new Response('',{status:400}):Response.json({choices:[{message:{content:'{"ok":true}'}}]});
+  const result=await testAIConfig(env,owner,{id:config.id});
+  assert.equal(result.code,'prompt_json_only');
+  assert.equal(result.jsonMode,false);
+  globalThis.fetch=async(url,options)=>String(url).endsWith('/models')?Response.json(catalog()):
+   Response.json({choices:[{message:{content:JSON.parse(options.body).response_format?'invalid JSON':'{"ok":true}'}}]});
+  assert.equal((await testAIConfig(env,owner,{id:config.id})).code,'prompt_json_only');
+ }finally{db.close();globalThis.fetch=original;}
+});
+
+test('automatic routing rotates equal priorities and a quota failure skips all models on that key',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch,calls=[];
+ let limited=false;
+ globalThis.fetch=async(url,options)=>{
+  if(String(url).endsWith('/models'))return Response.json({data:[{id:'primary'},{id:'backup'}]});
+  const auth=options.headers.Authorization;
+  calls.push([auth,JSON.parse(options.body).model]);
+  if(limited&&auth==='Bearer key-one')return new Response('',{status:429});
+  return Response.json({choices:[{message:{content:'{"ok":true}'}}]});
+ };
+ try{
+  for(const key of ['key-one','key-two'])await addAIConfig(env,owner,{provider:'groq',key,model:'primary',backupModel:'backup',priority:1});
+  const input={systemPrompt:'S',userPrompt:'U'};
+  await generateAI(env,student,input);
+  await generateAI(env,student,input);
+  assert.equal(new Set(calls.map(([auth])=>auth)).size,2);
+  limited=true;
+  calls.length=0;
+  await generateAI(env,student,input);
+  await generateAI(env,student,input);
+  await generateAI(env,student,input);
+  assert.deepEqual(calls.filter(([auth])=>auth==='Bearer key-one'),[['Bearer key-one','primary']]);
  }finally{db.close();globalThis.fetch=original;}
 });
