@@ -1,3 +1,4 @@
+import {elioClient,elioAuthentication} from '@/lib/elio-auth-runtime';
 import {ScreenWordLookup} from '@/components/vocabulary/ScreenWordLookup';
 import {CollectionToolbar} from '@/components/common/CollectionTools';
 import {toast} from 'sonner';
@@ -33,6 +34,12 @@ import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 export function AppShell({ children }) {
   const { currentPath, navigate } = useRouter();
   const [user, setUser] = useState(() => db.auth.getUser());
+  const [telcImport,setTelcImport]=useState('');
+  useEffect(()=>{
+   if(!elioAuthentication()?.isActive()||!['admin','super_admin'].includes(user?.role))return;let active=true;
+   (async()=>{for(let batch=0;batch<30&&active;batch++){const result=await elioClient.installTelc18();if(!active)return;if(result.remaining)setTelcImport('Đang nhập bộ TELC: '+result.installed+'/'+result.total+' phần');else{setTelcImport('');window.dispatchEvent(new CustomEvent('sprach_core_imported'));if(batch||result.inserted)toast.success('Đã nhập bộ TELC 18 đề vào đúng mô-đun; mở đề để luyện ngay.');return;}}})().catch(error=>{if(active)setTelcImport('Nhập bộ TELC chưa hoàn tất: '+error.message+' · mở lại trang để tiếp tục.');});
+   return()=>{active=false;};
+  },[user?.id,user?.role]);
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => db.studyPlan?.shouldShowOnboarding() || false);
@@ -432,6 +439,7 @@ export function AppShell({ children }) {
       {/* Main Content Viewport */}
       <main className="flex-1 min-w-0 pb-20 md:pb-8 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-rise">
         <CollectionToolbar/>
+        {telcImport&&<p role="status" className="surface border border-border p-3 mb-4 font-body text-sm">{telcImport}</p>}
         {children}
         <ScreenWordLookup/>
       </main>

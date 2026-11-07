@@ -1,3 +1,4 @@
+import {installTelcBundle} from './telc-bundle.js';
 import {renameCollection} from './collections.js';
 import {enrichDictionaryWord} from './dictionary-enrichment.js';
 import {readImportedPractice,updateImportedPractice} from './imported-practice.js';
@@ -180,6 +181,7 @@ export async function handleElioCore(request, env) {
     if (['/api/core/exam/start','/api/core/exam/answers','/api/core/exam/submit'].includes(path) && request.method === 'POST') {
       const input=await body(request,100000);const result=path.endsWith('/start')?await startExam(env,user,input):await answerExam(env,user,input,path.endsWith('/submit'));return json(result,result.conflict?409:200);
     }
+    if(path==='/api/core/import/telc18'&&request.method==='POST')return json(await installTelcBundle(env,user));
     if (path === '/api/core/import/collection' && request.method === 'POST') return json(await importCollection(env,user,await body(request,1600000)));
     if (path === '/api/core/import/extract' && request.method === 'POST') {
       await throttle(env,'core-ocr:'+user.id,5,60000);const result=await extractDocument(env,user,await body(request,15000000));return json(result,result.partial?202:200);

@@ -24,7 +24,8 @@ export async function editRecord(env,user,input){
  if(JSON.stringify(nestedIds(previous))!==JSON.stringify(nestedIds(input.items)))throw coreError(400,'RECORD_IDS','Giữ nguyên ID câu hỏi, bài tập và mục nguồn để không mất liên kết tiến độ.');
  const data={...old,name:input.title.trim(),items:input.items};
  if(row.kind==='vocab')data.words=input.items;
- try{if(row.kind==='grammar')validateGrammarCollection(data);else if(row.kind==='exam'&&!old.rawDocument)reviewedExams(JSON.stringify(data));else validateImport(row.kind,data);}catch{throw coreError(400,'RECORD_CONTENT','Nội dung chưa đúng cấu trúc hoặc thiếu trường bắt buộc. Chưa lưu thay đổi.');}
+ try{if(row.kind==='grammar')validateGrammarCollection(data);else if(row.kind==='exam'&&!old.rawDocument&&old.sourceBundle!=='telc18-prepared-v1')reviewedExams(JSON.stringify(data));else validateImport(row.kind,data);}catch{throw coreError(400,'RECORD_CONTENT','Nội dung chưa đúng cấu trúc hoặc thiếu trường bắt buộc. Chưa lưu thay đổi.');}
+ if(old.sourceBundle==='telc18-prepared-v1'&&data.items.some(item=>!Array.isArray(item.questions)||item.questions.some(q=>typeof q.id!=='string'||typeof q.prompt!=='string'||!Array.isArray(q.options)||q.options.some(option=>typeof option!=='string'))))throw coreError(400,'RECORD_CONTENT','Câu hỏi của đề đã chuẩn hóa chưa hợp lệ.');
  const value=JSON.stringify(data);
  if(new TextEncoder().encode(value).byteLength>1500000)throw coreError(413,'RECORD_LIMIT','Nội dung vượt giới hạn an toàn.');
  const result=await query(env,'UPDATE ee_records SET title=?,data=?,updated_at=? WHERE id=? AND data=? RETURNING id',[data.name,value,new Date().toISOString(),row.id,row.data]);

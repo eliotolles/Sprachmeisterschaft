@@ -1,3 +1,4 @@
+import {useRouter} from '@/lib/router';
 import {renderLessonMarkdown} from '@/lib/lesson-markdown.js';
 import React, { useState, useEffect, useRef } from 'react';
 import {newGrammarBinding,grammarCoreActive} from '@/lib/elio-grammar-runtime';
@@ -24,6 +25,7 @@ import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function GrammarStudio({ onBack }) {
+  const {navigate}=useRouter();
   const coreActive=grammarCoreActive(), [core]=useState(newGrammarBinding);
   const [catalog,setCatalog]=useState([]),[lesson,setLesson]=useState(null),[exerciseIndex,setExerciseIndex]=useState(0),[feedbacks,setFeedbacks]=useState({});
   const [grading,setGrading]=useState(false); const generation=useRef(0),inFlight=useRef(false);
@@ -254,7 +256,7 @@ export function GrammarStudio({ onBack }) {
             return (
               <button
                 key={t.id}
-                onClick={() => setActiveTopicId(t.id)}
+                onClick={() => t.source?.recordId?.startsWith('telc18-')?navigate('/practice/'+encodeURIComponent(t.source.recordId)):setActiveTopicId(t.id)}
                 className={`tap w-full p-2.5 text-left rounded-sm text-xs transition-colors flex items-start gap-2 ${
                   isActive
                     ? 'bg-accent text-accent-foreground font-semibold shadow-sm'

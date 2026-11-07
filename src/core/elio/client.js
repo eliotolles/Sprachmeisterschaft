@@ -139,6 +139,7 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
       next.then(() => { if (writes.get(key) === next) writes.delete(key); }, () => { if (writes.get(key) === next) writes.delete(key); });
       return next;
     },
+    async installTelc18(){requireUser();return request('/import/telc18',{method:'POST',data:{},deadlineMs:65000});},
     async enrichWord(data){requireUser();return request('/dictionary/enrich',{method:'POST',data,deadlineMs:125000});},
     async practice(id){requireUser();return request('/practice?'+new URLSearchParams({id}),{deadlineMs:45000});},
     async updatePractice(data){requireUser();return request('/practice',{method:'POST',data,deadlineMs:125000});},

@@ -1,3 +1,5 @@
+import {recoverChoiceTexts} from './telc-choice-recovery.js';
+import {fastTelcSections} from './telc-fast-parser.js';
 import {coreError,query} from './database.js';
 import {digest} from './passwords.js';
 import {saveJournal} from './journal.js';
@@ -34,7 +36,7 @@ function grade(document){
 function publicState(document){
  if(!document)return null;const {keys,answerDraft,...safe}=document;
  if(answerDraft)safe.answerDraft={mappings:answerDraft.mappings,warnings:answerDraft.warnings};
- safe.sections=safe.sections.map(s=>({...s,questions:s.questions.map(({answer,answers,answerSource,...q})=>q)}));
+ safe.sections=safe.sections.map(s=>({...s,questions:s.questions.map(({answer,answers,answerSource,...q})=>({...q,optionTexts:recoverChoiceTexts(s,q,document.source)}))}));
  return {...safe,...(document.submitted?{grading:grade(document)}:{})};
 }
 async function save(env,user,s){const written=await saveJournal(env,user,s.key,s.version,s.document);if(written.conflict)throw coreError(409,'PRACTICE_CONFLICT','Bài luyện vừa được cập nhật. Tải lại; chưa ghi đè.');return {...written,practice:publicState(s.document),serverNow:Date.now()};}
@@ -44,11 +46,11 @@ function projectStructured(data){
  const questions=[];const items=item.questions||item.exercises||[];
  for(const [index,q] of items.entries()){
   const id=item.id+':'+q.id;const options=q.options||[];
-  questions.push({id,number:String(q.sourceNumber??index+1),prompt:q.prompt||q.question||'',type:options.length?'choice':'gap',options,optionTexts:q.optionTexts||{}});
+  questions.push({id,number:String(q.sourceNumber??index+1),prompt:q.prompt||q.question||'',type:q.type|| (options.length?'choice':'gap'),options,optionTexts:q.optionTexts||{}});
   const answer=q.answer??q.answers;
   if(answer!==undefined&&(q.answerSource==='document'||data.type==='grammar'||item.exercises))keys[id]={answer:Array.isArray(answer)?answer[0]:answer,source:'document',evidence:q.answerSourceDocument||'Đáp án đi kèm dữ liệu đã nhập',explanation:q.explanation||''};
  }
- if(questions.length)sections.push({id:item.id,title:item.title,skill:item.skill||'grammar',content:item.content||'',questions});
+ if(questions.length)sections.push({id:item.id,title:item.title,skill:item.skill||'grammar',content:item.content||'',sourceImages:(item.sourceImages||[]).filter(url=>typeof url==='string'&&url.startsWith('/telc18/')),questions});
  }
  return {sections,keys};
 }
@@ -72,8 +74,8 @@ export async function updateImportedPractice(env,user,input,ai=generateAI){
  if(!s.document){
   if(input.action!=='prepare')throw fail('Tạo môi trường luyện trước.');
   const source=originalText(data);if(!source.trim()||source.length>500000)throw fail('Tài liệu trống hoặc quá lớn. Chia thành từng đề.');
-  const structured=projectStructured(data);
-  s.document={recordId:row.id,title:row.title,sourceHash,contentHash:await digest(JSON.stringify(data.items||data.words||[data])),source,sections:structured.sections,keys:structured.keys,chunk:structured.sections.length?splitPracticeSource(source).length:0,totalChunks:splitPracticeSource(source).length,answers:{},warnings:[],submitted:false,startedAt:null,deadline:null,transcript:'',createdAt:Date.now()};
+  const structured=projectStructured(data);if(!structured.sections.length){const quick=fastTelcSections(source,row.title,row.kind);if(quick)structured.sections=quick;}
+  s.document={recordId:row.id,title:row.title,sourceHash,contentHash:await digest(JSON.stringify(data.items||data.words||[data])),source,sections:structured.sections,keys:structured.keys,chunk:structured.sections.length?splitPracticeSource(source).length:0,totalChunks:splitPracticeSource(source).length,answers:{},warnings:Array.isArray(data.warnings)?data.warnings:[],submitted:false,startedAt:null,deadline:null,transcript:'',createdAt:Date.now()};
   return save(env,user,s);
  }
  const d=s.document;

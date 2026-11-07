@@ -448,7 +448,7 @@ export async function parsePdfFile(file, onProgress) {
     const page = await pdfDoc.getPage(pageNum);
     const textContent = await page.getTextContent();
     const pageStrings = textContent.items.map((item) => item.str || '').filter(Boolean);
-    const pageText = pageStrings.join(' ').trim();
+    const pageText = textContent.items.map(item=>(item.str||'')+(item.hasEOL?'\n':' ')).join('').trim();
 
     const isScanned = pageText.length < 15; // Rất ít text chứng tỏ là trang ảnh chụp scan
     if (isScanned) scannedPagesCount++;
