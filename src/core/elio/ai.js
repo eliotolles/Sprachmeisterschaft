@@ -138,18 +138,21 @@ async function probeModel(env,row,key,vision,deadlineAt) {
     systemPrompt:vision?'Inspect the attached image. Reply with a JSON object with one key "color", containing the dominant color in English.':'Connection test only. Return exactly JSON {"ok":true}.',
     userPrompt:vision?'What color is the image?':'Confirm JSON generation.',jsonMode,freeOnly,deadlineAt,attachments:vision?[probeImage]:[],
   });
+  const passes=result=>{
+    if(!result||result.truncated)return false;
+    try{
+      const value=JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
+      return vision?String(value?.color).trim().toLowerCase()==='red':value?.ok===true;
+    }catch{return false;}
+  };
   let result;
   if(model.jsonMode!==false&&row.provider!=='anthropic'){
     try{result=await generate(true);}
-    catch(error){if(![400,422].includes(error.providerStatus))throw error;}
+    catch(error){if(![400,422].includes(error.providerStatus)&&error.code!=='AI_EMPTY')throw error;}
   }
-  const native=!!result&&row.provider!=='anthropic';
-  result ||= await generate(false);
-  let json=false;
-  try{
-    const value=JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
-    json=!result.truncated&&(vision?String(value?.color).trim().toLowerCase()==='red':value?.ok===true);
-  }catch{}
+  const native=passes(result);
+  if(!native)result=await generate(false);
+  const json=native||passes(result);
   const code=json?(native?'operational':'prompt_json_only'):'text_only';
   const message=json?(native?'Provider trả JSON hợp lệ ở chế độ JSON.':'Provider trả JSON theo prompt, chưa xác nhận JSON mode.'):'Model sinh văn bản nhưng bài thử chưa trả JSON hợp lệ.';
   return {success:json,code,message,text:true,json,jsonMode:native&&json,vision:vision&&json,testedScope:json?(vision?'json-generation-with-image':'json-generation'):'text-generation'};

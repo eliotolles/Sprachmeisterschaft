@@ -105,6 +105,9 @@ test('Live diagnostics persist safe results and distinguish missing models, quot
   const result=await testAIConfig(env,owner,{id:config.id});
   assert.equal(result.code,'prompt_json_only');
   assert.equal(result.jsonMode,false);
+  globalThis.fetch=async(url,options)=>String(url).endsWith('/models')?Response.json(catalog()):
+   Response.json({choices:[{message:{content:JSON.parse(options.body).response_format?'invalid JSON':'{"ok":true}'}}]});
+  assert.equal((await testAIConfig(env,owner,{id:config.id})).code,'prompt_json_only');
  }finally{db.close();globalThis.fetch=original;}
 });
 
