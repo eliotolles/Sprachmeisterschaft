@@ -123,7 +123,7 @@ export function ReadinessPage() {
               <div className="flex items-center justify-between text-xs font-mono">
                 <span className="font-semibold text-foreground flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-accent" />
-                  Trụ cột 2: 7 Xưởng kỹ năng ({readiness.skills.score}%)
+                  Trụ cột 2: 7 Phòng kỹ năng ({readiness.skills.score}%)
                 </span>
                 <span className="text-muted-foreground">
                   Đã luyện {readiness.skills.practicedCount}/7 kỹ năng
@@ -168,7 +168,7 @@ export function ReadinessPage() {
             <div className="p-3 rounded-sm bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-xs flex items-center gap-2 text-amber-900 dark:text-amber-200">
               <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
               <span>
-                Kỹ năng đang cần bồi dưỡng thêm: <strong>{readiness.skills.weakestSkill.toUpperCase()}</strong>. Hãy dành 15 phút luyện tập xưởng này hôm nay.
+                Kỹ năng đang cần bồi dưỡng thêm: <strong>{readiness.skills.weakestSkill.toUpperCase()}</strong>. Hãy dành 15 phút luyện tập phòng này hôm nay.
               </span>
             </div>
           )}

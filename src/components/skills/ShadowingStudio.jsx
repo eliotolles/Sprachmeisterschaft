@@ -112,7 +112,7 @@ export function ShadowingStudio({ onBack }) {
         duration_seconds: pool.length * 60,
       });
       setIsFinished(true);
-      toast.success(`Hoàn thành xưởng Sprechen! Điểm: ${avg}%`);
+      toast.success(`Hoàn thành phòng Sprechen! Điểm: ${avg}%`);
     }
   };
 
@@ -120,7 +120,7 @@ export function ShadowingStudio({ onBack }) {
     const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
     return (
       <StudioResult
-        title="Kết quả Xưởng Nói đuổi (Shadowing)"
+        title="Kết quả Phòng Nói đuổi (Shadowing)"
         score={avg}
         passed={avg >= 60}
         badgeText="Sprechen / Shadowing"
@@ -132,7 +132,7 @@ export function ShadowingStudio({ onBack }) {
           setIsFinished(false);
         }}
         onNext={onBack}
-        nextLabel="Quay lại danh sách xưởng"
+        nextLabel="Quay lại danh sách phòng"
       />
     );
   }

@@ -168,7 +168,7 @@ export function WritingStudio({ onBack }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between border-b border-border pb-3 gap-2">
         <div>
-          <div className="eyebrow">Schreibwerkstatt • Xưởng viết luận & Thẩm định AI</div>
+          <div className="eyebrow">Schreibwerkstatt • Phòng viết luận & Thẩm định AI</div>
           <h2 className="font-display font-bold text-xl md:text-2xl text-foreground">
             Luyện Viết Chuẩn CEFR (A1 - C1)
           </h2>
@@ -685,7 +685,7 @@ export function WritingStudio({ onBack }) {
               onClick={onBack}
               className="tap flex-1 py-2.5 bg-accent text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40 flex items-center justify-center gap-2"
             >
-              <span>Quay lại danh sách xưởng</span>
+              <span>Quay lại danh sách phòng</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

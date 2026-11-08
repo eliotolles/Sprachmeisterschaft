@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 const ICON_MAP = {
+  Compass,
   Headphones,
   Mic,
   BookOpen,
@@ -58,8 +59,8 @@ export function SkillsOverviewPage() {
   return (
     <div className="space-y-6 animate-rise">
       <PageHeader
-        eyebrow="XƯỞNG LUYỆN TOÀN DIỆN"
-        title="7 Xưởng kỹ năng ngôn ngữ"
+        eyebrow="PHÒNG LUYỆN TOÀN DIỆN"
+        title="Các phòng kỹ năng ngôn ngữ"
         deTitle="Fertigkeiten"
         subtitle="Rèn giũa phản xạ từ nghe, nói, đọc, viết đến phát âm và phỏng vấn mô phỏng."
         actions={
@@ -75,11 +76,11 @@ export function SkillsOverviewPage() {
 
       <ExamCategoryNav value={category} onChange={setCategory}/>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {SKILLS.map((skill) => {
+        {[...SKILLS,{id:'explore',icon:'Compass',de:'Lernen & Entdecken',vi:'Học & khám phá',tagline:'Hiểu cách dùng tiếng Đức trong đời sống.',desc:'Cấu trúc câu, phát âm, giao tiếp, văn hóa và tiếng Đức nâng cao.'}].map((skill) => {
           const Icon = ICON_MAP[skill.icon] || Sparkles;
           const lastSession = latestBySkill[skill.id];
           const isGame = skill.id === 'game';
-          const linkPath = isGame
+          const linkPath = skill.id==='explore'?'/explore':isGame
             ? '/game'
             : skill.id === 'listening'
             ? '/skills/listening'
@@ -129,19 +130,13 @@ export function SkillsOverviewPage() {
                   to={linkPath+(isGame?'':'?exam='+encodeURIComponent(category))}
                   className="tap px-3 py-1.5 bg-accent/10 hover:bg-accent text-accent hover:text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/30 transition-colors inline-flex items-center gap-1"
                 >
-                  <span>{isGame ? 'Vào chơi' : 'Vào xưởng'}</span>
+                  <span>{isGame ? 'Vào chơi' : skill.id==='explore'?'Mở chủ điểm':'Vào phòng'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </div>
           );
         })}
-        <button onClick={()=>navigate('/explore')} className="surface p-5 border border-border space-y-3 text-left">
-          <Compass className="w-6 h-6 text-accent"/>
-          <h2 className="font-heading text-xl font-semibold">Học & khám phá</h2>
-          <p className="font-body text-sm text-muted-foreground">Cấu trúc câu, phát âm, giao tiếp, văn hóa và tiếng Đức nâng cao.</p>
-          <span className="font-heading text-sm text-accent">Mở chủ điểm <ArrowRight className="inline w-4 h-4"/></span>
-        </button>
       </div>
 
       <UniversalImportModal

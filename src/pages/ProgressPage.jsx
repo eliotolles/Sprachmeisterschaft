@@ -188,7 +188,7 @@ export function ProgressPage() {
       {/* Summary Table: 7 Skills */}
       <div className="surface p-6 space-y-4">
         <div>
-          <div className="eyebrow">CHI TIẾT 7 XƯỞNG KỸ NĂNG</div>
+          <div className="eyebrow">CHI TIẾT 7 PHÒNG KỸ NĂNG</div>
           <h3 className="font-display text-xl font-bold text-foreground">
             Bảng tổng hợp điểm số các kỹ năng
           </h3>

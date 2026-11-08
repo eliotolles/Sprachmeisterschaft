@@ -92,7 +92,7 @@ export function DictationStudio({ onBack }) {
         duration_seconds: pool.length * 60,
       });
       setIsFinished(true);
-      toast.success(`Hoàn thành xưởng Hören! Điểm trung bình: ${avg}%`);
+      toast.success(`Hoàn thành phòng Hören! Điểm trung bình: ${avg}%`);
     }
   };
 
@@ -100,7 +100,7 @@ export function DictationStudio({ onBack }) {
     const avg = Math.round(sessionScores.reduce((a, b) => a + b, 0) / sessionScores.length);
     return (
       <StudioResult
-        title="Kết quả Xưởng Nghe chính tả (Diktat)"
+        title="Kết quả Phòng Nghe chính tả (Diktat)"
         score={avg}
         passed={avg >= 60}
         badgeText="Hören / Diktat"
@@ -114,7 +114,7 @@ export function DictationStudio({ onBack }) {
           setIsFinished(false);
         }}
         onNext={onBack}
-        nextLabel="Quay lại danh sách xưởng"
+        nextLabel="Quay lại danh sách phòng"
       />
     );
   }

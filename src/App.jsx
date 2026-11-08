@@ -130,7 +130,7 @@ export function App() {
     if (currentPath.startsWith('/skills/')) {
       const skillPath = currentPath.replace('/skills/', '');
       const skillId = skillPath.startsWith('reading/') ? 'reading' : skillPath;
-      return <ExamSkillArea skill={['pronunciation','interview'].includes(skillId)?'speaking':skillId}><SkillStudioPage skillId={skillId} /></ExamSkillArea>;
+      return <ExamSkillArea skill={skillId}><SkillStudioPage skillId={skillId} /></ExamSkillArea>;
     }
 
     // Dynamic Exam Route: /exams/:examId
@@ -146,7 +146,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <AuthGate>
-        <AppShell><React.Fragment key={currentPath+'?'+(window.location.hash.split('?')[1]||'')}>{renderView()}</React.Fragment></AppShell>
+        <AppShell><React.Fragment key={currentPath+'?'+(()=>{const p=new URLSearchParams(window.location.hash.split('?')[1]||'');p.delete('listenSearch');return p.toString();})()}>{renderView()}</React.Fragment></AppShell>
       </AuthGate>
       <GlobalConfirmModal />
     </ErrorBoundary>

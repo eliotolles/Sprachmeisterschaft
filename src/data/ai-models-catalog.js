@@ -828,7 +828,7 @@ export const APP_AI_TASKS = [
   },
   {
     id: 'interview',
-    name: 'Xưởng phỏng vấn thi nói Sprechen (/skills/interview)',
+    name: 'Phòng phỏng vấn thi nói Sprechen (/skills/interview)',
     category: 'Giao tiếp & Đàm thoại',
     desc: 'Đóng vai giám khảo Goethe/telc phỏng vấn nhiều lượt và đánh giá tương tác.',
     needsVision: false,

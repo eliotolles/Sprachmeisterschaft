@@ -260,7 +260,7 @@ export function HomePage() {
                         <Link
                           to={t.targetPath || '/skills'}
                           className="shrink-0 p-1.5 text-xs font-mono text-accent hover:underline rounded hover:bg-accent/10 transition-colors"
-                          title="Vào xưởng luyện tập tương ứng"
+                          title="Vào phòng luyện tập tương ứng"
                         >
                           <ArrowRight className="w-4 h-4" />
                         </Link>

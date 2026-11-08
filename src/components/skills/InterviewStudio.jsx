@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export function InterviewStudio({ onBack }) {
+export function InterviewStudio({ onBack,examCategory='general',conversationMode=false }) {
   const [profile] = useState(() => db.learnerProfile.get());
   const [core] = useState(newSpeakingBinding);
   const coreActive=speakingCoreActive();
@@ -34,33 +34,38 @@ export function InterviewStudio({ onBack }) {
   const requestEpoch=useRef(0),[recorder]=useState(()=>createGermanRecorder({client:elioClient}));
   const [recordingState,setRecordingState]=useState('idle');
 
-  const allExams = coreActive?coreExams:getAllExams();
+  const allExams = conversationMode?[]:coreActive?coreExams:getAllExams();
   const [selectedExamId, setSelectedExamId] = useState(allExams[0]?.id || 'free_mode');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [part, setPart] = useState(1);
+  const [sessionStarted,setSessionStarted]=useState(false);
+  const [customTask,setCustomTask]=useState('');
+  const [topic,setTopic]=useState('job');
+  const topics=[['job','Phỏng vấn xin việc','You interview the learner for a job. Ask one practical question at a time about experience, strengths, availability and motivation.'],['hotel','Khách sạn & buồng phòng','Role-play a hotel job interview, guest request or housekeeping handover. Ask one question at a time.'],['daily','Làm quen & đời sống','Role-play getting to know a neighbour. Talk about daily routines, family, interests and plans.'],['shopping','Mua sắm','You are a shop assistant. Help the learner ask about products, sizes, prices and returns.'],['doctor','Đi khám','You are a receptionist or doctor in a language role-play. Ask about an appointment and symptoms. Do not give a diagnosis or medical advice.'],['work','Giao tiếp công việc','You are a colleague. Discuss a shift handover, a request for help and planning daily tasks.'],['custom','Tình huống tự nhập','']];
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const chatEndRef = useRef(null);
 
-  useEffect(()=>{recorder.cancel();setRecordingState('idle');const changed=()=>{recorder.cancel();setRecordingState('idle');};window.addEventListener('sprach_auth_change',changed);return()=>{recorder.cancel();window.removeEventListener('sprach_auth_change',changed);};},[recorder,part,selectedExamId]);
+  useEffect(()=>{recorder.cancel();setRecordingState('idle');const changed=()=>{recorder.cancel();setRecordingState('idle');};window.addEventListener('sprach_auth_change',changed);return()=>{recorder.cancel();window.removeEventListener('sprach_auth_change',changed);};},[recorder,part,selectedExamId,topic]);
 
   const currentExam = allExams.find((e) => e.id === selectedExamId);
   const speakingTasks = currentExam?.speakingTasks || (Array.isArray(currentExam?.speaking) ? currentExam.speaking : []);
-  const currentTask = speakingTasks[part - 1] || null;
+  const examTask = speakingTasks.find(t=>Number(String(t.teil||'').match(/(\d+)/)?.[1]||t.title?.match(/Teil\s*(\d+)/i)?.[1])===part)||speakingTasks[part - 1]||null;
+  const currentTask=conversationMode?{title:topics.find(t=>t[0]===topic)?.[1],prompt:topic==='custom'?customTask:topics.find(t=>t[0]===topic)?.[2]}:examTask;
 
   useEffect(()=>{
-    if(!coreActive)return;let cancelled=false;
-    const load=async()=>{setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams();if(!cancelled){setCoreExams(exams);setSelectedExamId(exams[0]?.id||'free_mode');setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
+    if(conversationMode){setTasksReady(true);return;}if(!coreActive)return;let cancelled=false;
+    const load=async()=>{setSessionStarted(false);setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams(examCategory);if(!cancelled){setCoreExams(exams);setSelectedExamId(exams[0]?.id||'free_mode');setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
     load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{cancelled=true;core.reset();requestEpoch.current++;window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
-  },[coreActive]);
+  },[coreActive,examCategory,conversationMode]);
 
-  const speakingContext=()=>({part:'Teil '+part,level:currentExam?.level||profile.target_level||'B1',examProvider:({goethe:'Goethe',telc:'telc','ösd':'ÖSD',ecl:'ECL'})[String(currentExam?.provider||'').toLowerCase()]||'practice',task:currentTask?.prompt||''});
+  const speakingContext=()=>({part:conversationMode?'Hội thoại hằng ngày':'Teil '+part,level:currentExam?.level||profile.target_level||'B1',examProvider:conversationMode?'practice':({goethe:'Goethe',telc:'telc','ösd':'ÖSD',ecl:'ECL'})[String(currentExam?.provider||'').toLowerCase()]||'practice',task:currentTask?.prompt||customTask});
   useEffect(() => {
     const epoch=++requestEpoch.current;let cancelled=false;
     const startPart = async () => {
-      if(coreActive&&!tasksReady)return;
+      if(!sessionStarted||coreActive&&!tasksReady)return;
       setLoading(true);setFeedback(null);setMessages([]);
       try{if(coreActive){const turns=await core.start(speakingContext());if(!cancelled&&epoch===requestEpoch.current)setMessages(turns);}
       else{const firstTurn=await interviewTurn({part,messages:[],level:currentExam?.level||profile.target_level||'B1',topicPrompt:currentTask?.prompt||'',examTitle:currentExam?.title||''});if(!cancelled)setMessages([{role:'assistant',content:firstTurn}]);}}
@@ -68,7 +73,7 @@ export function InterviewStudio({ onBack }) {
       finally{if(!cancelled&&epoch===requestEpoch.current)setLoading(false);}
     };
     startPart();return()=>{cancelled=true;if(coreActive)core.reset();};
-  }, [part, selectedExamId,tasksReady,restart,coreActive]);
+  }, [part, selectedExamId,tasksReady,restart,coreActive,sessionStarted,topic]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -142,18 +147,18 @@ export function InterviewStudio({ onBack }) {
     <div className="surface p-6 md:p-8 max-w-3xl mx-auto space-y-6 animate-rise">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
         <div>
-          <div className="eyebrow">MÔ PHỎNG THI NÓI CHUẨN GOETHE / TELC</div>
+          <div className="eyebrow">{conversationMode?'GIAO TIẾP TIẾNG ĐỨC VỚI AI':'MÔ PHỎNG THI NÓI CHUẨN GOETHE / TELC'}</div>
           <h2 className="font-display text-2xl font-bold text-foreground">
-            Sprechen Interview — Teil {part}
+            {conversationMode?'Phỏng vấn & hội thoại hằng ngày':'Luyện đề nói với AI — Teil '+part}
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          {[1, 2, 3].map((p) => (
+          {!conversationMode&&[1, 2, 3].map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => {
-                setPart(p);
+                setSessionStarted(false);setPart(p);
                 setFeedback(null);
                 setMessages([]);
               }}
@@ -169,7 +174,9 @@ export function InterviewStudio({ onBack }) {
         </div>
       </div>
 
+      {conversationMode&&<label className="block font-heading text-sm">Chủ đề hội thoại<select value={topic} onChange={e=>{setSessionStarted(false);setTopic(e.target.value);setMessages([]);setFeedback(null);recorder.cancel();}} className="block w-full border border-border bg-card p-3 mt-2">{topics.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>}
       {/* Central Repository Exam Selector */}
+      {!conversationMode&&<>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-muted/30 border border-border rounded-sm text-xs font-mono">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <BookOpen className="w-4 h-4 text-accent shrink-0" />
@@ -177,13 +184,13 @@ export function InterviewStudio({ onBack }) {
           <select
             value={selectedExamId}
             onChange={(e) => {
-              setSelectedExamId(e.target.value);
+              setSessionStarted(false);setSelectedExamId(e.target.value);
               setFeedback(null);
               setMessages([]);
             }}
             className="px-2 py-1 bg-card border border-border rounded-sm text-foreground font-mono text-xs truncate flex-1"
           >
-            {allExams.map((ex) => (
+            {!allExams.length&&<option value="free_mode">Chưa có bộ đề · nhập đề của bạn bên dưới</option>}{allExams.map((ex) => (
               <option key={ex.id} value={ex.id}>
                 {ex.title} ({ex.provider} · {ex.level})
               </option>
@@ -201,6 +208,7 @@ export function InterviewStudio({ onBack }) {
         </button>
       </div>
 
+      </>}
       {/* Current Speaking Task Prompt & Guidelines */}
       {currentTask && (
         <div className="p-4 rounded-sm border border-accent/20 bg-accent/5 space-y-2">
@@ -220,6 +228,8 @@ export function InterviewStudio({ onBack }) {
         </div>
       )}
 
+      {(!currentTask||conversationMode&&topic==='custom')&&<label className="block font-heading text-sm space-y-2">Đề nói / tình huống bạn muốn luyện<textarea disabled={sessionStarted} value={customTask} onChange={e=>setCustomTask(e.target.value)} rows={5} className="block w-full border border-border bg-background p-3" placeholder="Dán nguyên đề và các gợi ý cần thảo luận…"/></label>}
+      {!sessionStarted&&<button disabled={loading||!tasksReady||!(currentTask?.prompt||customTask).trim()} className="tap px-4 py-2 border border-accent bg-accent text-accent-foreground" onClick={()=>setSessionStarted(true)}>{conversationMode?'Bắt đầu hội thoại với AI':'Bắt đầu luyện đề với AI'}</button>}
       {/* Principle 9 Transparency Alert */}
       <div className="p-3 rounded-sm bg-muted/20 border border-border text-[11px] font-body text-muted-foreground flex items-start gap-2">
         <ShieldAlert className="w-4 h-4 text-accent shrink-0 mt-0.5" />
@@ -396,7 +406,7 @@ export function InterviewStudio({ onBack }) {
               onClick={onBack}
               className="tap flex-1 py-2 bg-accent text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/40"
             >
-              Quay lại danh sách xưởng
+              Quay lại danh sách phòng
             </button>
           </div>
         </div>

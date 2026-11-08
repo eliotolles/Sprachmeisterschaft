@@ -160,7 +160,7 @@ export function RegisterPage() {
             </div>
             <div className="flex items-center gap-2 text-foreground">
               <CheckCircle2 className="w-3.5 h-3.5 text-accent flex-shrink-0" />
-              <span>7 Xưởng kỹ năng thực chiến & 9 bộ đề thi chuẩn CEFR</span>
+              <span>7 Phòng kỹ năng thực chiến & 9 bộ đề thi chuẩn CEFR</span>
             </div>
             <div className="flex items-center gap-2 text-foreground">
               <CheckCircle2 className="w-3.5 h-3.5 text-accent flex-shrink-0" />

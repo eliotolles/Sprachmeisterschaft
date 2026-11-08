@@ -10,16 +10,16 @@ export const SKILLS = [
   },
   {
     "id": "speaking",
-    "de": "Sprechen / Shadowing",
-    "vi": "Luyện nói đuổi",
+    "de": "Gespräch / Interview",
+    "vi": "Phỏng vấn & hội thoại",
     "icon": "Mic",
-    "tagline": "Nghe câu mẫu rồi đọc đuổi theo micro để đạt độ tự nhiên và ngữ điệu chuẩn.",
-    "desc": "Hệ thống AI nhận diện giọng nói và chấm điểm phần trăm độ khớp tức thì."
+    "tagline": "Luyện giao tiếp theo chủ đề với bạn hội thoại AI.",
+    "desc": "Chọn tình huống đời sống hoặc công việc, trả lời bằng giọng nói hay văn bản và nhận góp ý."
   },
   {
     "id": "reading",
     "de": "Lesen / Lesesaal",
-    "vi": "Xưởng đọc hiểu",
+    "vi": "Phòng đọc hiểu",
     "icon": "BookOpen",
     "tagline": "Đọc các đoạn văn bám sát đề thi từ A1 đến C2 và trả lời câu hỏi trắc nghiệm.",
     "desc": "Giải thích chi tiết ngữ pháp, từ vựng và mẹo tìm từ khóa trong bài thi."
@@ -27,7 +27,7 @@ export const SKILLS = [
   {
     "id": "writing",
     "de": "Schreiben / Schreibwerkstatt",
-    "vi": "Xưởng viết luận",
+    "vi": "Phòng viết luận",
     "icon": "PenTool",
     "tagline": "Viết email, thư từ và bài luận theo đề thi, gửi AI chấm điểm 4 tiêu chí.",
     "desc": "Nhận ngay thang điểm 100, sửa lỗi ngữ pháp từng câu và bài viết mẫu hoàn chỉnh."
@@ -35,7 +35,7 @@ export const SKILLS = [
   {
     "id": "pronunciation",
     "de": "Aussprache",
-    "vi": "Xưởng phát âm",
+    "vi": "Phòng phát âm",
     "icon": "Volume2",
     "tagline": "Luyện phát âm các âm khó trong tiếng Đức (ch, r, ö, ü, ä, z, st, sp).",
     "desc": "Ghi âm giọng của bạn, so khớp với người bản xứ và xem thanh điểm âm sắc."
@@ -43,7 +43,7 @@ export const SKILLS = [
   {
     "id": "grammar",
     "de": "Grammatik",
-    "vi": "Xưởng ngữ pháp",
+    "vi": "Phòng ngữ pháp",
     "icon": "FileText",
     "tagline": "Hệ thống chủ đề ngữ pháp từ cơ bản A1 đến nâng cao C2.",
     "desc": "Học quy tắc trực quan, ví dụ song ngữ Đức-Việt và làm bài tập chấm điểm ngay."
@@ -59,9 +59,9 @@ export const SKILLS = [
   {
     "id": "game",
     "de": "Der / Die / Das",
-    "vi": "Trò chơi phản xạ mạo từ",
+    "vi": "Luyện qua trò chơi",
     "icon": "Gamepad2",
-    "tagline": "15 danh từ ngẫu nhiên, 6 giây mỗi câu — thử thách phản xạ thần tốc!",
+    "tagline": "Chọn kiểu chơi để luyện từ vựng, Perfekt và cấu trúc câu.",
     "desc": "Tích lũy combo, cộng điểm kinh nghiệm XP và khắc sâu mạo từ vào trí nhớ dài hạn."
   }
 ];

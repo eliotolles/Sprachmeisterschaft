@@ -1,3 +1,4 @@
+import {ListeningLibraryBrowser} from '@/components/skills/ListeningLibraryBrowser';
 import {digest} from '@/core/elio/passwords';
 import {CreateCollectionDialog} from '@/components/common/CollectionTools';
 import {elioClient} from '@/lib/elio-auth-runtime';
@@ -33,10 +34,12 @@ import {
 } from 'lucide-react';
 
 export function ListeningOverviewPage({ initialTab = null }) {
-  const { navigate } = useRouter();
-  const groupSection=useRef(null);
-  const [mode,setMode]=useState('youtube'),[managing,setManaging]=useState(false),[creatingGroup,setCreatingGroup]=useState(false),[openedGroup,setOpenedGroup]=useState(null),[importTarget,setImportTarget]=useState(null),[groupBusy,setGroupBusy]=useState(false);
-  const [selectedLevel, setSelectedLevel] = useState('ALL');
+  const { navigate,search,currentPath } = useRouter();
+  const listenParams=new URLSearchParams(search);
+  const mode=listenParams.get('listenMode');
+  const setMode=value=>{const next=new URLSearchParams(search);next.set('listenMode',value);next.delete('listenGroup');next.delete('listenLevel');next.delete('listenSearch');navigate(currentPath+'?'+next.toString());};
+    const [managing,setManaging]=useState(false),[creatingGroup,setCreatingGroup]=useState(false),[importTarget,setImportTarget]=useState(null),[groupBusy,setGroupBusy]=useState(false);
+  const selectedLevel='ALL'; const setSelectedLevel=()=>{};
   const [activeScopeTab, setActiveScopeTab] = useState(() => {
     if (initialTab) return initialTab;
     if (typeof window !== 'undefined' && (window.location.hash.includes('personal') || window.location.pathname.includes('personal'))) {
@@ -47,7 +50,6 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const [collections, setCollections] = useState(() => db.listening.getCollections());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);
-  useEffect(()=>{if(openedGroup)groupSection.current?.scrollIntoView({behavior:'smooth',block:'start'});},[openedGroup]);
 
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
@@ -120,13 +122,11 @@ export function ListeningOverviewPage({ initialTab = null }) {
      setEditingCollection(null);toast.success('Đã đổi tên bộ nghe.');
     }catch(error){toast.error(error.message);}finally{setGroupBusy(false);}
   };
-  const openedCollection=collections.find(c=>c.id===openedGroup);
-  const openedEpisodes=openedCollection?db.listening.getEpisodes(openedCollection.id).filter(e=>selectedLevel==='ALL'||e.level===selectedLevel):[];
 
   return (
     <div className="space-y-6 animate-rise">
       <PageHeader
-        eyebrow="XƯỞNG KỸ NĂNG NGÔN NGỮ"
+        eyebrow="PHÒNG KỸ NĂNG NGÔN NGỮ"
         title="Luyện nghe tiếng Đức"
         deTitle="Hörverstehen & Video-Studio"
         subtitle="Học qua video YouTube có phụ đề song ngữ Đức - Việt, đồng bộ thời gian thực theo lời nói, tự động dừng từng câu và chép chính tả chuẩn CEFR."
@@ -206,133 +206,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
         )}
       </div>
 
-      <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="font-heading text-2xl font-bold">Theo cấp độ</h2><button className="tap text-sm text-accent" onClick={()=>setSelectedLevel('ALL')}>Tất cả cấp độ</button></div><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">{LEVEL_IDS.map(level=><button key={level} onClick={()=>setSelectedLevel(level)} className={'surface rounded-2xl border p-5 text-left min-h-36 flex flex-col justify-between '+(selectedLevel===level?'border-accent':'border-border')}><ArrowRight className="w-6 h-6 text-accent -rotate-45"/><div><h3 className="font-heading text-lg font-semibold">{level}</h3><p className="text-sm font-body text-muted-foreground mt-1">{allEpisodes.filter(e=>(e.level||e.collection.level)===level).length} video</p></div></button>)}</div></section>
-      <h2 className="font-heading text-2xl font-bold">Bộ nghe của bạn</h2>
-      {activeScopeTab === 'personal' && filteredCollections.length === 0 && (
-        <div className="surface p-8 text-center border-2 border-dashed border-border rounded-sm space-y-4 max-w-xl mx-auto my-6">
-          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mx-auto">
-            <Video className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="font-display font-bold text-lg text-foreground">
-              Chưa có video cá nhân nào
-            </h3>
-            <p className="font-body text-xs text-muted-foreground mt-1 leading-relaxed">
-              Bạn có thể dán bất kỳ link video YouTube tiếng Đức nào (bài hát, phim ngắn, tin tức DW, Easy German) để luyện nghe và chép chính tả trong không gian riêng của bạn.
-            </p>
-          </div>
-          <button
-            onClick={() => listeningCoreActive()&&!elioImport.isActive()?toast.error('Import video chưa nối server; chưa ghi dữ liệu cục bộ.'):setIsImportOpen(true)}
-            className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold shadow-sm inline-flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Nhập video cá nhân ngay</span>
-          </button>
-        </div>
-      )}
-
-      {/* Collections Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
-        {filteredCollections.map((col) => {
-          const episodes = db.listening.getEpisodes(col.id);
-          const firstEpisodeId = episodes[0]?.id;
-          const canManage = isAdmin || col.created_by === currentUser?.id;
-
-          return (
-            <div
-              key={col.id}
-              className="surface rounded-2xl overflow-hidden border border-border hover:border-accent/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col group"
-            >
-              {/* Thumbnail with Level badge */}
-              <div className="relative aspect-video bg-muted overflow-hidden">
-                <img
-                  src={col.thumbnail|| (episodes[0]?.youtubeId?'https://img.youtube.com/vi/'+episodes[0].youtubeId+'/hqdefault.jpg':undefined)}
-                  loading="lazy"
-                  onError={event=>{event.currentTarget.style.visibility='hidden';}}
-                  alt={col.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                  <span className="px-2 py-0.5 rounded-sm bg-accent text-accent-foreground font-mono text-xs font-bold shadow">
-                    {col.level}
-                  </span>
-                  {col.scope === 'private' && (
-                    <span className="px-1.5 py-0.5 rounded-sm bg-blue-600 text-white font-mono text-[10px] font-bold flex items-center gap-1">
-                      <User className="w-3 h-3" />
-                      <span>Cá nhân</span>
-                    </span>
-                  )}
-                  {col.scope === 'admin_only' && (
-                    <span className="px-1.5 py-0.5 rounded-sm bg-amber-600 text-white font-mono text-[10px] font-bold flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      <span>Admin Only</span>
-                    </span>
-                  )}
-                </div>
-
-                <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-sm bg-black/75 text-white font-mono text-[11px]">
-                  {episodes.length} tập
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="p-5 flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-mono text-accent uppercase font-bold tracking-wider">
-                      {col.provider}
-                    </span>
-                    {canManage && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setEditingCollection({ ...col })}
-                          className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                          title="Sửa bộ video"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-blue-500" />
-                        </button>
-                        <button
-                          onClick={() => listeningCoreActive()?setManaging(true):handleDeleteCollection(col.id, col.title)}
-                          className="tap p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600"
-                          title="Xóa bộ video"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <h3 className="font-heading text-lg font-semibold text-foreground mb-1 group-hover:text-accent transition-colors leading-snug">
-                    {col.title}
-                  </h3>
-                  <p className="font-heading italic text-xs text-muted-foreground mb-3">
-                    {col.deTitle}
-                  </p>
-                  <p className="font-body text-xs text-muted-foreground leading-relaxed">
-                    {col.description}
-                  </p>
-                </div>
-
-                <div className="pt-4 mt-4 border-t border-border flex items-center justify-between">
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {episodes.length} video sẵn sàng
-                  </span>
-
-                  <button
-                    onClick={() => {setOpenedGroup(col.id);}}
-                    className="tap px-3 py-1.5 rounded-sm bg-accent/10 hover:bg-accent text-accent hover:text-accent-foreground font-mono text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>Mở bộ</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {openedCollection&&<section ref={groupSection} className="surface border border-border p-5 space-y-4"><div className="flex items-center justify-between gap-3 flex-wrap"><div><h2 className="font-heading text-2xl font-semibold">{openedCollection.title}</h2><p className="font-body text-sm text-muted-foreground">{openedEpisodes.length} tập · chọn cấp độ ở trên để lọc trong bộ</p></div><div className="flex gap-2">{(isAdmin||openedCollection.created_by===currentUser?.id)&&<button disabled={groupBusy} onClick={()=>addToGroup(openedCollection)} className="tap px-3 py-2 border border-border rounded-sm">Thêm video vào bộ này</button>}<button onClick={()=>setOpenedGroup(null)} className="tap px-3 py-2 border border-border rounded-sm">Đóng bộ</button></div></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{openedEpisodes.map(episode=><button key={episode.id} onClick={()=>navigate(`/skills/listening/${openedCollection.id}/${episode.id}?mode=${mode==='dictation'?'dictation':mode==='shadowing'?'shadowing':'video'}`)} className="text-left border border-border rounded-sm p-3 bg-card flex gap-3 items-start"><img alt="" loading="lazy" src={'https://img.youtube.com/vi/'+episode.youtubeId+'/mqdefault.jpg'} className="w-24 aspect-video object-cover rounded-sm"/><div><h3 className="font-heading font-semibold">{episode.title}</h3><p className="text-sm text-muted-foreground">{episode.level} · {episode.subtitles?.length||0} câu phụ đề</p></div></button>)}</div>{!openedEpisodes.length&&<p>Bộ chưa có video ở cấp độ đang chọn. Thêm video hoặc chọn Tất cả cấp độ.</p>}</section>}
-      <CreateCollectionDialog open={creatingGroup} onClose={()=>setCreatingGroup(false)} initialSkill="listening" onCreated={async folder=>{setCreatingGroup(false);setSelectedLevel('ALL');setActiveScopeTab(folder.visibility==='private'?'personal':'all');await elioListening()?.hydrate();setOpenedGroup('folder-'+folder.id);toast.success('Đã tạo bộ nghe riêng. Chọn Thêm video vào bộ này.');}}/>
+      {mode&&<ListeningLibraryBrowser collections={filteredCollections} mode={mode} onAdd={addToGroup} onEdit={col=>setEditingCollection({...col})} canManage={col=>isAdmin||col.created_by===currentUser?.id}/>}
+      <CreateCollectionDialog open={creatingGroup} onClose={()=>setCreatingGroup(false)} initialSkill="listening" onCreated={async folder=>{setCreatingGroup(false);setSelectedLevel('ALL');setActiveScopeTab(folder.visibility==='private'?'personal':'all');await elioListening()?.hydrate();navigate(currentPath+'?listenMode=youtube&listenGroup='+encodeURIComponent('folder-'+folder.id));toast.success('Đã tạo bộ nghe riêng. Chọn Thêm video vào bộ này.');}}/>
       {managing&&<ImportedContentManager onClose={()=>setManaging(false)}/>}
       {/* Universal Import Modal */}
       <UniversalImportModal

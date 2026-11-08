@@ -179,7 +179,7 @@ export function LandingPage() {
               {/* Descriptive Paragraph */}
               <p className="font-body text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-2xl mx-auto">
                 Phương pháp ghi nhớ vĩnh viễn với thuật toán lặp lại ngắt quãng <strong>SRS SM-2</strong>,
-                rèn luyện toàn diện <strong>7 xưởng kỹ năng</strong> ngôn ngữ, phản xạ thần tốc mạo từ
+                rèn luyện toàn diện <strong>7 phòng kỹ năng</strong> ngôn ngữ, phản xạ thần tốc mạo từ
                 <strong> Der / Die / Das</strong>, cọ xát <strong>9 bộ đề thi chuẩn CEFR</strong>, và gia sư trí tuệ nhân tạo <strong>ELIO</strong> đồng hành 24/7.
               </p>
 
@@ -399,7 +399,7 @@ export function LandingPage() {
               <div className="w-10 h-10 rounded-sm bg-accent/10 border border-accent/20 flex items-center justify-center text-accent mb-4 group-hover:scale-110 transition-transform">
                 <Compass className="w-5 h-5" />
               </div>
-              <div className="eyebrow mb-1">Xưởng thực hành</div>
+              <div className="eyebrow mb-1">Phòng thực hành</div>
               <h3 className="font-display text-xl font-bold text-foreground mb-2">
                 7 Kỹ năng ngôn ngữ
               </h3>

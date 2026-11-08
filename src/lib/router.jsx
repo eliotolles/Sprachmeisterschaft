@@ -29,13 +29,14 @@ export function RouterProvider({ children }) {
     };
   }, []);
 
-  const navigate = (to) => {
+  const navigate = (to, {replace=false,scroll=true}={}) => {
     if (to === currentPath+(search?'?'+search:'')) return;
     // Use hash for 100% reliable local preview & Vite hosting without server rewrite
-    window.location.hash = to.startsWith('/') ? to : `/${to}`;
+    const target=to.startsWith('/')?to:`/${to}`;
+    if(replace)window.history.replaceState(null,'','#'+target);else window.location.hash=target;
     setCurrentPath(to.split('?')[0]);
     setSearch(to.split('?')[1]||'');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if(scroll)window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (

@@ -44,5 +44,5 @@ export async function readExams(env,user){
 export function examCatalogData(raw){
  let d;try{d=JSON.parse(raw);}catch{throw coreError(409,'EXAM_INVALID','Không đọc được đề thi.');}
  const pick=(x,keys)=>Object.fromEntries(keys.filter(k=>Object.hasOwn(x,k)).map(k=>[k,x[k]]));
- return JSON.stringify({...pick(d,['id','name','type','exam','examBoard','provider','sourceBundle','organizerId','level','groupName']),items:(d.items||[]).map(t=>({...pick(t,['id','title','exam','level','skill','teil','content','setName','setKey','requiresImage']),questions:(t.questions||[]).map(q=>({...pick(q,['id','sourceNumber','prompt','options']),...optionMetadata(q)}))}))});
+ return JSON.stringify({...pick(d,['id','name','type','exam','examBoard','provider','sourceBundle','organizerId','level','groupName']),items:(d.items||[]).map(t=>({...pick(t,['id','title','exam','level','skill','teil','content','setName','setKey','requiresImage','questionCount']),questions:(t.questions||[]).map(q=>({...pick(q,['id','sourceNumber','prompt','options']),...optionMetadata(q)}))}))});
 }

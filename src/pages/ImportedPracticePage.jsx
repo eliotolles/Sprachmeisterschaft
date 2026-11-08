@@ -1,3 +1,4 @@
+import {PracticeLibrary} from '@/components/skills/PracticeLibrary';
 import {ExamCategoryNav,useExamCategory} from '@/components/common/ExamCategoryNav';
 import {recordExamCategory,recordMatchesSkill} from '@/lib/exam-categories';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
@@ -48,6 +49,7 @@ export function ImportedPracticePage({recordId=null,skill=null,showExamNavigatio
  useEffect(()=>{if(!p?.startedAt||p.submitted||JSON.stringify(answers)===lastSaved.current)return;setSaveStatus('Có thay đổi chưa lưu');const timer=setTimeout(()=>{const snapshot=structuredClone(draft.current);call('answers',{answers:snapshot}).then(()=>{lastSaved.current=JSON.stringify(snapshot);if(same())setSaveStatus('Đã lưu trên máy chủ');}).catch(e=>{if(same()){setSaveStatus('Chưa lưu được; câu trả lời vẫn giữ trên màn hình');setError(e.message);}});},900);return()=>clearTimeout(timer);},[answers,p?.startedAt,p?.submitted]);
  const expired=p?.deadline&&now>=p.deadline;
  useEffect(()=>{if(expired&&!p?.submitted&&!busy)submitAndGrade();},[!!expired,p?.submitted]);
+ useEffect(()=>{const id=new URLSearchParams(search).get('section');if(id&&p?.sections){const index=p.sections.findIndex(s=>s.id===id);if(index>=0)setActive(index);}},[search,p?.sections]);
  const sections=p?.sections||[],section=sections[active]||sections[0],compactMatching=section?.skill==='reading'&&/Teil\s*3\b/i.test(section.title)&&section.questions.every(q=>q.type!=='multiple'&&q.options.length>=10&&q.options.every(o=>/^[A-LX]$/i.test(o))),all=sections.flatMap(s=>s.questions),resultMap=new Map((p?.grading?.results||[]).map(r=>[r.id,r]));
  async function readAnswerFile(file){if(!file)return;setBusy(true);setError('');try{let text;if(/\.pdf$/i.test(file.name)){const {parsePdfFile}=await import('@/lib/document-parsers');const extracted=await parsePdfFile(file);text=extracted.fullText||extracted.rawText||'';if(!text.trim()||extracted.hasScannedPages)text=(await elioImport.extractFile(file)).text;}else text=await file.text();if(same())setAnswerText(text);}catch(e){setError(e.message);}finally{setBusy(false);}}
  return <div className="space-y-5 font-body">
@@ -56,7 +58,8 @@ export function ImportedPracticePage({recordId=null,skill=null,showExamNavigatio
   {message&&<p role="status">{message}</p>}
   <div className="flex flex-wrap gap-2"><button disabled={busy} className={button} onClick={load}>Tải lại tiến độ</button>{recordId&&<button className={button} onClick={()=>navigate('/practice?exam='+encodeURIComponent(examCategory)+(skill?'&skill='+encodeURIComponent(skill):''))}>Danh sách đề import</button>}</div>
   {!recordId&&<>{showExamNavigation&&<ExamCategoryNav value={examCategory} onChange={setExamCategory}/>}<label className="block font-heading text-sm">Cấp độ <select aria-label="Cấp độ bài luyện" value={level} className="border border-border bg-card p-2" onChange={e=>{const params=new URLSearchParams(search);params.set('level',e.target.value);navigate(window.location.hash.slice(1).split('?')[0]+'?'+params.toString());}}>{['ALL','A1','A2','B1','B2','C1','C2'].map(l=><option key={l} value={l}>{l==='ALL'?'Tất cả cấp độ':l}</option>)}</select></label></>}
-  {!recordId&&<div className="grid grid-cols-1 md:grid-cols-2 gap-3">{visibleRecords.map(row=><button key={row.id} className="surface border border-border p-4 text-left" onClick={()=>navigate('/practice/'+encodeURIComponent(row.id)+'?exam='+encodeURIComponent(examCategory))}><h2 className="font-heading text-xl">{row.title}</h2><p>{labels[row.kind]} · {row.level}</p></button>)}{!busy&&!visibleRecords.length&&<p>Chưa có tài liệu thuộc kỳ thi, cấp độ và kỹ năng đang chọn. Chọn mục khác hoặc import vào đúng kỳ thi.</p>}</div>}
+  {!recordId&&<PracticeLibrary records={visibleRecords} category={examCategory} skill={skill}/>}
+
   {recordId&&<>
    {state?.sourceChanged&&<p role="alert">Tài liệu gốc đã thay đổi. Bài làm trước vẫn được giữ. Tạo bản sao nguồn nếu cần luyện phiên bản mới.</p>}
    {(!p||p.chunk<p.totalChunks)&&<section className="surface p-5 border border-border space-y-3"><p>Hệ thống sẽ đọc và tách câu hỏi thành phần thi. Tiến độ xử lý được lưu sau từng phần; lỗi AI không xóa phần đã xong.</p><button disabled={busy||state?.sourceChanged} className={button} onClick={build}>{p?'Tiếp tục tạo bài luyện':'Đọc đề & tạo môi trường luyện'}</button>{busy&&<button className={button} onClick={()=>{cancel.current=true;}}>Dừng sau phần đang xử lý</button>}{p&&<p>Đã xử lý {p.chunk}/{p.totalChunks} phần · {all.length} câu hỏi</p>}</section>}

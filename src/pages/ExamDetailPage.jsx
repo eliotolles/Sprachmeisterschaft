@@ -102,7 +102,7 @@ export function ExamDetailPage({ examId }) {
   const totalMCQuestions = allReadingQuestions.length + allListeningQuestions.length;
 
   const handleGradeWritingNow = async () => {
-    if(coreActive)return toast.error('Phiên này chỉ chấm trắc nghiệm; luyện viết dùng xưởng Schreiben.');
+    if(coreActive)return toast.error('Phiên này chỉ chấm trắc nghiệm; luyện viết dùng phòng Schreiben.');
     if (!writingText.trim() || writingText.trim().split(/\s+/).length < 15) {
       toast.error('Vui lòng viết tối thiểu 15 từ trước khi thẩm định.');
       return;
