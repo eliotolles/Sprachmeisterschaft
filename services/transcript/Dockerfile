@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-c
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY extract.py server.py ./
+COPY extract.py playlist.py server.py ./
 RUN useradd --uid 10001 --create-home elio && mkdir /data && chown elio:elio /data
 USER elio
 ENV HOST=0.0.0.0 PORT=8080 CACHE_DB=/data/transcripts.sqlite3 PYTHONUNBUFFERED=1

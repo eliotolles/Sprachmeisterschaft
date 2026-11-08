@@ -123,6 +123,26 @@ def resolve(payload):
     finally: SLOTS.release()
 
 
+def resolve_playlist(payload):
+    playlist_id = payload.get('playlistId')
+    if not isinstance(playlist_id, str) or not re.fullmatch(r'[\w-]{10,150}', playlist_id):
+        raise ValueError('Playlist ID không hợp lệ.')
+    if not SLOTS.acquire(blocking=False):
+        return {'available': False, 'code': 'PLAYLIST_BUSY'}
+    try:
+        process = subprocess.run([sys.executable, str(BASE / 'playlist.py')], input=json.dumps({'playlistId': playlist_id}), capture_output=True, text=True, timeout=DEADLINE, env=os.environ.copy())
+        if len(process.stdout) > 1500000:
+            return {'available': False, 'code': 'PLAYLIST_LIMIT'}
+        result = json.loads(process.stdout)
+        return result if isinstance(result, dict) else {'available': False, 'code': 'PLAYLIST_INCOMPLETE'}
+    except subprocess.TimeoutExpired:
+        return {'available': False, 'code': 'PLAYLIST_TIMEOUT'}
+    except (ValueError, OSError):
+        return {'available': False, 'code': 'PLAYLIST_UNAVAILABLE'}
+    finally:
+        SLOTS.release()
+
+
 def format_cues(cues, format):
     def stamp(seconds, separator):
         n = max(0, round(seconds * 1000))
@@ -164,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/health': self.send(200, {'ok':True, 'service':'elio-transcript', 'version':'1.0.0'})
         else: self.send(404, {'error':'Not found'})
     def do_POST(self):
-        if self.path not in ('/v1/transcript', '/v1/export', '/api/listening/captions'):
+        if self.path not in ('/v1/transcript', '/v1/export', '/api/listening/captions', '/v1/playlist'):
             self.send(404, {'error':'Not found'}); return
         if not TOKEN or not hmac.compare_digest(self.headers.get('Authorization',''), 'Bearer '+TOKEN):
             self.close_connection=True; self.send(401, {'error':'Unauthorized'}); return
@@ -188,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(payload,dict): raise ValueError('Body phải là JSON object.')
             format=payload.get('format','srt')
             if self.path=='/v1/export' and format not in ('srt','vtt','txt','json'): raise ValueError('Định dạng không hợp lệ.')
-            result=resolve(payload)
+            result=resolve_playlist(payload) if self.path=='/v1/playlist' else resolve(payload)
             if self.path=='/v1/export' and result['available']:
                 mime={'vtt':'text/vtt; charset=utf-8','json':'application/json; charset=utf-8'}.get(format,'text/plain; charset=utf-8')
                 self.send(200,format_cues(result['cues'],format),mime,{'Content-Disposition':f'attachment; filename="{result["videoId"]}.{format}"'})

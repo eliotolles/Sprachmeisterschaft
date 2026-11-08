@@ -1,3 +1,5 @@
+import {ExamTrainingPage} from '@/pages/ExamTrainingPage';
+import {examCoreActive} from '@/lib/elio-exam-runtime';
 import {ExamSkillArea} from '@/components/common/ExamSkillArea';
 import {ImportedPracticePage} from '@/pages/ImportedPracticePage';
 import {ExplorePage} from '@/pages/ExplorePage';
@@ -112,7 +114,7 @@ export function App() {
     if (currentPath === '/skills/listening') return <ExamSkillArea skill="listening"><ListeningOverviewPage /></ExamSkillArea>;
     if (currentPath === '/admin') return <AdminPage />;
     if (currentPath === '/game') return <GamePage />;
-    if (currentPath === '/exams') return <ExamsListPage />;
+    if (currentPath === '/exams') return examCoreActive()?<ExamTrainingPage/>:<ExamsListPage />;
     if (currentPath === '/readiness') return <ReadinessPage />;
     if (currentPath === '/elio') return <ElioChatPage />;
     if (currentPath === '/progress') return <ProgressPage />;
@@ -146,7 +148,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <AuthGate>
-        <AppShell><React.Fragment key={currentPath+'?'+(()=>{const p=new URLSearchParams(window.location.hash.split('?')[1]||'');p.delete('listenSearch');return p.toString();})()}>{renderView()}</React.Fragment></AppShell>
+        <AppShell><React.Fragment key={currentPath+'?'+(()=>{const p=new URLSearchParams(window.location.hash.split('?')[1]||'');p.delete('listenSearch');p.delete('examSearch');return p.toString();})()}>{renderView()}</React.Fragment></AppShell>
       </AuthGate>
       <GlobalConfirmModal />
     </ErrorBoundary>

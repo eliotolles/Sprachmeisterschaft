@@ -1,3 +1,4 @@
+import {useRouter} from '@/lib/router';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import {createGermanRecorder} from '@/core/elio/browser-audio';
 import React, { useState, useEffect, useRef } from 'react';
@@ -25,6 +26,7 @@ import {
 import { toast } from 'sonner';
 
 export function InterviewStudio({ onBack,examCategory='general',conversationMode=false }) {
+  const {search}=useRouter();
   const [profile] = useState(() => db.learnerProfile.get());
   const [core] = useState(newSpeakingBinding);
   const coreActive=speakingCoreActive();
@@ -57,7 +59,7 @@ export function InterviewStudio({ onBack,examCategory='general',conversationMode
 
   useEffect(()=>{
     if(conversationMode){setTasksReady(true);return;}if(!coreActive)return;let cancelled=false;
-    const load=async()=>{setSessionStarted(false);setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams(examCategory);if(!cancelled){setCoreExams(exams);setSelectedExamId(exams[0]?.id||'free_mode');setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
+    const load=async()=>{setSessionStarted(false);setTasksReady(false);setMessages([]);setFeedback(null);setInput('');core.reset();requestEpoch.current++;try{const exams=await core.loadExams(examCategory);if(!cancelled){setCoreExams(exams);const params=new URLSearchParams(search),source=params.get('source'),task=params.get('task');const selected=exams.find(e=>e.id===source+':'+task)||exams.find(e=>source&&e.id.startsWith(source+':'))||exams[0];setSelectedExamId(selected?.id||'free_mode');const requestedPart=Number(params.get('part'));if([1,2,3].includes(requestedPart))setPart(requestedPart);setTasksReady(true);}}catch(error){if(!cancelled)toast.error(error.message);}};
     load();window.addEventListener('sprach_auth_change',load);window.addEventListener('sprach_core_imported',load);return()=>{cancelled=true;core.reset();requestEpoch.current++;window.removeEventListener('sprach_auth_change',load);window.removeEventListener('sprach_core_imported',load);};
   },[coreActive,examCategory,conversationMode]);
 

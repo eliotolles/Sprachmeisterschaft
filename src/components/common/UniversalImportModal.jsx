@@ -1,3 +1,4 @@
+import {elioClient} from '@/lib/elio-auth-runtime';
 import {EXAM_CATEGORIES,examCategory} from '@/lib/exam-categories';
 import {useRouter} from '@/lib/router';
 import {ImportCollectionTarget} from '@/components/common/CollectionTools';
@@ -97,6 +98,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
   const [manualText, setManualText] = useState('');
   const [grammarExercisesJson, setGrammarExercisesJson] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [listeningLinkType,setListeningLinkType]=useState('video'),[playlistMeta,setPlaylistMeta]=useState(null),[captionIssue,setCaptionIssue]=useState('');
   const [youtubeSubtitles, setYoutubeSubtitles] = useState('');
 
   // Extracted Data for Preview & Editing
@@ -122,6 +124,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     draftGeneration.current++;
     if (isOpen) {
       setContentType(defaultType);
+      setInputMethod(defaultType==='listening'?'manual':'file');setPlaylistMeta(null);setCaptionIssue('');setListeningLinkType('video');
       setTargetCollectionId(defaultCollectionId||activeCollectionId());
       if(elioImport.isActive()){setDuplicateMode('skip');draftOwner.current=db.auth.getUser()?.id;}
       setStep(1);
@@ -222,13 +225,19 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
       }
       // CASE A: LISTENING (YouTube)
       if (contentType === 'listening') {
+        setCaptionIssue('');setPlaylistMeta(null);
+        if(listeningLinkType==='playlist'){
+          if(!elioImport.isActive())throw Error('Import playlist cần đăng nhập backend Elio.');
+          setProcessProgress({message:'Đang đọc danh sách video thật từ playlist…',percent:40});
+          const playlist=await elioClient.listeningPlaylist(youtubeUrl);assertCurrentDraft();setPlaylistMeta(playlist);setExtractedItems(playlist.items.map(v=>({...v,_valid:true})));setStep(2);setIsProcessing(false);return;
+        }
         const info = extractYouTubeInfo(youtubeUrl);
         if (!info.videoId) {
           throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');
         }
 
         setProcessProgress({ message: 'Đang phân tích phụ đề và mốc thời gian...', percent: 60 });
-        const subs = elioImport.isActive()&&!youtubeSubtitles.trim()?await elioImport.transcript(youtubeUrl):parseYouTubeSubtitles(youtubeSubtitles);
+        let subs=[];if(youtubeSubtitles.trim())subs=parseYouTubeSubtitles(youtubeSubtitles);else if(elioImport.isActive()){try{subs=await elioImport.transcript(youtubeUrl);}catch(error){setCaptionIssue('Chưa lấy được phụ đề gốc: '+error.message+' Bạn có thể lưu link video trước và thử CC sau.');}}
 
         assertCurrentDraft();setExtractedItems(subs);
         setProcessProgress({ message: 'Hoàn thành trích xuất video!', percent: 100 });
@@ -462,7 +471,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
     try {
       if(targetCollectionId&&!elioImport.isActive())throw Error('Cần đăng nhập server để import vào bộ.');
-      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,examBoard,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,examBoard,playlistItems:contentType==='listening'&&listeningLinkType==='playlist'?extractedItems.map(v=>({id:v.id,title:v.title})):null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(contentType==='listening'&&!extractedItems[0]?.content){onClose();navigate('/skills/listening?listenMode=youtube');return;}if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;
@@ -575,9 +584,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           title,
           level,
           youtubeId: info.videoId,
-          subtitles: extractedItems.length > 0 ? extractedItems : [
-            { id: 'sub-1', start: 0, end: 5, de: title, vi: 'Nội dung video' },
-          ],
+          subtitles: extractedItems,
           scope: effectiveScope,
         });
 
@@ -986,22 +993,23 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                 <div className="space-y-3">
                   {contentType === 'listening' ? (
                     <div className="space-y-3">
+                      <fieldset className="flex flex-wrap gap-3"><legend className="font-heading text-sm mb-2">Loại đường dẫn YouTube</legend>{[['video','Một video'],['playlist','Cả playlist']].map(([id,label])=><label key={id} className="flex items-center gap-2 text-sm"><input type="radio" name="youtube-link-type" checked={listeningLinkType===id} onChange={()=>{setListeningLinkType(id);setExtractedItems([]);setPlaylistMeta(null);setCaptionIssue('');}}/>{label}</label>)}</fieldset>
                       <div>
                         <label className="block text-xs font-mono font-medium text-foreground mb-1 flex items-center gap-1.5">
                           <Youtube className="w-3.5 h-3.5 text-rose-600" />
-                          <span>Đường link YouTube Video hoặc YouTube ID *</span>
+                          <span>{listeningLinkType==='playlist'?'Đường link playlist YouTube *':'Đường link YouTube Video hoặc YouTube ID *'}</span>
                         </label>
                         <input
                           type="text"
                           required
                           value={youtubeUrl}
                           onChange={(e) => setYoutubeUrl(e.target.value)}
-                          placeholder="https://www.youtube.com/watch?v=4-eDoThe6qo hoặc 4-eDoThe6qo"
+                          placeholder={listeningLinkType==='playlist'?'https://www.youtube.com/playlist?list=…':'https://www.youtube.com/watch?v=… hoặc Video ID'}
                           className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
                         />
                       </div>
 
-                      <div>
+                      {listeningLinkType==='video'&&<div>
                         <div className="flex items-center justify-between mb-1">
                           <label className="text-xs font-mono font-medium text-foreground">
                             Phụ đề kèm timestamp (Định dạng: <code>Phút:Giây - Tiếng Đức | Tiếng Việt</code> hoặc SRT)
@@ -1015,7 +1023,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
                           placeholder={`0:05 - Wie lange lernen Sie schon Deutsch? | Bạn học tiếng Đức bao lâu rồi?\n0:08 - Ich lerne seit einem Jahr Deutsch. | Tôi học được một năm rồi.\n0:14 - Richtig, ich weiß das! | Đúng rồi, tôi biết điều đó!`}
                           className="w-full px-3 py-2 text-xs rounded-sm border border-border bg-card text-foreground font-mono"
                         />
-                      </div>
+                      </div>}{listeningLinkType==='playlist'&&<p className="text-sm text-muted-foreground">Đọc toàn bộ danh sách trước khi lưu vào bộ đã chọn. Video được lưu trước; phụ đề CC được lấy riêng sau khi import.</p>}
                     </div>
                   ) : contentType === 'grammar' ? (
                     <div className="space-y-3">
@@ -1361,7 +1369,9 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
             )}
 
             {/* PREVIEW: LISTENING SUBTITLES */}
-            {contentType === 'listening' && !extractedItems[0]?.content && (
+            {contentType==='listening'&&playlistMeta&&<section className="surface border border-border p-4 space-y-3"><h3 className="font-heading font-semibold">{playlistMeta.title}</h3><p>{extractedItems.length} video có thể nhập · {playlistMeta.unavailable} video riêng tư/không khả dụng không được nhập.</p><p>Chưa lấy phụ đề CC cho các video này.</p><ol className="max-h-72 overflow-y-auto list-decimal pl-5">{extractedItems.map(v=><li key={v.id} className="py-1">{v.title}</li>)}</ol></section>}
+            {captionIssue&&<p role="status" className="border border-border p-3 text-sm">{captionIssue}</p>}
+            {contentType === 'listening' && !playlistMeta && !extractedItems[0]?.content && (
               <div className="space-y-3">
                 <div className="p-3 bg-muted/30 border border-border rounded-sm text-xs font-mono flex items-center justify-between">
                   <span>YouTube ID: <strong>{extractYouTubeInfo(youtubeUrl).videoId}</strong></span>
