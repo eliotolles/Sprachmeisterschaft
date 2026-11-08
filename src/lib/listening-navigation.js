@@ -14,3 +14,6 @@ export function listeningModeMatches(group,mode){
  const podcast=/podcast|postcard|postcast/i.test(group.title);
  return mode==='podcast'?podcast:mode==='youtube'?!podcast:true;
 }
+
+export function listeningLevels(episodes){return [...new Set(episodes.map(e=>e.level||'Chưa phân cấp'))].sort();}
+export function filterListeningEpisodes(episodes,level='ALL',query=''){const text=query.trim().toLocaleLowerCase('de');return episodes.filter(e=>(!level||level==='ALL'||e.level===level)&&(!text||String(e.title||'').toLocaleLowerCase('de').includes(text)));}

@@ -37,16 +37,11 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const { navigate,search,currentPath } = useRouter();
   const listenParams=new URLSearchParams(search);
   const mode=listenParams.get('listenMode');
-  const setMode=value=>{const next=new URLSearchParams(search);next.set('listenMode',value);next.delete('listenGroup');next.delete('listenLevel');next.delete('listenSearch');navigate(currentPath+'?'+next.toString());};
+  const setMode=value=>{const next=new URLSearchParams(search);next.set('listenMode',value);next.delete('listenGroup');next.delete('listenLevel');next.delete('listenSearch');next.delete('listenCatalogLevel');navigate(currentPath+'?'+next.toString());};
     const [managing,setManaging]=useState(false),[creatingGroup,setCreatingGroup]=useState(false),[importTarget,setImportTarget]=useState(null),[groupBusy,setGroupBusy]=useState(false);
   const selectedLevel='ALL'; const setSelectedLevel=()=>{};
-  const [activeScopeTab, setActiveScopeTab] = useState(() => {
-    if (initialTab) return initialTab;
-    if (typeof window !== 'undefined' && (window.location.hash.includes('personal') || window.location.pathname.includes('personal'))) {
-      return 'personal';
-    }
-    return 'all';
-  });
+  const activeScopeTab=listenParams.get('listenScope')==='personal'?'personal':listenParams.get('listenScope')==='all'?'all':initialTab||((currentPath.includes('personal'))?'personal':'all');
+  const setActiveScopeTab=value=>{const next=new URLSearchParams(search);next.set('listenScope',value);for(const key of ['listenGroup','listenLevel','listenSearch','listenCatalogLevel'])next.delete(key);navigate(currentPath+'?'+next.toString());};
   const [collections, setCollections] = useState(() => db.listening.getCollections());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);

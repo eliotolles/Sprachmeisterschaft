@@ -10,3 +10,7 @@ test('all ten games have usable source-backed rounds; personal mode never silent
  for(const type of ['participle','auxiliary','structure','order'])assert.deepEqual(buildGameDeck(type,[],{personal:true}),[]);
  assert.equal(gameWords([{german:'die Tür',vietnamese:'cửa'},{de:'Tür',vi:'cửa'}]).length,1);assert.equal(normalizeGameAnswer('  Straße! '),'straße');assert.notEqual(normalizeGameAnswer('schon'),normalizeGameAnswer('schön'));
 });
+import {listeningLevels,filterListeningEpisodes} from '../src/lib/listening-navigation.js';
+test('each listening set filters by its own available levels, including all, without borrowing another set',()=>{
+ const one=[{id:'a',level:'A1',title:'Hallo'},{id:'b',level:'B1',title:'Arbeit'}],two=[{id:'c',level:'C1',title:'Arbeit'}];assert.deepEqual(listeningLevels(one),['A1','B1']);assert.equal(filterListeningEpisodes(one,'ALL').length,2);assert.deepEqual(filterListeningEpisodes(one,'B1','arbeit').map(e=>e.id),['b']);assert.equal(filterListeningEpisodes(one,'C1').length,0);assert.deepEqual(listeningLevels(two),['C1']);
+});

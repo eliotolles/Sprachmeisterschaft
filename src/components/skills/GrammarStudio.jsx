@@ -26,6 +26,7 @@ import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function GrammarStudio({ onBack }) {
   const {navigate}=useRouter();
+  const [showTopics,setShowTopics]=useState(true);
   const coreActive=grammarCoreActive(), [core]=useState(newGrammarBinding);
   const [catalog,setCatalog]=useState([]),[lesson,setLesson]=useState(null),[exerciseIndex,setExerciseIndex]=useState(0),[feedbacks,setFeedbacks]=useState({});
   const [grading,setGrading]=useState(false); const generation=useRef(0),inFlight=useRef(false);
@@ -192,7 +193,7 @@ export function GrammarStudio({ onBack }) {
   };
 
   return (
-    <div className="surface p-6 md:p-8 max-w-4xl mx-auto space-y-6 animate-rise">
+    <div className="surface w-full min-w-0 p-4 sm:p-6 lg:p-8 space-y-6 animate-rise">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-3 gap-3">
         <div>
           <div className="eyebrow">Grammatik-Werkstatt</div>
@@ -200,7 +201,8 @@ export function GrammarStudio({ onBack }) {
             Hệ thống {allGrammar.length} chủ đề Ngữ pháp A1–C2
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" aria-expanded={showTopics} aria-controls="grammar-topic-list" onClick={()=>setShowTopics(v=>!v)} className="tap px-3 py-1.5 text-xs font-mono rounded-sm border border-border bg-card hover:bg-muted">{showTopics?'Ẩn danh sách · đọc rộng':'Hiện danh sách chủ đề'}</button>
           {isAdmin && (
             <button
               onClick={handleResetGrammar}
@@ -248,9 +250,9 @@ export function GrammarStudio({ onBack }) {
       </div>
 
       {/* Layout: Topic list sidebar + Detail pane */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+      <div className={"grid grid-cols-1 gap-6 pt-2 items-start "+(showTopics?"lg:grid-cols-[240px_minmax(0,1fr)]":"")}>
         {/* Left: Topics List */}
-        <div className="md:col-span-1 max-h-[520px] overflow-y-auto space-y-1 pr-1 border-r border-border">
+        <div id="grammar-topic-list" hidden={!showTopics} className="min-w-0 max-h-[40vh] lg:max-h-[72vh] overflow-y-auto space-y-1 pr-2 lg:sticky lg:top-4 lg:border-r border-border">
           {filteredTopics.map((t) => {
             const isActive = t.id === activeTopic?.id;
             return (
@@ -266,7 +268,7 @@ export function GrammarStudio({ onBack }) {
                 <span className="font-mono text-[10px] opacity-75 shrink-0 mt-0.5">
                   {t.level}
                 </span>
-                <span className="truncate flex-1">{t.title_vi}</span>
+                <span className="min-w-0 break-words flex-1">{t.title_vi}</span>
                 {t.isImported && (
                   <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono shrink-0">
                     Mới
@@ -279,7 +281,7 @@ export function GrammarStudio({ onBack }) {
 
         {/* Right: Topic Content & Live Quiz */}
         {activeTopic ? (
-          <div className="md:col-span-2 space-y-5">
+          <div className="min-w-0 w-full space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/50 pb-2">
               <div className="space-y-1">
                 <div className="eyebrow flex items-center gap-2">
@@ -315,11 +317,11 @@ export function GrammarStudio({ onBack }) {
             </div>
 
             {/* Rule / Theory Content */}
-            <div className="p-4 rounded-sm border border-border bg-card/60 space-y-2">
+            <div className="min-w-0 p-4 sm:p-5 rounded-sm border border-border bg-card/60 space-y-2">
               <div className="text-xs font-mono text-accent font-semibold uppercase tracking-wider">
                 Quy tắc ngữ pháp
               </div>
-              <div className="font-body text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">
+              <div className="min-w-0 overflow-x-auto font-body text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">
                 {renderLessonMarkdown(React,activeTopic.rule)}
               </div>
             </div>
@@ -436,7 +438,7 @@ export function GrammarStudio({ onBack }) {
             )}
           </div>
         ) : (
-          <div className="md:col-span-2 text-center py-12 text-muted-foreground text-xs font-mono">
+          <div className="min-w-0 text-center py-12 text-muted-foreground text-xs font-mono">
             Không tìm thấy chủ đề phù hợp với bộ lọc hiện tại.
           </div>
         )}
