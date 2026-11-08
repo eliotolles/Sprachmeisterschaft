@@ -1,3 +1,4 @@
+import {ExamCategoryNav,useExamCategory} from '@/components/common/ExamCategoryNav';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { useRouter, Link } from '@/lib/router';
@@ -34,6 +35,7 @@ const ICON_MAP = {
 
 export function SkillsOverviewPage() {
   const { navigate } = useRouter();
+  const [category,setCategory]=useExamCategory();
   const [sessions, setSessions] = useState(() => db.skillSessions.findMany());
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -71,6 +73,7 @@ export function SkillsOverviewPage() {
         }
       />
 
+      <ExamCategoryNav value={category} onChange={setCategory}/>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {SKILLS.map((skill) => {
           const Icon = ICON_MAP[skill.icon] || Sparkles;
@@ -123,7 +126,7 @@ export function SkillsOverviewPage() {
                   {lastSession ? `Lần cuối: ${lastSession.date}` : 'Mới'}
                 </span>
                 <Link
-                  to={linkPath}
+                  to={linkPath+(isGame?'':'?exam='+encodeURIComponent(category))}
                   className="tap px-3 py-1.5 bg-accent/10 hover:bg-accent text-accent hover:text-accent-foreground text-xs font-mono font-medium rounded-sm border border-accent/30 transition-colors inline-flex items-center gap-1"
                 >
                   <span>{isGame ? 'Vào chơi' : 'Vào xưởng'}</span>

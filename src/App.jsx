@@ -1,3 +1,4 @@
+import {ExamSkillArea} from '@/components/common/ExamSkillArea';
 import {ImportedPracticePage} from '@/pages/ImportedPracticePage';
 import {ExplorePage} from '@/pages/ExplorePage';
 import {CollectionsPage} from '@/pages/CollectionsPage';
@@ -108,7 +109,7 @@ export function App() {
     if (currentPath === '/vocabulary/situations') return <VocabSituationsPage />;
     if (currentPath === '/skills') return <SkillsOverviewPage />;
     if (currentPath === '/skills/listening/personal' || currentPath === '/personal-videos') return <ListeningOverviewPage initialTab="personal" />;
-    if (currentPath === '/skills/listening') return <ListeningOverviewPage />;
+    if (currentPath === '/skills/listening') return <ExamSkillArea skill="listening"><ListeningOverviewPage /></ExamSkillArea>;
     if (currentPath === '/admin') return <AdminPage />;
     if (currentPath === '/game') return <GamePage />;
     if (currentPath === '/exams') return <ExamsListPage />;
@@ -129,7 +130,7 @@ export function App() {
     if (currentPath.startsWith('/skills/')) {
       const skillPath = currentPath.replace('/skills/', '');
       const skillId = skillPath.startsWith('reading/') ? 'reading' : skillPath;
-      return <SkillStudioPage skillId={skillId} />;
+      return <ExamSkillArea skill={['pronunciation','interview'].includes(skillId)?'speaking':skillId}><SkillStudioPage skillId={skillId} /></ExamSkillArea>;
     }
 
     // Dynamic Exam Route: /exams/:examId

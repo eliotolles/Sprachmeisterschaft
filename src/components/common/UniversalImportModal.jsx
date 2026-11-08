@@ -1,3 +1,4 @@
+import {EXAM_CATEGORIES,examCategory} from '@/lib/exam-categories';
 import {useRouter} from '@/lib/router';
 import {ImportCollectionTarget} from '@/components/common/CollectionTools';
 import {activeCollectionId} from '@/lib/collection-types';
@@ -68,7 +69,9 @@ async function extractCoreImportFile(file){
 }
 
 export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabulary', initialScope = null, defaultCollectionId = null, onSuccess }) {
- const {navigate}=useRouter();
+ const {navigate,search}=useRouter();
+ const [examBoard,setExamBoard]=useState(()=>examCategory(new URLSearchParams(search).get('exam'))||'unclassified');
+ useEffect(()=>{if(isOpen)setExamBoard(examCategory(new URLSearchParams(search).get('exam'))||'unclassified');},[isOpen,search]);
   // Navigation: 1: Config & Input -> 2: Preview & Edit -> 3: Sync Report
   const [step, setStep] = useState(1);
   const [targetCollectionId,setTargetCollectionId]=useState(defaultCollectionId||activeCollectionId());
@@ -459,7 +462,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
 
     try {
       if(targetCollectionId&&!elioImport.isActive())throw Error('Cần đăng nhập server để import vào bộ.');
-      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
+      if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,examBoard,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
       let savedCount = 0;
       let skippedCount = 0;
       let updatedCount = 0;
@@ -755,6 +758,7 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
               </div>
             </div>
 
+            {['reading','listening','writing','speaking','grammar','exam'].includes(contentType)&&<label className="block text-sm font-heading">Kỳ thi / Học chung<select aria-label="Kỳ thi của tài liệu import" value={examBoard} onChange={e=>setExamBoard(e.target.value)} className="block w-full border border-border bg-card p-2 mt-1">{EXAM_CATEGORIES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>}
             {/* Title */}
             <div>
               <label className="block text-xs font-mono font-medium text-foreground mb-1">

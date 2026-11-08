@@ -269,7 +269,7 @@ export async function handleElioCore(request, env) {
       const collectionId=url.searchParams.get('collection');
       if(collectionId)await readCollection(env,user,collectionId);
       const catalog=url.searchParams.get('catalog')==='1';
-      const rows=(await query(env, 'SELECT id,owner,kind,title,level,public,'+(catalog?"json_object('organizerId',json_extract(data,'$.organizerId')) AS data":'data')+' FROM ee_records WHERE kind=? AND (owner=? OR public=1)'+(collectionId?" AND json_extract(data,'$.organizerId')=?":'')+' ORDER BY id LIMIT ? OFFSET ?', [kind,user.id,...(collectionId?[collectionId]:[]),limit,offset])).rows;
+      const rows=(await query(env, 'SELECT id,owner,kind,title,level,public,'+(catalog?"json_object('organizerId',json_extract(data,'$.organizerId'),'examBoard',json_extract(data,'$.examBoard'),'exam',json_extract(data,'$.exam'),'provider',json_extract(data,'$.provider'),'sourceBundle',json_extract(data,'$.sourceBundle'),'items',json((SELECT json_group_array(json_object('exam',json_extract(i.value,'$.exam'),'skill',json_extract(i.value,'$.skill'))) FROM json_each(ee_records.data,'$.items') i))) AS data":'data')+' FROM ee_records WHERE kind=? AND (owner=? OR public=1)'+(collectionId?" AND json_extract(data,'$.organizerId')=?":'')+' ORDER BY id LIMIT ? OFFSET ?', [kind,user.id,...(collectionId?[collectionId]:[]),limit,offset])).rows;
       return json({items:rows.map(row=>kind==='exam'?{...row,data:examCatalogData(row.data)}:row),limit,offset});
     }
     if (path === '/api/core/admin/users' && request.method === 'GET') {

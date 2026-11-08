@@ -28,7 +28,7 @@ export function SkillStudioPage({ skillId }) {
     case 'speaking':
       return <ShadowingStudio onBack={handleBack} />;
     case 'reading':
-      if(elioAuthentication()?.isActive())return <ImportedPracticePage skill="reading"/>;
+      if(elioAuthentication()?.isActive())return <ImportedPracticePage skill="reading" showExamNavigation={false} defaultExamCategory="general"/>;
       return <ReadingStudio onBack={handleBack} />;
     case 'writing':
       return <WritingStudio onBack={handleBack} />;

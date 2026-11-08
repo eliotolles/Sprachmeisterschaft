@@ -1,3 +1,4 @@
+import {examCategory} from '../../lib/exam-categories.js';
 import {validateCollectionTarget} from './collections.js';
 import {coreError,query} from './database.js';
 import {digest} from './passwords.js';
@@ -11,6 +12,7 @@ const text=(s,max=10000)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export async function importCollection(env,user,input){
  await validateCollectionTarget(env,user,input.organizerId,input.kind,input.visibility||'private');
  const source={...input.collection};delete source.organizerId;
+ if(source.examBoard!==undefined&&!examCategory(source.examBoard))throw invalid();
  if(input.kind==='grammar')return importGrammar(env,user,{collection:{...source,...(input.organizerId?{organizerId:input.organizerId}:{})},visibility:input.visibility});
  const collection={...validateImport(input.kind,source),...(input.organizerId?{organizerId:input.organizerId}:{})};
  if(input.visibility!==undefined&&!['public','private'].includes(input.visibility))throw invalid();

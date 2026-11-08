@@ -202,3 +202,11 @@ test('source colon-format PBKDF2 authenticates without rewriting hashes or old s
 test('legacy password verification rejects malformed and unknown encodings without guessing',async()=>{
  for(const saved of ['a'.repeat(63)+':'+ 'b'.repeat(64),'a'.repeat(64)+':'+ 'b'.repeat(63),'a'.repeat(64)+':'+ 'b'.repeat(64)+':extra','google$subject','fnv$1234','salt:hash','pbkdf2$200000$'+'a'.repeat(64)+'$'+'b'.repeat(64)])assert.equal(await passwordMatches('fixture',saved),false);
 });
+test('lightweight catalogs retain exam and task labels without returning passages or answer keys',async()=>{
+ const {db,login,call}=fixture();try{
+ const session=await login('alice@example.invalid');
+ db.prepare('INSERT INTO ee_records VALUES(?,?,?,?,?,?,?)').run('cat','alice','reading','Petra','B1',0,JSON.stringify({examBoard:'telc',sourceBundle:'reading-screenshots-20261107',items:[{exam:'telc',skill:'reading',content:'PRIVATE PASSAGE',questions:[{answer:'SECRET KEY'}]}]}));
+ const result=await call('/records?kind=reading&catalog=1','GET',undefined,session);assert.equal(result.status,200);
+ const data=JSON.parse(result.body.items.find(r=>r.id==='cat').data);assert.equal(data.examBoard,'telc');assert.equal(data.items[0].skill,'reading');assert(!JSON.stringify(data).includes('PRIVATE PASSAGE'));assert(!JSON.stringify(data).includes('SECRET KEY'));
+ }finally{db.close();}
+});

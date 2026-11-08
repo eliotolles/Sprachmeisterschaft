@@ -1,3 +1,5 @@
+import {ExamCategoryNav,useExamCategory} from '@/components/common/ExamCategoryNav';
+import {recordExamCategory} from '@/lib/exam-categories';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
 import {newExamBinding,examCoreActive} from '@/lib/elio-exam-runtime';
@@ -24,6 +26,7 @@ import { showConfirmModal } from '@/components/ui/ConfirmModal';
 
 export function ExamsListPage() {
   const { navigate } = useRouter();
+  const [category,setCategory]=useExamCategory('telc');
   const coreActive=examCoreActive();
   const [core]=useState(newExamBinding);
   const isAdmin = db.auth.isAdmin();
@@ -105,6 +108,7 @@ export function ExamsListPage() {
   }
 
   const filteredExams = allExamsList.filter((e) => {
+    if(recordExamCategory(e)!==category)return false;
     if (selectedLevel !== 'ALL' && e.level !== selectedLevel) return false;
     return true;
   });
@@ -154,6 +158,7 @@ export function ExamsListPage() {
         }
       />
 
+      <ExamCategoryNav value={category} onChange={setCategory}/>
       {/* Filter by Level */}
       <LevelFilter
         selectedLevel={selectedLevel}
