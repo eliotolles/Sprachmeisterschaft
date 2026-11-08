@@ -1,3 +1,4 @@
 youtube-transcript-api==1.2.4
 yt-dlp[default]==2026.10.21
 requests>=2.32.2,<3
+defusedxml>=0.7.1,<1

@@ -1,0 +1,16 @@
+services:
+  transcript:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ELIO_TRANSCRIPT_TOKEN: ${ELIO_TRANSCRIPT_TOKEN:?Set ELIO_TRANSCRIPT_TOKEN in .env}
+      CACHE_TTL_SECONDS: "86400"
+      REQUEST_TIMEOUT_SECONDS: "55"
+      MAX_CONCURRENT: "2"
+      ALLOWED_ORIGINS: ""
+    volumes:
+      - transcript-data:/data
+volumes:
+  transcript-data:
