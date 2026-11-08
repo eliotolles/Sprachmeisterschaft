@@ -1,3 +1,4 @@
+import {cachedModelCatalog,invalidateModelCatalog} from './ai-model-cache.js';
 import {readAICooldowns,modelCooldown,coolAIModel} from './ai-cooldowns.js';
 import {readAIRouting,AI_PURPOSES} from './ai-routing.js';
 import {coreError,query} from './database.js';
@@ -48,7 +49,7 @@ export async function addAIConfig(env,user,data){
   await query(env,'INSERT INTO ee_config(key,value) VALUES(?,?)',[PREFIX+row.id,JSON.stringify(row)]);
   return {config:metadata(row)};
 }
-export async function modelsForConfig(env,user,id){admin(user);const row=(await configs(env)).find(x=>x.id===id);if(!row)throw coreError(404,'AI_CONFIG_NOT_FOUND','Không tìm thấy cấu hình AI.');return discoverModels(row.provider,await decryptSecret(env,row.secret),{freeOnly:false});}
+export async function modelsForConfig(env,user,id){admin(user);const row=(await configs(env)).find(x=>x.id===id);if(!row)throw coreError(404,'AI_CONFIG_NOT_FOUND','Không tìm thấy cấu hình AI.');const key=await decryptSecret(env,row.secret);await invalidateModelCatalog(env,row.provider,key);return discoverModels(row.provider,key,{freeOnly:false});}
 export async function updateAIConfig(env,user,data){
   admin(user);if(!data||typeof data.id!=='string'||Object.keys(data).some(k=>!['id','model','enabled','priority','backupModel','hasVision','archived','freeOnly'].includes(k))||
     (data.enabled!==undefined&&typeof data.enabled!=='boolean')||(data.priority!==undefined&&(!Number.isSafeInteger(data.priority)||data.priority<0||data.priority>1000))||
@@ -70,18 +71,18 @@ export function validateAIInput(input){
 }
 export async function generateAI(env,user,input,{validate}={}){
   validateAIInput(input);const continuation=input.continuation?await verifyContinuation(env,user,input):null;
-  const routing=await readAIRouting(env),rule=routing.rules[input.purpose],requested=input.task||'text';let rows=(await configs(env)).filter(x=>x.enabled&&!x.archived&&((x.task||'text')===requested||requested==='vision'&&(x.task||'text')==='text'||requested==='transcription'&&input.purpose==='audio_subtitles'&&['groq','gemini'].includes(x.provider)&&(x.task||'text')==='text')).sort((a,b)=>a.priority-b.priority||a.id.localeCompare(b.id));
+  const startedAt=Date.now();const [routing,storedRows]=await Promise.all([readAIRouting(env),configs(env)]),rule=routing.rules[input.purpose],requested=input.task||'text';let rows=storedRows.filter(x=>x.enabled&&!x.archived&&((x.task||'text')===requested||requested==='vision'&&(x.task||'text')==='text'||requested==='transcription'&&input.purpose==='audio_subtitles'&&['groq','gemini'].includes(x.provider)&&(x.task||'text')==='text')).sort((a,b)=>a.priority-b.priority||a.id.localeCompare(b.id));
   if(rule?.pool?.length){rows=rows.filter(r=>rule.pool.includes(r.id)).sort((a,b)=>rule.pool.indexOf(a.id)-rule.pool.indexOf(b.id));}
   else if(rule?.assignment){rows=rows.filter(r=>r.id===rule.assignment.configId).map(r=>({...r,model:rule.assignment.model}));}
   else if(!continuation)rows=rotateEqualPriority(rows,input.purpose||requested);
   let continuationModel=null;
   if(continuation){rows=rows.filter(row=>row.id===continuation.config);if(rows.length)for(const id of [rows[0].model,rows[0].backupModel].filter(Boolean))if(await digest(id+'|'+rows[0].secret)===continuation.fingerprint)continuationModel=id;if(!continuationModel)throw coreError(409,'AI_CONFIG_CHANGED','Cấu hình AI đã đổi; nội dung cũ vẫn được giữ.');}
   if(!rows.length)throw coreError(503,'AI_NOT_CONFIGURED','Admin chưa cấu hình provider AI phía server.');
-  const deadlineAt=Date.now()+120000,cooldowns=await readAICooldowns(env,rows.slice(0,10));let attempted=false;
+  const interactive=['elio_chat','interview'].includes(input.purpose)&&requested==='text',deadlineAt=Date.now()+(interactive?60000:120000),cooldowns=await readAICooldowns(env,rows.slice(0,10));let attempted=false;
   for(const row of rows.slice(0,10)){
     if(Date.now()>=deadlineAt)break;
     if([row.model,row.backupModel].filter(Boolean).every(m=>modelCooldown(cooldowns,row.id,m)))continue;
-    const effectiveFreeOnly=row.freeOnly||routing.policies.FREE_ONLY||!routing.policies.ALLOW_PAID_MODELS;let key,catalog;try{key=await decryptSecret(env,row.secret);catalog=await discoverModels(row.provider,key,{freeOnly:effectiveFreeOnly,deadlineAt});}catch(error){await coolAIModel(env,row.id,'',error).catch(()=>{});continue;}
+    const effectiveFreeOnly=row.freeOnly||routing.policies.FREE_ONLY||!routing.policies.ALLOW_PAID_MODELS;let key,catalog;try{key=await decryptSecret(env,row.secret);catalog=await cachedModelCatalog(env,row.provider,key,{freeOnly:effectiveFreeOnly,deadlineAt});}catch(error){await coolAIModel(env,row.id,'',error).catch(()=>{});continue;}
     for(const id of [...new Set((continuation?[continuationModel]:[row.model,row.backupModel]).filter(Boolean))]){
       if(Date.now()>=deadlineAt)break;
       try{
@@ -91,13 +92,14 @@ export async function generateAI(env,user,input,{validate}={}){
         if(requested==='vision'&&!(model.inputModalities?.includes('image')??probe?.vision))continue;
         if(requested==='transcription'&&(row.provider==='groq'&&!model.inputModalities?.includes('audio')||row.provider==='gemini'&&!(model.inputModalities?.includes('audio')??row.task==='transcription')||!['gemini','groq'].includes(row.provider)))continue;
         if(requested!=='transcription'&&model.outputModalities&&!model.outputModalities.includes('text'))continue;
-        attempted=true;
-        const result=await (requested==='transcription'?providerTranscribe:providerGenerate)(row.provider,key,model,{...input,nativeJSONMode:probe?.json?probe.jsonMode:undefined,freeOnly:effectiveFreeOnly||model.free===true,deadlineAt});
+        attempted=true;const providerStartedAt=Date.now();
+        const result=await (requested==='transcription'?providerTranscribe:providerGenerate)(row.provider,key,model,{...input,nativeJSONMode:probe?.json?probe.jsonMode:undefined,freeOnly:effectiveFreeOnly||model.free===true,deadlineAt:interactive?Math.min(deadlineAt,Date.now()+20000):deadlineAt});
+        const timing={totalMs:Date.now()-startedAt,providerMs:Date.now()-providerStartedAt,catalogCache:catalog.cacheStatus};
         if(continuation)result.text=input.continuation.text+result.text;
         if(result.truncated)return {...result,configId:row.id,continuation:await makeContinuation(env,user,{...row,model:id},input,result.text)};
         let value=result.text;if(input.jsonMode!==false){try{value=JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{continue;}}
-        if(validate)value=validate(value);return {...result,value,configId:row.id};
-      }catch(error){try{if((await coolAIModel(env,row.id,id,error))?.keyWide)break;}catch{/* Do not replace the real provider failure with a cooldown-storage error. */}}
+        if(validate)value=validate(value);return {...result,value,configId:row.id,timing};
+      }catch(error){if([401,403,404].includes(error.providerStatus))await invalidateModelCatalog(env,row.provider,key);try{if((await coolAIModel(env,row.id,id,error))?.keyWide)break;}catch{/* Do not replace the real provider failure with a cooldown-storage error. */}}
     }
   }
   throw coreError(503,'AI_UNAVAILABLE','Các provider đang lỗi, hết quota hoặc trả dữ liệu chưa hợp lệ. Chưa tạo điểm/chữa bài giả.');
@@ -107,7 +109,7 @@ export async function generateGermanSpeech(env,user,input){
  const rows=(await configs(env)).filter(x=>x.enabled&&!x.archived&&x.task==='speech').sort((a,b)=>a.priority-b.priority);
  if(!rows.length)throw coreError(503,'TTS_NOT_CONFIGURED','Admin chưa cấu hình model giọng nói tiếng Đức.');
  const deadlineAt=Date.now()+120000,policy=(await readAIRouting(env)).policies;
- for(const row of rows.slice(0,5)){if(Date.now()>=deadlineAt)break;try{const key=await decryptSecret(env,row.secret),catalog=await discoverModels(row.provider,key,{freeOnly:row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS,deadlineAt});for(const id of [...new Set([row.model,row.backupModel].filter(Boolean))]){if(Date.now()>=deadlineAt)break;const model=catalog.items.find(x=>x.id===id);if(model&&(model.free!==false||row===rows[0]&&id===row.model||policy.AUTO_PAID_FALLBACK))try{return await providerSpeech(row.provider,key,model,{...input,deadlineAt});}catch{}}}catch{}}
+ for(const row of rows.slice(0,5)){if(Date.now()>=deadlineAt)break;try{const key=await decryptSecret(env,row.secret),catalog=await cachedModelCatalog(env,row.provider,key,{freeOnly:row.freeOnly||policy.FREE_ONLY||!policy.ALLOW_PAID_MODELS,deadlineAt});for(const id of [...new Set([row.model,row.backupModel].filter(Boolean))]){if(Date.now()>=deadlineAt)break;const model=catalog.items.find(x=>x.id===id);if(model&&(model.free!==false||row===rows[0]&&id===row.model||policy.AUTO_PAID_FALLBACK))try{return await providerSpeech(row.provider,key,model,{...input,deadlineAt});}catch{}}}catch{}}
  throw coreError(503,'TTS_UNAVAILABLE','Chưa tạo được âm thanh tiếng Đức hoàn chỉnh.');
 }
 function probeFailure(error) {

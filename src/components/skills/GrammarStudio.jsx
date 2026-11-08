@@ -198,7 +198,7 @@ export function GrammarStudio({ onBack }) {
         <div>
           <div className="eyebrow">Grammatik-Werkstatt</div>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">
-            Hệ thống {allGrammar.length} chủ đề Ngữ pháp A1–C2
+            Hệ thống chủ đề Ngữ pháp A1–C2
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">

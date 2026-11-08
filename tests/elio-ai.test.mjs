@@ -216,3 +216,13 @@ test('normal generation retries rejected native JSON once and retains actual JSO
   assert.equal(JSON.parse(result.text).ok,true);
  }finally{globalThis.fetch=original;}
 });
+test('warm AI turns avoid catalog requests, Sync stays fresh and interactive fallback waits less than grading',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch,originalTimeout=AbortSignal.timeout;let catalogs=0,generations=0;const waits=[];
+ globalThis.fetch=async url=>{if(String(url).endsWith('/models')){catalogs++;return Response.json(catalog());}generations++;return Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});};
+ AbortSignal.timeout=ms=>{waits.push(ms);return originalTimeout(ms);};
+ try{const {config}=await addAIConfig(env,owner,{provider:'groq',key:'fixture-latency-key',model:'fresh-model'});assert.equal(catalogs,1);
+ const cold=await generateAI(env,student,{purpose:'interview',systemPrompt:'S',userPrompt:'U'});assert.equal(cold.timing.catalogCache,'miss');assert.equal(catalogs,2);assert(waits.at(-1)<=20000);
+ const warm=await generateAI(env,student,{purpose:'interview',systemPrompt:'S',userPrompt:'U'});assert.equal(warm.timing.catalogCache,'hit');assert.equal(catalogs,2);assert.equal(generations,2);assert(warm.timing.totalMs>=warm.timing.providerMs);assert(!JSON.stringify(warm).includes('fixture-latency-key'));
+ await modelsForConfig(env,owner,config.id);assert.equal(catalogs,3);await generateAI(env,student,{purpose:'grammar_deep',systemPrompt:'S',userPrompt:'U'});assert.equal(catalogs,4);assert(waits.at(-1)>20000);
+ }finally{db.close();globalThis.fetch=original;AbortSignal.timeout=originalTimeout;}
+});
