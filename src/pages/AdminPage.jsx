@@ -12,6 +12,7 @@ import {
 import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import { ModelCatalogModal } from '@/components/admin/ModelCatalogModal';
+import { AdminReportsTab } from '@/components/admin/AdminReportsTab';
 import {
   discoverProviderModels,
   verifyProviderKey,
@@ -21,6 +22,7 @@ import {
   DEFAULT_AI_POLICY,
 } from '@/lib/dynamic-model-discovery';
 import {
+  FileBarChart,
   Bot,
   Layers,
   Users,
@@ -60,7 +62,7 @@ import { toast } from 'sonner';
 
 export function AdminPage() {
   const { navigate } = useRouter();
-  const [activeTab, setActiveTab] = useState('ai'); // 'ai' | 'content' | 'users' | 'ui'
+  const [activeTab, setActiveTab] = useState('reports'); // 'reports' | 'ai' | 'content' | 'users' | 'ui'
 
   // Master Admin verification (Strictly role === 'admin' or system admin email)
   const currentUser = db.auth.getUser();
@@ -694,9 +696,10 @@ export function AdminPage() {
         }
       />
 
-      {/* 4 Tabs Navigation (Matching Image 3) */}
+      {/* 5 Tabs Navigation (Báo cáo & Quản trị AI) */}
       <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto">
         {[
+          { id: 'reports', label: 'Báo cáo', icon: FileBarChart },
           { id: 'ai', label: 'AI & phân công', icon: Bot },
           { id: 'content', label: 'Nội dung học', icon: Layers },
           { id: 'users', label: 'Tài khoản & quyền', icon: Users },
@@ -720,6 +723,16 @@ export function AdminPage() {
           );
         })}
       </div>
+
+      {activeTab === 'reports' && (
+        <AdminReportsTab
+          aiConfigs={aiConfigs}
+          setAiConfigs={setAiConfigs}
+          aiAssignments={aiAssignments}
+          setAiAssignments={setAiAssignments}
+          onNavigateTab={(t) => setActiveTab(t)}
+        />
+      )}
 
       {activeTab === 'ai' && (
         <div className="space-y-6 animate-fade-in">
