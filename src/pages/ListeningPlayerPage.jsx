@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
+import { batchTranslateCues } from '@/lib/translator';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
@@ -62,28 +63,45 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   const [captionBusy,setCaptionBusy]=useState(false);
+  const [translatingBusy,setTranslatingBusy]=useState(false);
   const [preview,setPreview]=useState(null);
   const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId]);
   const captionScopeRef=useRef(captionScope);
   captionScopeRef.current=captionScope;
   const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
+  const subtitlesRef = useRef(subtitles);
+  subtitlesRef.current = subtitles;
+
   const fetchCaptions=async()=>{
     if(captionBusy||!currentEpisode.youtubeId)return;
     setCaptionBusy(true);
     try{
+      toast.info('Đang bóc tách phụ đề tiếng Đức từ YouTube...');
       const result = await getYouTubeTranscript(currentEpisode.youtubeId, 'de');
       if(captionScopeRef.current!==captionScope)return;
       if(result && result.available && Array.isArray(result.cues) && result.cues.length > 0){
-        const cues = result.cues.map(c => ({
+        let cues = result.cues.map(c => ({
           start: c.start,
           end: c.end,
           de: c.text,
           vi: ''
         }));
-        // Lưu phụ đề vào database cục bộ
+        // Lưu trước bản tiếng Đức vào database cục bộ
         db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
         setPreview({scope:captionScope, cues});
-        toast.success('Đã tải và lưu ' + cues.length + ' đoạn phụ đề tiếng Đức.');
+        toast.success(`Đã lấy ${cues.length} câu tiếng Đức. Đang tự động dịch sang tiếng Việt...`);
+
+        // Tự động dịch song ngữ Đức - Việt
+        try {
+          const translatedCues = await batchTranslateCues(cues);
+          if (captionScopeRef.current === captionScope && translatedCues && translatedCues.length > 0) {
+            db.listening.updateEpisode(currentEpisode.id, { subtitles: translatedCues });
+            setPreview({ scope: captionScope, cues: translatedCues });
+            toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
+          }
+        } catch (transErr) {
+          console.warn('Lỗi dịch phụ đề tự động:', transErr);
+        }
       } else {
         throw Error(result?.reason || 'Chưa lấy được phụ đề tự động cho video này.');
       }
@@ -91,6 +109,22 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       if(captionScopeRef.current===captionScope)toast.error(error.message);
     }finally{
       setCaptionBusy(false);
+    }
+  };
+
+  const translateCaptions=async()=>{
+    if(translatingBusy||!subtitles.length)return;
+    setTranslatingBusy(true);
+    try{
+      toast.info(`Đang dịch ${subtitles.length} câu sang tiếng Việt...`);
+      const updated = await batchTranslateCues(subtitles);
+      db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
+      setPreview({ scope: captionScope, cues: updated });
+      toast.success('Đã hoàn tất bản dịch tiếng Việt!');
+    }catch(err){
+      toast.error('Lỗi khi dịch: ' + err.message);
+    }finally{
+      setTranslatingBusy(false);
     }
   };
 
@@ -225,11 +259,14 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       const currentTime = playerRef.current.getCurrentTime();
       if (currentTime === undefined || currentTime === null) return;
 
+      const currentSubs = subtitlesRef.current || [];
+      if (currentSubs.length === 0) return;
+
       // A. Match current subtitle by timestamp
       let foundIndex = -1;
-      for (let i = 0; i < subtitles.length; i++) {
-        const s = subtitles[i];
-        const sEnd = s.end || (subtitles[i + 1]?.start ? subtitles[i + 1].start : s.start + 5);
+      for (let i = 0; i < currentSubs.length; i++) {
+        const s = currentSubs[i];
+        const sEnd = s.end || (currentSubs[i + 1]?.start ? currentSubs[i + 1].start : s.start + 5);
         if (currentTime >= s.start && currentTime < sEnd) {
           foundIndex = i;
           break;
@@ -237,9 +274,9 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       }
 
       // If between subtitles, keep previous active or match nearest
-      if (foundIndex === -1 && subtitles.length > 0) {
-        for (let i = 0; i < subtitles.length; i++) {
-          if (currentTime >= subtitles[i].start) {
+      if (foundIndex === -1 && currentSubs.length > 0) {
+        for (let i = 0; i < currentSubs.length; i++) {
+          if (currentTime >= currentSubs[i].start) {
             foundIndex = i;
           }
         }
@@ -251,15 +288,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         // Scroll transcript line into view smoothly
         const el = subItemsRef.current[foundIndex];
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }
 
       // B. Auto-Pause at end of current sentence for deliberate learning
       if (isPauseAfterSentenceRef.current && isPlayingRef.current) {
-        const activeSub = subtitles[activeSubIndexRef.current];
+        const activeSub = currentSubs[activeSubIndexRef.current];
         if (activeSub) {
-          const nextSubStart = subtitles[activeSubIndexRef.current + 1]?.start;
+          const nextSubStart = currentSubs[activeSubIndexRef.current + 1]?.start;
           const targetEnd = activeSub.end || (nextSubStart ? nextSubStart : activeSub.start + 4.5);
 
           // When playhead reaches or passes sentence end and hasn't paused for this sentence yet
@@ -526,18 +563,28 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           <div className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm">
             <div id="youtube-player-iframe" className="w-full h-full" />
 
-            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Requirement 1) */}
-            {subtitles[activeSubIndex] && subtitles[activeSubIndex].vi?.trim() !== 'Nội dung video' &&
+            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Cinema Style - Trong suốt, không hộp đen che video) */}
+            {subtitles[activeSubIndex] &&
               ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
-              <div className="absolute bottom-4 left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center">
-                <div className="bg-black/85 backdrop-blur-sm px-4 py-2.5 rounded-md max-w-xl shadow-2xl border border-white/10 space-y-1">
+              <div className="absolute bottom-3 left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center z-20">
+                <div className="max-w-2xl px-3 py-1 space-y-1">
                   {showGerman && currentSub.de && (
-                    <div className="text-white font-heading font-bold text-base md:text-lg tracking-wide leading-snug drop-shadow">
+                    <div 
+                      className="text-white font-heading font-extrabold text-base md:text-xl tracking-wide leading-snug"
+                      style={{
+                        textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.9), 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
+                      }}
+                    >
                       {currentSub.de}
                     </div>
                   )}
                   {showVietnamese && currentSub.vi && (
-                    <div className="text-amber-300 font-body text-xs md:text-sm drop-shadow">
+                    <div 
+                      className="text-amber-300 font-body text-xs md:text-sm font-semibold"
+                      style={{
+                        textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.9), 1px 1px 2px #000, -1px -1px 2px #000'
+                      }}
+                    >
                       {currentSub.vi}
                     </div>
                   )}
@@ -742,14 +789,35 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               </button>
             </div>
 
-            {currentEpisode.youtubeId&&<button type="button" disabled={captionBusy} onClick={fetchCaptions} className="tap px-2 py-1 text-xs border border-border rounded-sm">{captionBusy?'Đang lấy…':'Lấy bản hiện lời'}</button>}
-            <button
-              onClick={handleCopyTranscript}
-              className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"
-              title="Sao chép toàn bộ phụ đề"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              {currentEpisode.youtubeId && (
+                <button
+                  type="button"
+                  disabled={captionBusy || translatingBusy}
+                  onClick={fetchCaptions}
+                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors"
+                >
+                  {captionBusy ? 'Đang lấy & dịch…' : 'Lấy bản hiện lời'}
+                </button>
+              )}
+              {subtitles.length > 0 && (!subtitles[0]?.vi || !subtitles[Math.floor(subtitles.length / 2)]?.vi) && (
+                <button
+                  type="button"
+                  disabled={translatingBusy || captionBusy}
+                  onClick={translateCaptions}
+                  className="tap px-2.5 py-1 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
+                >
+                  {translatingBusy ? 'Đang dịch…' : 'Dịch tiếng Việt'}
+                </button>
+              )}
+              <button
+                onClick={handleCopyTranscript}
+                className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Sao chép toàn bộ phụ đề"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Transcript Scroll Container (Auto-highlight & auto-scroll) */}
@@ -763,8 +831,9 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 const isActive = activeSubIndex === idx;
                 const isLearned = learnedSubs.has(sub.id || idx);
 
-                const min = String(Math.floor(sub.start / 60)).padStart(2, '0');
-                const sec = String(sub.start % 60).padStart(2, '0');
+                const totalSec = Math.floor(Number(sub.start) || 0);
+                const min = String(Math.floor(totalSec / 60)).padStart(2, '0');
+                const sec = String(totalSec % 60).padStart(2, '0');
 
                 return (
                   <div

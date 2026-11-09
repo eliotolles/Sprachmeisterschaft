@@ -4,6 +4,7 @@ import { useRouter } from '@/lib/router';
 import { LEVEL_IDS } from '@/data/levels';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
+import { batchTranslateCues } from '@/lib/translator';
 import {
   detectFileType,
   parseExcelFile,
@@ -89,7 +90,10 @@ export function UniversalImportModal({
   const [examTasks, setExamTasks] = useState([]);
 
   // Module 4: Luyện nghe (YouTube)
+  const [listeningLinkType, setListeningLinkType] = useState('video'); // 'video' | 'playlist'
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [playlistVideos, setPlaylistVideos] = useState([]);
+  const [playlistManualList, setPlaylistManualList] = useState('');
   const [youtubeCues, setYoutubeCues] = useState([]);
   const [customSubtitles, setCustomSubtitles] = useState('');
 
@@ -267,31 +271,115 @@ export function UniversalImportModal({
 
       // 4. MODULE LUYỆN NGHE (YouTube)
       else if (activeModule === 'listening') {
-        const videoId = extractYouTubeId(youtubeUrl);
-        if (!videoId) throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');
+        if (listeningLinkType === 'playlist') {
+          setProgressText('Đang lấy danh sách các tập từ Playlist YouTube...');
+          const listMatch = (youtubeUrl || '').match(/[?&]list=([^#&?]+)/);
+          const playlistId = listMatch ? listMatch[1] : null;
 
-        let cues = [];
-        if (customSubtitles.trim()) {
-          cues = parseYouTubeSubtitles(customSubtitles);
-        } else {
-          setProgressText('Đang tự động bóc tách bản hiện lời từ YouTube...');
-          const transcriptRes = await getYouTubeTranscript(videoId, 'de');
-          if (transcriptRes.available && Array.isArray(transcriptRes.cues) && transcriptRes.cues.length > 0) {
-            cues = transcriptRes.cues.map((c, idx) => ({
-              _id: `cue-${idx}`,
-              start: c.start,
-              end: c.end,
-              de: c.text,
-              vi: '',
-            }));
-          } else {
-            setWarningText(transcriptRes.reason || 'Video chưa có phụ đề tiếng Đức tự động. Bạn vẫn có thể lưu video và bổ sung sau.');
+          let items = [];
+          const seen = new Set();
+
+          // 1. Phân tích nếu có danh sách video do người dùng dán vào
+          if (playlistManualList && playlistManualList.trim()) {
+            const lines = playlistManualList.split('\n');
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              const vidMatch = trimmed.match(/(?:v=|\/embed\/|\/watch\?v=|youtu\.be\/|^)([a-zA-Z0-9_-]{11})/);
+              const vid = vidMatch ? vidMatch[1] : null;
+              if (vid && !seen.has(vid)) {
+                seen.add(vid);
+                const parts = trimmed.split('|');
+                const customTitle = parts[1] ? parts[1].trim() : `Tập ${items.length + 1}`;
+                items.push({ id: vid, title: customTitle, selected: true });
+              }
+            }
           }
-        }
 
-        setYoutubeCues(cues);
-        if (!title.trim()) setTitle('Video YouTube · ' + videoId);
-        setStep(2);
+          // 2. Thử gọi các public instance Invidious để lấy toàn bộ playlist
+          if (playlistId && items.length === 0) {
+            const instances = [
+              'https://invidious.nerdvpn.de',
+              'https://inv.tux.pizza',
+              'https://yt.drgnz.club',
+              'https://vid.priv.au'
+            ];
+            for (const base of instances) {
+              try {
+                const controller = new AbortController();
+                const tid = setTimeout(() => controller.abort(), 6000);
+                const res = await fetch(`${base}/api/v1/playlists/${playlistId}`, { signal: controller.signal });
+                clearTimeout(tid);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (Array.isArray(data.videos) && data.videos.length > 0) {
+                    for (const v of data.videos) {
+                      if (v.videoId && !seen.has(v.videoId)) {
+                        seen.add(v.videoId);
+                        items.push({
+                          id: v.videoId,
+                          title: v.title || `Tập ${items.length + 1}`,
+                          selected: true
+                        });
+                      }
+                    }
+                    if (items.length > 0) {
+                      if (!title.trim() && data.title) setTitle(data.title);
+                      break;
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+
+          if (items.length === 0) {
+            const singleId = extractYouTubeId(youtubeUrl);
+            if (singleId) {
+              items.push({ id: singleId, title: 'Tập 1', selected: true });
+            } else {
+              throw new Error('Chưa tìm thấy video nào. Hãy kiểm tra lại link Playlist hoặc dán danh sách URL các video.');
+            }
+          }
+
+          setPlaylistVideos(items);
+          if (!title.trim()) setTitle(`Bộ Playlist YouTube (${items.length} tập)`);
+          setStep(2);
+        } else {
+          const videoId = extractYouTubeId(youtubeUrl);
+          if (!videoId) throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');
+
+          let cues = [];
+          if (customSubtitles.trim()) {
+            cues = parseYouTubeSubtitles(customSubtitles);
+          } else {
+            setProgressText('Đang tự động bóc tách bản hiện lời từ YouTube...');
+            const transcriptRes = await getYouTubeTranscript(videoId, 'de');
+            if (transcriptRes.available && Array.isArray(transcriptRes.cues) && transcriptRes.cues.length > 0) {
+              cues = transcriptRes.cues.map((c, idx) => ({
+                _id: `cue-${idx}`,
+                start: c.start,
+                end: c.end,
+                de: c.text,
+                vi: '',
+              }));
+
+              // Tự động dịch sang tiếng Việt
+              try {
+                setProgressText('Đang tự động dịch sang tiếng Việt...');
+                cues = await batchTranslateCues(cues);
+              } catch (e) {
+                console.warn('Lỗi dịch sang tiếng Việt khi import:', e);
+              }
+            } else {
+              setWarningText(transcriptRes.reason || 'Video chưa có phụ đề tiếng Đức tự động. Bạn vẫn có thể lưu video và bổ sung sau.');
+            }
+          }
+
+          setYoutubeCues(cues);
+          if (!title.trim()) setTitle('Video YouTube · ' + videoId);
+          setStep(2);
+        }
       }
 
       // 5. CÁC MODULE KỸ NĂNG KHÁC (Reading, Writing, Speaking)
@@ -380,37 +468,67 @@ export function UniversalImportModal({
         toast.success(`Đã lưu ${examTasks.length} phần thi vào kho Luyện thi & Thi thử!`);
       }
 
-      // 4. LƯU VIDEO LUYỆN NGHE
+      // 4. LƯU VIDEO HOẶC PLAYLIST LUYỆN NGHE
       else if (activeModule === 'listening') {
-        const videoId = extractYouTubeId(youtubeUrl);
-        const colTitle = title || 'Video cá nhân';
+        const colTitle = title || (listeningLinkType === 'playlist' ? 'Bộ Playlist YouTube' : 'Video cá nhân');
 
-        // Tạo hoặc lấy bộ video
-        let col = db.listening.getCollections({ scope }).find(c => c.title.toLowerCase() === colTitle.toLowerCase());
-        if (!col) {
-          col = db.listening.createCollection({
+        if (listeningLinkType === 'playlist') {
+          const selectedVideos = playlistVideos.filter(v => v.selected !== false);
+          if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
+
+          const firstVid = selectedVideos[0]?.id;
+          const col = db.listening.createCollection({
             title: colTitle,
             deTitle: colTitle,
-            provider: scope === 'private' ? 'Video của tôi' : 'Cộng đồng',
+            provider: 'YouTube Playlist',
             level,
             scope,
-            thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-            description: 'Bộ luyện nghe ' + colTitle,
+            thumbnail: firstVid ? `https://img.youtube.com/vi/${firstVid}/hqdefault.jpg` : undefined,
+            description: `Bộ luyện nghe playlist ${colTitle} (${selectedVideos.length} tập)`,
           });
+
+          for (const v of selectedVideos) {
+            db.listening.createEpisode({
+              collectionId: col.id,
+              title: v.title,
+              deTitle: v.title,
+              level,
+              youtubeId: v.id,
+              scope,
+              subtitles: [],
+            });
+          }
+
+          toast.success(`Đã lưu thành công bộ "${colTitle}" gồm ${selectedVideos.length} tập video!`);
+        } else {
+          const videoId = extractYouTubeId(youtubeUrl);
+          // Tạo hoặc lấy bộ video
+          let col = db.listening.getCollections({ scope }).find(c => c.title.toLowerCase() === colTitle.toLowerCase());
+          if (!col) {
+            col = db.listening.createCollection({
+              title: colTitle,
+              deTitle: colTitle,
+              provider: scope === 'private' ? 'Video của tôi' : 'Cộng đồng',
+              level,
+              scope,
+              thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+              description: 'Bộ luyện nghe ' + colTitle,
+            });
+          }
+
+          // Tạo tập video kèm phụ đề cues
+          db.listening.createEpisode({
+            collectionId: col.id,
+            title: colTitle,
+            deTitle: colTitle,
+            level,
+            youtubeId: videoId,
+            scope,
+            subtitles: youtubeCues,
+          });
+
+          toast.success(`Đã lưu video "${colTitle}" kèm ${youtubeCues.length} câu phụ đề song ngữ!`);
         }
-
-        // Tạo tập video kèm phụ đề cues
-        db.listening.createEpisode({
-          collectionId: col.id,
-          title: colTitle,
-          deTitle: colTitle,
-          level,
-          youtubeId: videoId,
-          scope,
-          subtitles: youtubeCues,
-        });
-
-        toast.success(`Đã lưu video "${colTitle}" kèm ${youtubeCues.length} câu phụ đề!`);
       }
 
       // 5. LƯU KỸ NĂNG KHÁC (Reading, Writing, Speaking)
@@ -446,8 +564,11 @@ export function UniversalImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/70 backdrop-blur-xs animate-fadeIn">
-      <div className="surface border border-border w-full max-w-4xl max-h-[92vh] flex flex-col rounded-xl shadow-2xl overflow-hidden">
+    <div 
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-8 pb-8 px-3 sm:px-5 bg-slate-950/25 backdrop-blur-[2px] overflow-y-auto animate-fadeIn"
+    >
+      <div className="surface border border-border w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden my-auto sm:my-0">
         
         {/* HEADER */}
         <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between bg-card shrink-0">
@@ -719,36 +840,106 @@ export function UniversalImportModal({
               {/* MODULE 4: LUYỆN NGHE YOUTUBE */}
               {activeModule === 'listening' && (
                 <div className="space-y-4 rounded-xl border border-border p-4 bg-card/50">
-                  <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
-                    <Headphones className="w-4 h-4 text-accent" />
-                    <span>Nhập video YouTube & Tự động bóc tách bản hiện lời</span>
-                  </h3>
-                  <div className="space-y-1">
-                    <label className="text-xs font-mono font-medium text-muted-foreground">Đường dẫn video YouTube</label>
-                    <div className="relative">
-                      <input
-                        type="url"
-                        value={youtubeUrl}
-                        onChange={e => setYoutubeUrl(e.target.value)}
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-card"
-                      />
-                      <Youtube className="w-4 h-4 text-red-500 absolute left-3 top-3" />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
+                      <Headphones className="w-4 h-4 text-accent" />
+                      <span>Nhập Video hoặc Playlist YouTube</span>
+                    </h3>
+
+                    {/* Switch Video vs Playlist */}
+                    <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-muted border border-border text-xs font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setListeningLinkType('video')}
+                        className={`px-3 py-1 rounded-md transition-all ${
+                          listeningLinkType === 'video'
+                            ? 'bg-accent text-accent-foreground font-bold shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        1 Video đơn lẻ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setListeningLinkType('playlist')}
+                        className={`px-3 py-1 rounded-md transition-all ${
+                          listeningLinkType === 'playlist'
+                            ? 'bg-accent text-accent-foreground font-bold shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Playlist YouTube
+                      </button>
                     </div>
                   </div>
 
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      Tùy chọn: Tự dán phụ đề SRT hoặc timestamp nếu muốn tự chuẩn hóa
-                    </summary>
-                    <textarea
-                      rows={4}
-                      value={customSubtitles}
-                      onChange={e => setCustomSubtitles(e.target.value)}
-                      placeholder="0:10 Hallo zusammen | Xin chào mọi người&#10;0:15 Wie geht es Ihnen?"
-                      className="w-full mt-2 p-3 font-mono text-xs rounded-lg border border-border bg-card"
-                    />
-                  </details>
+                  {listeningLinkType === 'video' ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-mono font-medium text-muted-foreground">
+                          Đường dẫn video YouTube hoặc Video ID *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="url"
+                            value={youtubeUrl}
+                            onChange={e => setYoutubeUrl(e.target.value)}
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
+                          />
+                          <Youtube className="w-4 h-4 text-red-500 absolute left-3 top-3" />
+                        </div>
+                      </div>
+
+                      <details className="text-xs">
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                          Tùy chọn: Tự dán phụ đề SRT hoặc timestamp nếu muốn tự chuẩn hóa
+                        </summary>
+                        <textarea
+                          rows={4}
+                          value={customSubtitles}
+                          onChange={e => setCustomSubtitles(e.target.value)}
+                          placeholder="0:10 Hallo zusammen | Xin chào mọi người&#10;0:15 Wie geht es Ihnen?"
+                          className="w-full mt-2 p-3 font-mono text-xs rounded-lg border border-border bg-card"
+                        />
+                      </details>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-mono font-medium text-muted-foreground flex items-center justify-between">
+                          <span>Đường dẫn Playlist YouTube *</span>
+                          <span className="text-[10px] text-accent">Có chứa tham số list=...</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="url"
+                            value={youtubeUrl}
+                            onChange={e => setYoutubeUrl(e.target.value)}
+                            placeholder="https://www.youtube.com/playlist?list=PL..."
+                            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
+                          />
+                          <Youtube className="w-4 h-4 text-red-500 absolute left-3 top-3" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-mono font-medium text-muted-foreground">
+                          Hoặc dán danh sách URL các video (mỗi dòng 1 link hoặc ID | Tên tập)
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={playlistManualList}
+                          onChange={e => setPlaylistManualList(e.target.value)}
+                          placeholder="https://www.youtube.com/watch?v=... | Tập 1: Xin chào&#10;https://www.youtube.com/watch?v=... | Tập 2: Gia đình tôi"
+                          className="w-full p-2.5 font-mono text-xs rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <p className="text-[11px] font-mono text-muted-foreground">
+                        Hệ thống sẽ nạp toàn bộ danh sách tập vào một Bộ nghe mới. Phụ đề tiếng Đức & tiếng Việt sẽ được lấy tự động khi mở video.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -911,24 +1102,62 @@ export function UniversalImportModal({
                 </div>
               )}
 
-              {/* PREVIEW PHỤ ĐỀ YOUTUBE */}
+              {/* PREVIEW PHỤ ĐỀ YOUTUBE HOẶC PLAYLIST */}
               {activeModule === 'listening' && (
-                <div className="space-y-3">
-                  <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
-                    <span>Số câu thoại bóc tách: <strong>{youtubeCues.length} câu</strong></span>
-                    <span>Video ID: <strong>{extractYouTubeId(youtubeUrl)}</strong></span>
+                listeningLinkType === 'playlist' ? (
+                  <div className="space-y-3">
+                    <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
+                      <span>Đã tìm thấy: <strong>{playlistVideos.length} tập</strong></span>
+                      <span>Đã chọn: <strong>{playlistVideos.filter(v => v.selected !== false).length} tập</strong></span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-card">
+                      {playlistVideos.map((v, idx) => (
+                        <div key={v.id || idx} className="p-2.5 text-xs font-mono flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={v.selected !== false}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPlaylistVideos(prev => prev.map((item, i) => i === idx ? { ...item, selected: checked } : item));
+                            }}
+                            className="rounded-sm text-accent focus:ring-accent"
+                          />
+                          <span className="text-muted-foreground shrink-0 w-8 text-right font-bold">#{idx + 1}</span>
+                          <input
+                            type="text"
+                            value={v.title}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPlaylistVideos(prev => prev.map((item, i) => i === idx ? { ...item, title: val } : item));
+                            }}
+                            className="flex-1 px-2 py-1 rounded border border-border bg-background text-foreground"
+                          />
+                          <span className="text-muted-foreground font-mono text-[10px] shrink-0">{v.id}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-card">
-                    {youtubeCues.map((cue, idx) => (
-                      <div key={idx} className="p-2.5 text-xs font-mono flex items-start gap-3">
-                        <span className="text-accent font-bold shrink-0 w-16">
-                          {Math.floor(cue.start / 60)}:{(cue.start % 60).toFixed(0).padStart(2, '0')}
-                        </span>
-                        <span className="text-foreground">{cue.de || cue.text}</span>
-                      </div>
-                    ))}
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
+                      <span>Số câu thoại bóc tách: <strong>{youtubeCues.length} câu</strong></span>
+                      <span>Video ID: <strong>{extractYouTubeId(youtubeUrl)}</strong></span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-card">
+                      {youtubeCues.map((cue, idx) => (
+                        <div key={idx} className="p-2.5 text-xs font-mono flex items-start gap-3">
+                          <span className="text-accent font-bold shrink-0 w-16">
+                            {Math.floor(cue.start / 60)}:{(cue.start % 60).toFixed(0).padStart(2, '0')}
+                          </span>
+                          <div className="flex-1 space-y-0.5">
+                            <div className="text-foreground font-semibold">{cue.de || cue.text}</div>
+                            {cue.vi && <div className="text-amber-500/90 text-[11px] italic">{cue.vi}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )
               )}
 
               {/* CÁC KỸ NĂNG KHÁC */}
