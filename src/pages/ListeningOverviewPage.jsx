@@ -126,7 +126,6 @@ export function ListeningOverviewPage({ initialTab = null }) {
         subtitle="Học qua video YouTube có phụ đề song ngữ Đức - Việt, đồng bộ thời gian thực theo lời nói, tự động dừng từng câu và chép chính tả chuẩn CEFR."
         actions={
           <div className="flex items-center gap-2">
-            <button onClick={()=>setCreatingGroup(true)} className="tap px-3 py-1.5 border border-border bg-card rounded-sm font-heading text-sm">Tạo bộ nghe</button>
             {isAdmin && (
               <button
                 onClick={handleResetListening}

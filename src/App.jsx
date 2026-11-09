@@ -111,7 +111,7 @@ export function App() {
     if (currentPath === '/vocabulary/situations') return <VocabSituationsPage />;
     if (currentPath === '/skills') return <SkillsOverviewPage />;
     if (currentPath === '/skills/listening/personal' || currentPath === '/personal-videos') return <ListeningOverviewPage initialTab="personal" />;
-    if (currentPath === '/skills/listening') return <ExamSkillArea skill="listening"><ListeningOverviewPage /></ExamSkillArea>;
+    if (currentPath === '/skills/listening') return <ListeningOverviewPage />;
     if (currentPath === '/admin') return <AdminPage />;
     if (currentPath === '/game') return <GamePage />;
     if (currentPath === '/exams') return examCoreActive()?<ExamTrainingPage/>:<ExamsListPage />;

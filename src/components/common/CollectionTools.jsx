@@ -1,7 +1,7 @@
 import {ImportedContentManager} from './ImportedContentManager';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {FolderPlus,FolderOpen,X} from 'lucide-react';
+import {FolderPlus,FolderOpen,X,ChevronDown,FileText,SlidersHorizontal} from 'lucide-react';
 import {toast} from 'sonner';
 import {db} from '@/lib/db';
 import {elioClient} from '@/lib/elio-auth-runtime';
@@ -41,20 +41,101 @@ export function CreateCollectionDialog({open,onClose,onCreated,initialSkill='all
 }
 
 export function CollectionToolbar(){
- const {currentPath,search,navigate}=useRouter();
- const [creating,setCreating]=useState(false),[managing,setManaging]=useState(false);
- const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin'||currentPath.startsWith('/collections')||currentPath.startsWith('/listening')||currentPath.startsWith('/videos')||currentPath==='/personal-videos'||currentPath.startsWith('/practice');
- if(!supported)return null;
- const skill=collectionSkillForPath(currentPath),collection=new URLSearchParams(search).get('collection');
- return <div className="flex flex-wrap items-center justify-end gap-2 mb-4 font-body">
-  {collection&&<button type="button" className="tap px-3 py-1.5 rounded-sm border border-border text-sm" onClick={()=>navigate('/collections/view/'+encodeURIComponent(collection))}>Về bộ đang học</button>}
-  <button type="button" onClick={()=>setCreating(true)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm inline-flex items-center gap-2"><FolderPlus className="w-4 h-4"/>Tạo bộ</button>
-  <button type="button" onClick={()=>navigate('/collections/'+skill)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm inline-flex items-center gap-2"><FolderOpen className="w-4 h-4"/>Các bộ học</button>
-  <button type="button" onClick={()=>navigate('/practice')} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm">Luyện đề đã import</button>
-  <button type="button" onClick={()=>setManaging(true)} className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-sm">Sửa / Xóa nội dung import</button>
-  {managing&&<ImportedContentManager onClose={()=>setManaging(false)} collectionId={collection||null}/>}
-  <CreateCollectionDialog open={creating} onClose={()=>setCreating(false)} initialSkill={skill} onCreated={value=>navigate('/collections/view/'+value.id)}/>
- </div>;
+  const {currentPath,search,navigate}=useRouter();
+  const [creating,setCreating]=useState(false),[managing,setManaging]=useState(false);
+  const [dropdownOpen,setDropdownOpen]=useState(false);
+  const menuRef=useRef(null);
+
+  // Không hiển thị trên các trang luyện nghe/video (vì đã có quy trình import & tạo bộ riêng trong modal)
+  if(currentPath.startsWith('/skills/listening') || currentPath.startsWith('/listening') || currentPath.startsWith('/videos') || currentPath==='/personal-videos') return null;
+
+  const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin'||currentPath.startsWith('/collections')||currentPath.startsWith('/practice');
+
+  // Đóng dropdown khi click ra ngoài
+  useEffect(()=>{
+    if(!dropdownOpen)return;
+    const handleClickOutside=(e)=>{
+      if(menuRef.current&&!menuRef.current.contains(e.target)){
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown',handleClickOutside);
+    return()=>document.removeEventListener('mousedown',handleClickOutside);
+  },[dropdownOpen]);
+
+  if(!supported)return null;
+  const skill=collectionSkillForPath(currentPath),collection=new URLSearchParams(search).get('collection');
+
+  return (
+    <div className="flex items-center justify-end mb-4 font-body relative" ref={menuRef}>
+      {/* 1 Button thu gọn duy nhất */}
+      <button
+        type="button"
+        onClick={()=>setDropdownOpen(!dropdownOpen)}
+        className="tap px-3.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-mono font-semibold inline-flex items-center gap-2 shadow-xs transition-colors"
+      >
+        <FolderPlus className="w-3.5 h-3.5 text-accent" />
+        <span>Quản lý bộ học</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${dropdownOpen?'rotate-180':''}`} />
+      </button>
+
+      {/* Dropdown Menu sổ xuống */}
+      {dropdownOpen && (
+        <div className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-xl py-1.5 z-40 animate-in fade-in zoom-in-95 duration-150 divide-y divide-border/60">
+          <div className="py-1">
+            {collection && (
+              <button
+                type="button"
+                className="tap w-full px-3.5 py-2 text-left text-xs font-body hover:bg-muted flex items-center gap-2.5 transition-colors"
+                onClick={()=>{setDropdownOpen(false);navigate('/collections/view/'+encodeURIComponent(collection));}}
+              >
+                <FolderOpen className="w-4 h-4 text-accent shrink-0" />
+                <span>Về bộ đang học</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={()=>{setDropdownOpen(false);setCreating(true);}}
+              className="tap w-full px-3.5 py-2 text-left text-xs font-body hover:bg-muted flex items-center gap-2.5 transition-colors font-medium"
+            >
+              <FolderPlus className="w-4 h-4 text-accent shrink-0" />
+              <span>Tạo bộ học mới</span>
+            </button>
+            <button
+              type="button"
+              onClick={()=>{setDropdownOpen(false);navigate('/collections/'+skill);}}
+              className="tap w-full px-3.5 py-2 text-left text-xs font-body hover:bg-muted flex items-center gap-2.5 transition-colors"
+            >
+              <FolderOpen className="w-4 h-4 text-accent shrink-0" />
+              <span>Các bộ học</span>
+            </button>
+          </div>
+
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={()=>{setDropdownOpen(false);navigate('/practice');}}
+              className="tap w-full px-3.5 py-2 text-left text-xs font-body hover:bg-muted flex items-center gap-2.5 transition-colors"
+            >
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span>Luyện đề đã import</span>
+            </button>
+            <button
+              type="button"
+              onClick={()=>{setDropdownOpen(false);setManaging(true);}}
+              className="tap w-full px-3.5 py-2 text-left text-xs font-body hover:bg-muted flex items-center gap-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
+              <span>Sửa / Xóa nội dung import</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {managing&&<ImportedContentManager onClose={()=>setManaging(false)} collectionId={collection||null}/>}
+      <CreateCollectionDialog open={creating} onClose={()=>setCreating(false)} initialSkill={skill} onCreated={value=>navigate('/collections/view/'+value.id)}/>
+    </div>
+  );
 }
 
 export function ImportCollectionTarget({contentType,value,onChange,onScopeChange}){
