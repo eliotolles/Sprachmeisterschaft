@@ -15,14 +15,14 @@ export function isSpecialtyTopic(topic) {
 }
 
 // Reuse authenticated vocabulary, retaining source IDs and account isolation.
-export function buildLevelDecks(cards=[],{includePrivate=false}={}) {
+export function buildLevelDecks(cards=[],{includePrivate=false,excludeSpecialties=false}={}) {
  const groups=new Map(),seen=new Set();
  for(const card of cards){
   if(!card||!card.is_shared&&!includePrivate||!card.id||!card.german||seen.has(card.id))continue;
   
-  // Loại bỏ các thẻ từ vựng thuộc chuyên ngành khỏi trang cấp độ GER
+  // Loại bỏ các thẻ từ vựng thuộc chuyên ngành nếu có yêu cầu
   const topic = card.topic || card.source_deck_id || '';
-  if (isSpecialtyTopic(topic)) continue;
+  if (excludeSpecialties && isSpecialtyTopic(topic)) continue;
 
   seen.add(card.id);
   const rawLevel=String(card.level||'').trim().toUpperCase();

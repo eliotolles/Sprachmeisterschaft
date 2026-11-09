@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { LEVEL_IDS } from '@/data/levels';
+import { SPECIALTIES } from '@/data/specialties';
+import { buildLevelDecks } from '@/lib/level-deck-adapter';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
 import { batchTranslateCues } from '@/lib/translator';
@@ -77,6 +79,10 @@ export function UniversalImportModal({
   const [vocabText, setVocabText] = useState('');
   const [vocabItems, setVocabItems] = useState([]);
   const [vocabDuplicateMode, setVocabDuplicateMode] = useState('fill_blank');
+  const [vocabTargetSection, setVocabTargetSection] = useState('levels'); // 'levels' | 'specialties' | 'personal' | 'situations'
+  const [vocabTargetDeckId, setVocabTargetDeckId] = useState('');
+  const [vocabTargetSpecialtyId, setVocabTargetSpecialtyId] = useState('pflege');
+  const [availableLevelDecks, setAvailableLevelDecks] = useState([]);
 
   // Module 2: Ngữ pháp
   const [grammarMode, setGrammarMode] = useState('manual'); // 'manual' | 'file'
@@ -112,7 +118,8 @@ export function UniversalImportModal({
   // Sync state when opened
   useEffect(() => {
     if (isOpen) {
-      setActiveModule(defaultType || 'vocabulary');
+      const isVocabSub = ['situation', 'situations', 'specialties', 'specialty', 'levels', 'level', 'personal'].includes(defaultType);
+      setActiveModule(isVocabSub ? 'vocabulary' : (defaultType || 'vocabulary'));
       setStep(1);
       setSelectedFile(null);
       setVocabItems([]);
@@ -121,6 +128,24 @@ export function UniversalImportModal({
       setWarningText('');
       setProgressText('');
       setTitle('');
+
+      if (['situation', 'situations'].includes(defaultType)) {
+        setVocabTargetSection('situations');
+      } else if (['specialties', 'specialty'].includes(defaultType)) {
+        setVocabTargetSection('specialties');
+      } else if (['levels', 'level'].includes(defaultType)) {
+        setVocabTargetSection('levels');
+      } else if (defaultType === 'personal') {
+        setVocabTargetSection('personal');
+      }
+
+      // Nạp danh sách bộ từ vựng theo cấp độ
+      try {
+        const decks = buildLevelDecks(db.vocabulary.findMany());
+        setAvailableLevelDecks(decks);
+      } catch {
+        setAvailableLevelDecks([]);
+      }
 
       // Nạp danh sách bộ nghe hiện có trong hệ thống
       try {
@@ -198,6 +223,22 @@ export function UniversalImportModal({
         }
 
         // Bổ sung thuộc tính kiểm tra
+        let targetTopic = title.trim();
+        if (vocabTargetSection === 'specialties') {
+          const spec = SPECIALTIES.find(s => s.id === vocabTargetSpecialtyId);
+          targetTopic = targetTopic || (spec ? spec.vi : 'Chuyên ngành');
+        } else if (vocabTargetSection === 'levels') {
+          if (vocabTargetDeckId) {
+            const foundDeck = availableLevelDecks.find(d => d.id === vocabTargetDeckId);
+            if (foundDeck) targetTopic = foundDeck.title;
+          }
+          if (!targetTopic) targetTopic = title.trim() || `Bộ từ vựng ${level}`;
+        } else if (vocabTargetSection === 'situations') {
+          targetTopic = targetTopic || 'Tình huống giao tiếp';
+        } else {
+          targetTopic = targetTopic || 'Bộ thẻ cá nhân';
+        }
+
         const formatted = items.map((item, idx) => ({
           _id: `v_${Date.now()}_${idx}`,
           german: item.german || item.de || '',
@@ -207,13 +248,14 @@ export function UniversalImportModal({
           example_vi: item.example_vi || item.exampleVi || '',
           word_type: item.word_type || item.type || '',
           level: item.level || level,
-          topic: title || 'Từ vựng nhập mới',
+          topic: item.topic || targetTopic,
         })).filter(i => i.german.trim());
 
         if (!formatted.length) throw new Error('Mỗi từ cần có từ tiếng Đức (German).');
 
         setVocabItems(formatted);
         if (!title.trim() && selectedFile) setTitle(selectedFile.name.replace(/\.[^.]+$/, ''));
+        else if (!title.trim()) setTitle(targetTopic);
         setStep(2);
       }
 
@@ -440,6 +482,22 @@ export function UniversalImportModal({
       // 1. LƯU TỪ VỰNG
       if (activeModule === 'vocabulary') {
         let addedCount = 0;
+        let finalTopic = title.trim();
+        if (vocabTargetSection === 'specialties') {
+          const spec = SPECIALTIES.find(s => s.id === vocabTargetSpecialtyId);
+          finalTopic = finalTopic || (spec ? spec.vi : 'Chuyên ngành');
+        } else if (vocabTargetSection === 'levels') {
+          if (vocabTargetDeckId) {
+            const foundDeck = availableLevelDecks.find(d => d.id === vocabTargetDeckId);
+            if (foundDeck) finalTopic = foundDeck.title;
+          }
+          if (!finalTopic) finalTopic = title.trim() || `Bộ từ vựng ${level}`;
+        } else if (vocabTargetSection === 'situations') {
+          finalTopic = finalTopic || 'Tình huống giao tiếp';
+        } else {
+          finalTopic = finalTopic || 'Bộ thẻ cá nhân';
+        }
+
         for (const item of vocabItems) {
           db.vocabulary.create({
             german: item.german,
@@ -449,18 +507,46 @@ export function UniversalImportModal({
             example_vi: item.example_vi,
             word_type: item.word_type,
             level: item.level || level,
-            topic: title || 'Từ vựng nhập mới',
+            topic: item.topic || finalTopic,
           });
           addedCount++;
         }
+
+        // Nếu là tình huống giao tiếp, lưu cả dạng situation vào universal để hiển thị trong /vocabulary/situations
+        if (vocabTargetSection === 'situations') {
+          db.universal.create({
+            type: 'situation',
+            title: finalTopic,
+            level,
+            scope,
+            data: {
+              title_vi: finalTopic,
+              title_de: finalTopic,
+              level,
+              description: `Tình huống nhập từ tài liệu: ${finalTopic}`,
+              dialogue: vocabItems.map(item => ({
+                speaker: 'A',
+                de: item.german + (item.example_de ? `. ${item.example_de}` : ''),
+                vi: item.vietnamese + (item.example_vi ? `. ${item.example_vi}` : ''),
+              })),
+              keywords: vocabItems.map(i => i.german),
+            },
+          });
+        }
+
         db.universal.create({
           type: 'vocabulary',
-          title: title || 'Bộ từ vựng mới',
+          title: finalTopic,
           level,
           scope,
-          data: { total: vocabItems.length, added: addedCount },
+          data: {
+            total: vocabItems.length,
+            added: addedCount,
+            section: vocabTargetSection,
+            specialtyId: vocabTargetSection === 'specialties' ? vocabTargetSpecialtyId : undefined,
+          },
         });
-        toast.success(`Đã lưu thành công ${addedCount} từ vựng vào kho!`);
+        toast.success(`Đã lưu thành công ${addedCount} từ vựng vào "${finalTopic}"!`);
       }
 
       // 2. LƯU NGỮ PHÁP
@@ -754,6 +840,162 @@ export function UniversalImportModal({
                       </select>
                     </div>
                   </div>
+                </div>
+              ) : activeModule === 'vocabulary' ? (
+                <div className="space-y-3 p-3.5 sm:p-4 rounded-xl border border-accent/20 bg-accent/5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Mục đích đến & Phân loại từ vựng
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      Chọn routing lưu tương ứng trong hệ thống Từ vựng
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        Mục từ vựng đích (Routing)
+                      </label>
+                      <select
+                        value={vocabTargetSection}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setVocabTargetSection(val);
+                          if (val === 'specialties') {
+                            const spec = SPECIALTIES.find(s => s.id === vocabTargetSpecialtyId) || SPECIALTIES[0];
+                            if (spec) setTitle(`${spec.vi} · ${spec.de}`);
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono font-semibold text-accent"
+                      >
+                        <option value="levels">📚 Bộ từ theo cấp độ (/vocabulary/levels)</option>
+                        <option value="specialties">💼 Chuyên ngành (/vocabulary/specialties)</option>
+                        <option value="situations">💬 Tình huống giao tiếp (/vocabulary/situations)</option>
+                        <option value="personal">🗂️ Bộ thẻ của tôi (/vocabulary - Thẻ cá nhân)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">Cấp độ đích</label>
+                      <select
+                        value={level}
+                        onChange={e => setLevel(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
+                      >
+                        {LEVEL_IDS.map(l => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">Phạm vi lưu</label>
+                      <select
+                        value={scope}
+                        onChange={e => setScope(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      >
+                        <option value="private">Chỉ riêng tôi (Cá nhân)</option>
+                        {isAdmin && <option value="public">Kho chung toàn hệ thống (Super Admin)</option>}
+                      </select>
+                    </div>
+                  </div>
+
+                  {vocabTargetSection === 'specialties' && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        Chọn Chuyên ngành (1 trong {SPECIALTIES.length} chuyên ngành thực tế)
+                      </label>
+                      <select
+                        value={vocabTargetSpecialtyId}
+                        onChange={e => {
+                          const sid = e.target.value;
+                          setVocabTargetSpecialtyId(sid);
+                          const spec = SPECIALTIES.find(s => s.id === sid);
+                          if (spec) setTitle(`${spec.vi} · ${spec.de}`);
+                        }}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      >
+                        {SPECIALTIES.map(s => (
+                          <option key={s.id} value={s.id}>
+                            #{s.code} {s.vi} — {s.de} ({s.topic})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {vocabTargetSection === 'levels' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-xs font-mono font-medium text-muted-foreground">
+                          Chọn bộ có sẵn hoặc nhập mới bên phải
+                        </label>
+                        <select
+                          value={vocabTargetDeckId}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setVocabTargetDeckId(val);
+                            if (val) {
+                              const d = availableLevelDecks.find(deck => deck.id === val);
+                              if (d) setTitle(d.title);
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card text-xs font-mono"
+                        >
+                          <option value="">-- Nhập tên bộ mới --</option>
+                          {availableLevelDecks.map(d => (
+                            <option key={d.id} value={d.id}>
+                              {d.title} ({d.cards?.length || 0} từ)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-mono font-medium text-muted-foreground">Tên bộ từ vựng</label>
+                        <input
+                          type="text"
+                          value={title}
+                          onChange={e => {
+                            setTitle(e.target.value);
+                            setVocabTargetDeckId('');
+                          }}
+                          placeholder="VD: Goethe B1 Lektion 1..."
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {vocabTargetSection === 'situations' && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        Tên tình huống giao tiếp
+                      </label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        placeholder="VD: Hỏi đường tại ga tàu, Đặt bàn tại nhà hàng..."
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                  )}
+
+                  {vocabTargetSection === 'personal' && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        Tên bộ thẻ cá nhân (SRS)
+                      </label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        placeholder="VD: Từ vựng tự học tuần này..."
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1334,7 +1576,7 @@ export function UniversalImportModal({
               <p className="text-xs text-muted-foreground font-mono max-w-md mx-auto">
                 Tài liệu đã được lưu trực tiếp vào bộ nhớ học tập của bạn. Các phòng kỹ năng đã được cập nhật dữ liệu mới nhất.
               </p>
-              <div className="pt-3 flex justify-center gap-3">
+              <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => { setStep(1); setSelectedFile(null); }}
@@ -1342,6 +1584,39 @@ export function UniversalImportModal({
                 >
                   + Nhập tiếp tài liệu khác
                 </button>
+                {activeModule === 'vocabulary' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      if (vocabTargetSection === 'levels') navigate('/vocabulary/levels');
+                      else if (vocabTargetSection === 'specialties') navigate('/vocabulary/specialties');
+                      else if (vocabTargetSection === 'situations') navigate('/vocabulary/situations');
+                      else navigate('/vocabulary');
+                    }}
+                    className="tap px-4 py-2 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5"
+                  >
+                    <span>Mở xem tại {
+                      vocabTargetSection === 'levels' ? 'Bộ từ theo cấp độ' :
+                      vocabTargetSection === 'specialties' ? 'Từ vựng chuyên ngành' :
+                      vocabTargetSection === 'situations' ? 'Tình huống giao tiếp' : 'Bộ thẻ của tôi'
+                    }</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {activeModule === 'listening' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      navigate('/listening');
+                    }}
+                    className="tap px-4 py-2 rounded-lg border border-accent/40 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-mono font-semibold flex items-center gap-1.5"
+                  >
+                    <span>Mở phòng Luyện nghe</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onClose}

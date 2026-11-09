@@ -700,7 +700,7 @@ export const EXPLORE_LESSONS = [
         rule: 'Não bộ học ngoại ngữ qua tần suất xuất hiện lặp lại hàng ngày, không phải qua những buổi học dồn dập rồi bỏ bẵng cả tuần.',
         examples: [
           ['Chia thời gian biểu mẫu 20 phút: 7 phút ôn 20 thẻ từ vựng SRS + 8 phút đọc hiểu một đoạn văn ngắn + 5 phút luyện nói to 3 câu mới.', 'Nhẹ nhàng, không gây áp lực tinh thần.'],
-          ['Duy trì chuỗi ngày học liên tục (Streak): Thà học 15 phút mỗi ngày còn hơn 1 tuần chỉ học 1 lần vào Chủ Nhật.']
+          ['Lieber jeden Tag 15 Minuten lernen als einmal pro Woche stundenlang.', 'Thà học 15 phút mỗi ngày còn hơn 1 tuần chỉ học dồn một lần nhiều tiếng.']
         ],
         note: 'Sự kiên trì đều đặn (Konsistenz) chính là yếu tố số một phân định giữa người nói tiếng Đức trôi chảy và người bỏ cuộc giữa chừng.'
       }

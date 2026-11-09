@@ -23,7 +23,7 @@ export async function fetchElioTranscript(env, id, languages = ['de']) {
         }
       }
     } catch {}
-    return fail('CAPTIONS_UNAVAILABLE', 'Chưa lấy được phụ đề tự động cho video này.');
+    return fail('CAPTIONS_NOT_CONFIGURED', 'Chưa cấu hình backend phụ đề hoặc chưa lấy được phụ đề tự động.');
   }
   try {
     const base=new URL(env.TRANSCRIPT_BACKEND_URL||'https://native.invalid');

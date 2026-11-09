@@ -56,7 +56,7 @@ export function VocabLevelsPage() {
 
   const readDecks = () => {
     const rawDecks = db.vocabulary.isCore?.()
-      ? buildLevelDecks(db.vocabulary.findMany(), { includePrivate: !!activeCollectionId() })
+      ? buildLevelDecks(db.vocabulary.findMany(), { includePrivate: !!activeCollectionId(), excludeSpecialties: true })
       : LEVEL_DECKS;
     const deleted = getDeletedDeckIds();
     const titleOverrides = getDeckTitleOverrides();
