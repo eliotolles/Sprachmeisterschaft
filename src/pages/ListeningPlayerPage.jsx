@@ -71,37 +71,35 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     if(captionBusy||!currentEpisode.youtubeId)return;
     setCaptionBusy(true);
     try{
-      let cues = [];
       const result = await getYouTubeTranscript(currentEpisode.youtubeId, 'de');
       if(captionScopeRef.current!==captionScope)return;
       if(result && result.available && Array.isArray(result.cues) && result.cues.length > 0){
-        cues = result.cues.map(c => ({
+        const cues = result.cues.map(c => ({
           start: c.start,
           end: c.end,
           de: c.text,
           vi: ''
         }));
+        // Lưu phụ đề vào database cục bộ
+        db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+        setPreview({scope:captionScope, cues});
+        toast.success('Đã tải và lưu ' + cues.length + ' đoạn phụ đề tiếng Đức.');
       } else {
-        const elioRes = await elioClient.listeningTranscript('https://www.youtube.com/watch='+currentEpisode.youtubeId).catch(() => null);
-        if(elioRes?.available && Array.isArray(elioRes.cues) && elioRes.cues.length > 0){
-          cues = elioRes.cues.map(c => ({
-            start: c.start,
-            end: c.end,
-            de: c.text,
-            vi: ''
-          }));
-        }
+        throw Error(result?.reason || 'Chưa lấy được phụ đề tự động cho video này.');
       }
-
-      if(!cues.length) throw Error(result?.reason || 'Chưa lấy được phụ đề tự động cho video này.');
-
-      // Lưu phụ đề vào database cục bộ
-      db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
-      setPreview({scope:captionScope, cues});
-      toast.success('Đã tải và lưu ' + cues.length + ' đoạn phụ đề tiếng Đức.');
-    }catch(error){if(captionScopeRef.current===captionScope)toast.error(error.message);}
-    finally{setCaptionBusy(false);}
+    }catch(error){
+      if(captionScopeRef.current===captionScope)toast.error(error.message);
+    }finally{
+      setCaptionBusy(false);
+    }
   };
+
+  // Tự động lấy phụ đề khi mở video nếu video chưa có phụ đề
+  useEffect(() => {
+    if ((!currentEpisode.subtitles || !currentEpisode.subtitles.length) && currentEpisode.youtubeId) {
+      fetchCaptions();
+    }
+  }, [currentEpisode.id, currentEpisode.youtubeId]);
 
   // Studio Mode State
   const [activeTab, setActiveTab] = useState(()=>{const mode=new URLSearchParams(window.location.hash.split('?')[1]||'').get('mode');return ['video','dictation','shadowing','quiz'].includes(mode)?mode:'video';}); // 'video' | 'dictation' | 'shadowing' | 'quiz'

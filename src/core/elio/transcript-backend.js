@@ -3,8 +3,28 @@
 export async function fetchElioTranscript(env, id, languages = ['de']) {
   const fail=(code,reason,retryable=false)=>({available:false,code,reason,retryable,allowAiFallback:false,cues:[]});
   if (!/^[A-Za-z0-9_-]{11}$/.test(id || '')) return fail('INVALID_VIDEO_ID','Mã video không hợp lệ.');
-  if (!env.TRANSCRIPT_NATIVE_FETCH && (!env.TRANSCRIPT_BACKEND_URL || !env.TRANSCRIPT_BACKEND_TOKEN))
-    return fail('CAPTIONS_NOT_CONFIGURED','Chưa cấu hình backend phụ đề.');
+  if (!env.TRANSCRIPT_NATIVE_FETCH && (!env.TRANSCRIPT_BACKEND_URL || !env.TRANSCRIPT_BACKEND_TOKEN)) {
+    try {
+      const res = await fetch(`https://api.freetranscriptapi.com/v1/transcript?video_url=${id}&lang=${languages[0] || 'de'}`, {
+        signal: AbortSignal.timeout(30000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.transcript) && data.transcript.length > 0) {
+          const cues = data.transcript
+            .filter(c => typeof c?.text === 'string' && c.text.trim())
+            .map(c => ({
+              start: Math.round(Number(c.start) * 1000) / 1000,
+              end: Math.round((Number(c.start) + (Number(c.duration) || 2)) * 1000) / 1000,
+              text: c.text.trim()
+            }))
+            .sort((a, b) => a.start - b.start);
+          return { available: true, videoId: id, language: data.language || 'de', source: 'youtube', cues };
+        }
+      }
+    } catch {}
+    return fail('CAPTIONS_UNAVAILABLE', 'Chưa lấy được phụ đề tự động cho video này.');
+  }
   try {
     const base=new URL(env.TRANSCRIPT_BACKEND_URL||'https://native.invalid');
     if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash||base.pathname!=='/')
