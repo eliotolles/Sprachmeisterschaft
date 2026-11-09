@@ -38,7 +38,32 @@ export function VocabLevelsPage() {
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
 
-  const readDecks=()=>db.vocabulary.isCore?.()?buildLevelDecks(db.vocabulary.findMany(),{includePrivate:!!activeCollectionId()}):LEVEL_DECKS;
+  const getDeletedDeckIds = () => {
+    try {
+      return JSON.parse(localStorage.getItem('sprach_deleted_vocab_decks') || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const getDeckTitleOverrides = () => {
+    try {
+      return JSON.parse(localStorage.getItem('sprach_vocab_deck_title_overrides') || '{}');
+    } catch {
+      return {};
+    }
+  };
+
+  const readDecks = () => {
+    const rawDecks = db.vocabulary.isCore?.()
+      ? buildLevelDecks(db.vocabulary.findMany(), { includePrivate: !!activeCollectionId() })
+      : LEVEL_DECKS;
+    const deleted = getDeletedDeckIds();
+    const titleOverrides = getDeckTitleOverrides();
+    return rawDecks
+      .filter((d) => !deleted.includes(d.id) && !deleted.includes(d.title))
+      .map((d) => (titleOverrides[d.id] ? { ...d, title: titleOverrides[d.id] } : d));
+  };
   const [decks,setDecks]=useState(readDecks);
   useEffect(()=>{const refresh=()=>setDecks(readDecks());refresh();window.addEventListener('sprach_db_change',refresh);window.addEventListener('sprach_auth_change',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('sprach_auth_change',refresh);};},[]);
 
@@ -81,10 +106,17 @@ export function VocabLevelsPage() {
     });
     if (ok) {
       try {
+        const deleted = getDeletedDeckIds();
+        if (!deleted.includes(deck.id)) deleted.push(deck.id);
+        if (deck.title && !deleted.includes(deck.title)) deleted.push(deck.title);
+        localStorage.setItem('sprach_deleted_vocab_decks', JSON.stringify(deleted));
+
         const words = deck.words || [];
-        words.forEach((w) => {
-          if (w.id) db.vocabulary.delete(w.id);
-        });
+        for (const w of words) {
+          if (w.id) {
+            try { await db.vocabulary.delete(w.id); } catch {}
+          }
+        }
         window.dispatchEvent(new CustomEvent('sprach_db_change'));
         toast.success(`Đã xóa bộ từ "${deck.title}" thành công!`);
       } catch (err) {
@@ -98,10 +130,16 @@ export function VocabLevelsPage() {
     if (!newTitle || !newTitle.trim() || newTitle.trim() === deck.title) return;
     try {
       const cleanTitle = newTitle.trim();
+      const overrides = getDeckTitleOverrides();
+      overrides[deck.id] = cleanTitle;
+      localStorage.setItem('sprach_vocab_deck_title_overrides', JSON.stringify(overrides));
+
       const words = deck.words || [];
-      words.forEach((w) => {
-        if (w.id) db.vocabulary.update(w.id, { topic: cleanTitle });
-      });
+      for (const w of words) {
+        if (w.id) {
+          try { await db.vocabulary.update(w.id, { topic: cleanTitle }); } catch {}
+        }
+      }
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       toast.success(`Đã đổi tên bộ từ thành "${cleanTitle}"!`);
     } catch (err) {

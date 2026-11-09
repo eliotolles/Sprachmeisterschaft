@@ -147,6 +147,7 @@ function loadDatabase() {
       if (!parsed.examOverrides) parsed.examOverrides = {};
       if (!parsed.deletedSituationIds) parsed.deletedSituationIds = [];
       if (!parsed.situationOverrides) parsed.situationOverrides = {};
+      if (!parsed.deletedVocabularyIds) parsed.deletedVocabularyIds = [];
       return parsed;
     }
   } catch (e) {
@@ -367,6 +368,11 @@ export const db = {
         card.is_shared ? { ...card, status: 'new' } : card
       );
 
+      const deletedIds = state.deletedVocabularyIds || [];
+      if (deletedIds.length > 0) {
+        cards = cards.filter((c) => !deletedIds.includes(c.id) && (!c.source_id || !deletedIds.includes(c.source_id)));
+      }
+
       if (filter.status && filter.status !== 'all') {
         cards = cards.filter((c) => c.status === filter.status);
       }
@@ -508,6 +514,10 @@ export const db = {
     },
 
     delete: (id) => {
+      if (!state.deletedVocabularyIds) state.deletedVocabularyIds = [];
+      if (!state.deletedVocabularyIds.includes(id)) {
+        state.deletedVocabularyIds.push(id);
+      }
       const curUser = db.auth.getUser();
       const currentUserId = curUser?.id;
       state.vocabularyCards = state.vocabularyCards.filter((c) => {

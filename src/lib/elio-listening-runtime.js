@@ -176,10 +176,12 @@ export function installListeningRuntime(db){
 
    // Server sync xóa record / folder
    if (target?.organizerId && elioClient.deleteCollection) {
-     elioClient.deleteCollection({ id: target.organizerId }).catch(() => {});
+     try { await elioClient.deleteCollection({ id: target.organizerId }); } catch {}
    }
    if (target?.recordIds?.length && elioClient.deleteRecord) {
-     target.recordIds.forEach(recordId => elioClient.deleteRecord({ recordId }).catch(() => {}));
+     for (const recordId of target.recordIds) {
+       try { await elioClient.deleteRecord({ recordId }); } catch {}
+     }
    }
 
    notify();
@@ -242,5 +244,6 @@ export function installListeningRuntime(db){
   if(listeningCoreActive())hydrate().catch(()=>{});
   else{clear();notify();}
  });
+ if(listeningCoreActive())hydrate().catch(()=>{});
  return binding;
 }
