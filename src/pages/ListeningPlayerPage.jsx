@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
@@ -50,13 +51,13 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
   const collection = db.listening.getCollectionById(collectionId) || {
     id: collectionId,
-    title: coreActive?'Chưa tải được bộ nghe từ server':'Nicos Weg — Trình độ A1',
+    title: 'Nicos Weg — Trình độ A1',
   };
   const episodes = db.listening.getEpisodes(collectionId);
-  const currentEpisode = db.listening.getEpisodeById(videoId) || episodes[0] || {
+  const currentEpisode = db.listening.getEpisodeById(videoId) || episodes.find(e => e.id === videoId) || episodes[0] || {
     id: videoId,
-    title: coreActive?'Chưa có video được phép đọc':'Folge 1: Meine Muttersprache',
-    youtubeId: coreActive?'':'4-eDoThe6qo',
+    title: 'Folge 1: Meine Muttersprache',
+    youtubeId: '4-eDoThe6qo',
     subtitles: [],
   };
 
@@ -65,17 +66,39 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId]);
   const captionScopeRef=useRef(captionScope);
   captionScopeRef.current=captionScope;
-  const subtitles = preview?.scope===captionScope ? preview.cues : currentEpisode.subtitles || [];
+  const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
   const fetchCaptions=async()=>{
     if(captionBusy||!currentEpisode.youtubeId)return;
     setCaptionBusy(true);
     try{
-      const save=coreActive&&currentEpisode.recordId&&currentEpisode.owner===elioClient.getUser()?.id&&!currentEpisode.subtitles?.length;
-      const result=await elioClient.listeningTranscript('https://www.youtube.com/watch?v='+currentEpisode.youtubeId,save?{recordId:currentEpisode.recordId,itemId:currentEpisode.itemId}:{});
+      let cues = [];
+      const result = await getYouTubeTranscript(currentEpisode.youtubeId, 'de');
       if(captionScopeRef.current!==captionScope)return;
-      if(!result.available)throw Error(result.reason||'Chưa lấy được phụ đề gốc.');
-      if(result.saved){await elioListening().hydrate();toast.success('Đã lưu '+result.cues.length+' đoạn phụ đề gốc.');}
-      else {setPreview({scope:captionScope,cues:result.cues.map(c=>({...c,de:c.text,vi:''}))});toast.success('Đã lấy '+result.cues.length+' đoạn phụ đề gốc để xem.');}
+      if(result && result.available && Array.isArray(result.cues) && result.cues.length > 0){
+        cues = result.cues.map(c => ({
+          start: c.start,
+          end: c.end,
+          de: c.text,
+          vi: ''
+        }));
+      } else {
+        const elioRes = await elioClient.listeningTranscript('https://www.youtube.com/watch='+currentEpisode.youtubeId).catch(() => null);
+        if(elioRes?.available && Array.isArray(elioRes.cues) && elioRes.cues.length > 0){
+          cues = elioRes.cues.map(c => ({
+            start: c.start,
+            end: c.end,
+            de: c.text,
+            vi: ''
+          }));
+        }
+      }
+
+      if(!cues.length) throw Error(result?.reason || 'Chưa lấy được phụ đề tự động cho video này.');
+
+      // Lưu phụ đề vào database cục bộ
+      db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+      setPreview({scope:captionScope, cues});
+      toast.success('Đã tải và lưu ' + cues.length + ' đoạn phụ đề tiếng Đức.');
     }catch(error){if(captionScopeRef.current===captionScope)toast.error(error.message);}
     finally{setCaptionBusy(false);}
   };

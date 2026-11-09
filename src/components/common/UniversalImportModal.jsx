@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { LEVEL_IDS } from '@/data/levels';
 import { toast } from 'sonner';
+import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
 import {
   detectFileType,
   parseExcelFile,
@@ -236,10 +237,33 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
           throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');
         }
 
-        setProcessProgress({ message: 'Đang phân tích phụ đề và mốc thời gian...', percent: 60 });
-        let subs=[];if(youtubeSubtitles.trim())subs=parseYouTubeSubtitles(youtubeSubtitles);else if(elioImport.isActive()){try{subs=await elioImport.transcript(youtubeUrl);}catch(error){setCaptionIssue('Chưa lấy được phụ đề gốc: '+error.message+' Bạn có thể lưu link video trước và thử CC sau.');}}
+        setProcessProgress({ message: 'Đang tự động bóc tách bản hiện lời từ YouTube...', percent: 60 });
+        let subs = [];
+        if (youtubeSubtitles.trim()) {
+          subs = parseYouTubeSubtitles(youtubeSubtitles);
+        } else {
+          try {
+            const transcriptRes = await getYouTubeTranscript(info.videoId || youtubeUrl, 'de');
+            if (transcriptRes.available && Array.isArray(transcriptRes.cues) && transcriptRes.cues.length > 0) {
+              subs = transcriptRes.cues.map((c, idx) => ({
+                _id: 'cue-' + idx,
+                start: c.start,
+                end: c.end,
+                de: c.text,
+                vi: ''
+              }));
+            } else if (elioImport.isActive()) {
+              subs = await elioImport.transcript(youtubeUrl);
+            } else {
+              setCaptionIssue(transcriptRes.reason || 'Chưa tìm thấy phụ đề tiếng Đức. Bạn có thể lưu video trước và thử lại sau.');
+            }
+          } catch (error) {
+            setCaptionIssue('Chưa lấy được phụ đề gốc: ' + error.message + ' Bạn có thể lưu link video trước và thử CC sau.');
+          }
+        }
 
-        assertCurrentDraft();setExtractedItems(subs);
+        assertCurrentDraft();
+        setExtractedItems(subs);
         setProcessProgress({ message: 'Hoàn thành trích xuất video!', percent: 100 });
         setStep(2);
         setIsProcessing(false);
@@ -470,7 +494,6 @@ export function UniversalImportModal({ isOpen, onClose, defaultType = 'vocabular
     setIsSubmitting(true);
 
     try {
-      if(targetCollectionId&&!elioImport.isActive())throw Error('Cần đăng nhập server để import vào bộ.');
       if(elioImport.isActive()){if(draftOwner.current!==db.auth.getUser()?.id)throw Error('Tài khoản đã thay đổi; hãy trích xuất lại tài liệu.');const result=await elioImport.save({contentType,title,level,scope,rows:extractedItems,youtubeUrl,duplicateMode,grammarContent,exams:detectedExams.length?detectedExams:[examContent],organizerId:targetCollectionId||null,examBoard,playlistItems:contentType==='listening'&&listeningLinkType==='playlist'?extractedItems.map(v=>({id:v.id,title:v.title})):null,rawText:manualText,situationContent});if(saveGeneration!==draftGeneration.current)return;setSyncReport({title,contentType,level,scope,totalExtracted:extractedItems.length,validCount:extractedItems.filter(i=>i._valid!==false).length,...result,timestamp:new Date().toLocaleTimeString('vi-VN')});setStep(3);setIsSubmitting(false);savingImport.current=false;window.dispatchEvent(new CustomEvent('sprach_core_imported'));toast.success('Server đã xác nhận nhập bộ mới; không ghi đè dữ liệu cũ.');if(onSuccess)onSuccess();if(contentType==='listening'&&!extractedItems[0]?.content){onClose();navigate('/skills/listening?listenMode=youtube');return;}if(['reading','listening','writing','speaking','grammar','exam'].includes(contentType)){onClose();navigate('/practice/'+encodeURIComponent(result.recordId)+'?build=1');}return;}
       let savedCount = 0;
       let skippedCount = 0;
