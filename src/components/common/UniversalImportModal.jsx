@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '@/lib/db';
 import { useRouter } from '@/lib/router';
 import { LEVEL_IDS } from '@/data/levels';
@@ -119,6 +120,17 @@ export function UniversalImportModal({
       setTitle('');
     }
   }, [isOpen, defaultType]);
+
+  // Khóa cuộn trang nền khi mở popup độc lập
+  useEffect(() => {
+    if (isOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = original;
+      };
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -563,12 +575,25 @@ export function UniversalImportModal({
     }
   };
 
-  return (
+  const modalContent = (
     <div 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-8 pb-8 px-3 sm:px-5 bg-slate-950/25 backdrop-blur-[2px] overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6 bg-slate-950/50 backdrop-blur-sm overflow-y-auto animate-fadeIn"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 99999,
+      }}
     >
-      <div className="surface border border-border w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden my-auto sm:my-0">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="surface border border-border w-full max-w-4xl max-h-[92vh] flex flex-col rounded-xl shadow-2xl overflow-hidden my-auto"
+      >
         
         {/* HEADER */}
         <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between bg-card shrink-0">
@@ -1228,6 +1253,8 @@ export function UniversalImportModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
 
 export default UniversalImportModal;
