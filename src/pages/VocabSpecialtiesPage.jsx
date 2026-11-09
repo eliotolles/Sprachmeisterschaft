@@ -88,8 +88,25 @@ export function VocabSpecialtiesPage() {
     myCards.map((c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase())
   );
 
-  const coreActive=db.vocabulary.isCore?.()===true;
-  const specialties=useMemo(()=>coreActive?SPECIALTIES.map(specialty=>({...specialty,words:sourceSpecialtyWords(myCards,specialty)})):SPECIALTIES,[myCards,coreActive]);
+  const coreActive = db.vocabulary.isCore?.() === true;
+  const specialties = useMemo(() => {
+    return SPECIALTIES.map((specialty) => {
+      const serverWords = coreActive ? sourceSpecialtyWords(myCards, specialty) : [];
+      const combined = [...serverWords];
+      const seen = new Set(serverWords.map((w) => (w.german || '').toLowerCase().trim()));
+      for (const w of specialty.words || []) {
+        const key = (w.german || '').toLowerCase().trim();
+        if (key && !seen.has(key)) {
+          combined.push(w);
+          seen.add(key);
+        }
+      }
+      return {
+        ...specialty,
+        words: combined,
+      };
+    });
+  }, [myCards, coreActive]);
   const currentSpecialty =
     specialties.find((s) => s.id === selectedSpecialtyId) || specialties[0];
 

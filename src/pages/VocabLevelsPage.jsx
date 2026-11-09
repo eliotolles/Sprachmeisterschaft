@@ -13,6 +13,7 @@ import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import {buildLevelDecks} from '@/lib/level-deck-adapter.js';
 import { LEVEL_DECKS } from '@/data/level-decks';
 import { LEVEL_IDS } from '@/data/levels';
+import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   Layers,
   Plus,
@@ -23,6 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -67,6 +70,43 @@ export function VocabLevelsPage() {
     toast.success(`Đã nạp toàn bộ ${addedCount} thẻ từ của bộ "${deck.title}" vào Thẻ ôn SRS cá nhân!`);
 
     } catch(error) { toast.error(error.message); }
+  };
+
+  const handleDeleteDeck = async (deck) => {
+    const ok = await showConfirmModal({
+      title: 'Xóa bộ từ vựng',
+      message: `Bạn có chắc muốn xóa bộ từ "${deck.title}" cùng toàn bộ ${deck.cardsCount} thẻ từ trong bộ này không?`,
+      confirmText: 'Xóa bộ từ',
+      variant: 'danger',
+    });
+    if (ok) {
+      try {
+        const words = deck.words || [];
+        words.forEach((w) => {
+          if (w.id) db.vocabulary.delete(w.id);
+        });
+        window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        toast.success(`Đã xóa bộ từ "${deck.title}" thành công!`);
+      } catch (err) {
+        toast.error('Lỗi khi xóa bộ từ: ' + err.message);
+      }
+    }
+  };
+
+  const handleEditDeckTitle = async (deck) => {
+    const newTitle = window.prompt('Nhập tên mới cho bộ từ vựng:', deck.title);
+    if (!newTitle || !newTitle.trim() || newTitle.trim() === deck.title) return;
+    try {
+      const cleanTitle = newTitle.trim();
+      const words = deck.words || [];
+      words.forEach((w) => {
+        if (w.id) db.vocabulary.update(w.id, { topic: cleanTitle });
+      });
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      toast.success(`Đã đổi tên bộ từ thành "${cleanTitle}"!`);
+    } catch (err) {
+      toast.error('Lỗi khi đổi tên: ' + err.message);
+    }
   };
 
   return (
@@ -138,9 +178,29 @@ export function VocabLevelsPage() {
                     </span>
                   </div>
 
-                  <h3 className="font-display text-2xl font-bold text-foreground">
-                    {deck.title}
-                  </h3>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className="font-display text-2xl font-bold text-foreground">
+                      {deck.title}
+                    </h3>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEditDeckTitle(deck)}
+                        className="tap p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-accent transition-colors"
+                        title="Sửa tên bộ từ này"
+                      >
+                        <Edit3 className="w-4 h-4 text-blue-500" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDeck(deck)}
+                        className="tap p-1.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600 transition-colors"
+                        title="Xóa bộ từ này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                   <p className="font-heading italic text-xs text-accent font-medium mb-2">
                     {deck.deTitle}
                   </p>

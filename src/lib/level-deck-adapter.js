@@ -1,8 +1,29 @@
+const SPECIALTY_KEYWORDS = [
+  'đầu bếp', 'koch', 'köchin', 'nail', 'nagel', 'điều dưỡng', 'pflege',
+  'nhà hàng', 'khách sạn', 'gastronomie', 'hotellerie', 'bán hàng', 'verkauf',
+  'nha khoa', 'zahn', 'xây dựng', 'bau', 'kho vận', 'logistik', 'điện', 'elektro',
+  'ô tô', 'kfz', 'mechatronik', 'lễ tân', 'văn phòng', 'büro', 'y tế', 'medizin',
+  'mầm non', 'erzieher', 'kita', 'làm tóc', 'thẩm mỹ', 'friseur', 'kosmetik',
+  'mộc', 'tischler', 'sơn', 'maler', 'làm bánh', 'bäckerei', 'vệ sinh', 'reinigung',
+  'bảo vệ', 'sicherheit', 'làm vườn', 'garten'
+];
+
+export function isSpecialtyTopic(topic) {
+  if (!topic) return false;
+  const t = String(topic).toLowerCase();
+  return SPECIALTY_KEYWORDS.some(kw => t.includes(kw));
+}
+
 // Reuse authenticated vocabulary, retaining source IDs and account isolation.
 export function buildLevelDecks(cards=[],{includePrivate=false}={}) {
  const groups=new Map(),seen=new Set();
  for(const card of cards){
   if(!card||!card.is_shared&&!includePrivate||!card.id||!card.german||seen.has(card.id))continue;
+  
+  // Loại bỏ các thẻ từ vựng thuộc chuyên ngành khỏi trang cấp độ GER
+  const topic = card.topic || card.source_deck_id || '';
+  if (isSpecialtyTopic(topic)) continue;
+
   seen.add(card.id);
   const rawLevel=String(card.level||'').trim().toUpperCase();
   const level=rawLevel||'Chưa phân cấp',levels=[...new Set(rawLevel.match(/\b[A-C][12]\b/g)||[])];

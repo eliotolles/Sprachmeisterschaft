@@ -79,18 +79,20 @@ export function WordDetail({ target, onClose }) {
    if(!word||!db.auth.getUser()||!db.vocabulary.isCore?.())return;
    const key=normalize(word.german);if(enriched.current.has(key))return;
    const canonical={...word,...vocabularyDetails(word)};
-   const fields=['vietnamese','english','ipa','example_de','example_vi','synonyms','antonyms','collocations'].filter(field=>!canonical[field]||Array.isArray(canonical[field])&&!canonical[field].length);
+   // Nếu từ đã có nghĩa tiếng Việt thì hiển thị ngay lập tức, không tự động bắt AI tra ngầm gây chờ đợi lâu
+   if (canonical.vietnamese && canonical.vietnamese.trim()) return;
+   const fields=['vietnamese','english','ipa','example_de','example_vi'].filter(field=>!canonical[field]||Array.isArray(canonical[field])&&!canonical[field].length);
    if(!fields.length)return;enriched.current.add(key);let current=true;const account=db.auth.getUser()?.id;setEnriching(true);
    (async()=>{
     let externalFields={},externalSources=[];
-    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:lemma(word.german).replace(/^\(sich\)\s*/,'')}),{signal:AbortSignal.timeout(15000)});if(response.ok){const data=await response.json();const vi=data.entries?.find(e=>e.language==='vi'),de=data.entries?.find(e=>e.language==='de');if(fields.includes('ipa')&&(vi?.ipa?.[0]||de?.ipa?.[0]))externalFields.ipa=vi?.ipa?.[0]||de.ipa[0];if(fields.includes('vietnamese')&&vi?.definitions?.length)externalFields.vietnamese=vi.definitions.join('; ');externalSources=(data.entries||[]).map(e=>({url:e.source,language:e.language}));}}
+    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:lemma(word.german).replace(/^\(sich\)\s*/,'')}),{signal:AbortSignal.timeout(3000)});if(response.ok){const data=await response.json();const vi=data.entries?.find(e=>e.language==='vi'),de=data.entries?.find(e=>e.language==='de');if(fields.includes('ipa')&&(vi?.ipa?.[0]||de?.ipa?.[0]))externalFields.ipa=vi?.ipa?.[0]||de.ipa[0];if(fields.includes('vietnamese')&&vi?.definitions?.length)externalFields.vietnamese=vi.definitions.join('; ');externalSources=(data.entries||[]).map(e=>({url:e.source,language:e.language}));}}
     catch{/* Keep local data and continue with explicitly labelled AI enrichment. */}
     if(!current||account!==db.auth.getUser()?.id)return;
     if(Object.keys(externalFields).length)setWord(previous=>({...previous,...externalFields,external_sources:[...(previous.external_sources||[]),...externalSources]}));
     const missing=fields.filter(field=>!Object.hasOwn(externalFields,field));if(!missing.length)return;
     const result=await elioClient.enrichWord({word:word.german,context:target.sentence?.slice(0,3000)||'',fields:missing});
     if(current&&account===db.auth.getUser()?.id)setWord(previous=>({...previous,...Object.fromEntries(Object.entries(result.fields).filter(([field])=>missing.includes(field))),ai_fields:[...(previous.ai_fields||[]),...Object.keys(result.fields)],ai_warnings:result.warnings}));
-   })().catch(failure=>{if(current)setError('Dữ liệu gốc vẫn được giữ. AI chưa bổ sung được: '+failure.message);}).finally(()=>{if(current)setEnriching(false);});
+   })().catch(()=>{/* Bỏ qua lỗi AI để người dùng không bị làm phiền */}).finally(()=>{if(current)setEnriching(false);});
    return()=>{current=false;};
   },[word?.german]);
   const owner = db.auth.getUser()?.id;
@@ -140,7 +142,11 @@ export function WordDetail({ target, onClose }) {
         <button type="button" onClick={onClose} aria-label="Đóng chi tiết từ" className="tap px-2 text-xl">×</button>
       </header>
       <div className="space-y-3 p-4">
-        {enriching&&<p role="status">Đang tra AI bổ sung các trường còn thiếu…</p>}
+        {enriching && (!word?.vietnamese || !word.vietnamese.trim()) && (
+          <p role="status" className="text-xs text-muted-foreground animate-pulse">
+            Đang tra nghĩa AI...
+          </p>
+        )}
         {!word && !error && <p role="status">Đang tra từ…</p>}
         {word && <>
           {target.token && lemma(target.token) !== lemma(word.german) && <p lang="de">{target.token} → {word.german}</p>}
