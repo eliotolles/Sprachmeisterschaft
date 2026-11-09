@@ -10,7 +10,7 @@ import {useRouter} from '@/lib/router';
 import {LookupText} from '@/components/vocabulary/WordDetail';
 import { Award, Layers, ChevronDown } from 'lucide-react';
 const button='tap px-3 py-2 rounded-sm border border-border bg-card font-heading text-sm disabled:opacity-50';
-const labels={reading:'Đọc',listening:'Nghe',grammar:'Ngữ pháp',sprachbausteine:'Sprachbausteine telc',writing:'Viết',speaking:'Nói',exam:'Luyện đề'};
+const labels={reading:'Đọc',listening:'Nghe',grammar:'Ngữ pháp',sprachbausteine:'Sprachbausteine',writing:'Viết',speaking:'Nói',exam:'Luyện đề'};
 // Keep the source labels as answer values; only the matching layout is compact.
 function MatchingLetters({question,value,onChange}){
  return <div className="flex flex-wrap gap-1.5" aria-label={'Lựa chọn câu '+question.number}>
