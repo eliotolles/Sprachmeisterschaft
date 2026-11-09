@@ -8,7 +8,7 @@ import {elioClient} from '@/lib/elio-auth-runtime';
 import {elioImport} from '@/lib/elio-import-runtime';
 import {useRouter} from '@/lib/router';
 import {LookupText} from '@/components/vocabulary/WordDetail';
-import { Award, Layers } from 'lucide-react';
+import { Award, Layers, ChevronDown } from 'lucide-react';
 const button='tap px-3 py-2 rounded-sm border border-border bg-card font-heading text-sm disabled:opacity-50';
 const labels={reading:'Đọc',listening:'Nghe',grammar:'Ngữ pháp',sprachbausteine:'Sprachbausteine telc',writing:'Viết',speaking:'Nói',exam:'Luyện đề'};
 // Keep the source labels as answer values; only the matching layout is compact.
@@ -59,51 +59,41 @@ export function ImportedPracticePage({recordId=null,skill=null,showExamNavigatio
   {message&&<p role="status">{message}</p>}
   <div className="flex flex-wrap gap-2"><button disabled={busy} className={button} onClick={load}>Tải lại tiến độ</button>{recordId&&<button className={button} onClick={()=>navigate((new URLSearchParams(search).get('return')==='exams'?'/exams':'/practice')+'?exam='+encodeURIComponent(examCategory)+(skill?'&skill='+encodeURIComponent(skill):''))}>Danh sách đề import</button>}</div>
   {!recordId && (
-    <div className="surface p-3.5 sm:p-4 border border-border rounded-xl space-y-3.5 shadow-xs bg-card/60">
-      {showExamNavigation && (
-        <div className="space-y-2">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
-            <Award className="w-3.5 h-3.5 text-accent" />
-            <span>Kỳ thi & Mục tiêu chứng chỉ:</span>
-          </div>
+    <div className="surface px-3.5 py-2 border border-border rounded-lg shadow-2xs bg-card/60 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-3.5 flex-wrap">
+        {showExamNavigation && (
           <ExamCategoryNav value={examCategory} onChange={setExamCategory} />
-        </div>
-      )}
+        )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-border/60">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5 mr-1">
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs font-mono text-muted-foreground font-semibold flex items-center gap-1 shrink-0">
             <Layers className="w-3.5 h-3.5 text-accent" />
             <span>Cấp độ:</span>
-          </span>
-          <div className="flex items-center gap-1 flex-wrap">
-            {['ALL', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(l => {
-              const isSel = level === l;
-              return (
-                <button
-                  key={l}
-                  type="button"
-                  onClick={() => {
-                    const params = new URLSearchParams(search);
-                    params.set('level', l);
-                    navigate(window.location.hash.slice(1).split('?')[0] + '?' + params.toString());
-                  }}
-                  className={`tap px-2.5 py-1 text-xs font-mono rounded-md border transition-all ${
-                    isSel
-                      ? 'bg-accent text-accent-foreground border-accent font-bold shadow-xs'
-                      : 'bg-card text-muted-foreground border-border hover:border-accent/40 hover:text-foreground'
-                  }`}
-                >
-                  {l === 'ALL' ? 'Tất cả cấp độ' : l}
-                </button>
-              );
-            })}
+          </label>
+          <div className="relative inline-block">
+            <select
+              aria-label="Cấp độ luyện đề"
+              value={level}
+              onChange={(e) => {
+                const params = new URLSearchParams(search);
+                params.set('level', e.target.value);
+                navigate(window.location.hash.slice(1).split('?')[0] + '?' + params.toString());
+              }}
+              className="appearance-none pl-2.5 pr-7 py-1 text-xs font-mono font-semibold rounded-md border border-border bg-card text-foreground hover:border-accent/40 focus:border-accent focus:ring-1 focus:ring-accent cursor-pointer shadow-2xs transition-colors"
+            >
+              {['ALL', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(l => (
+                <option key={l} value={l}>
+                  {l === 'ALL' ? 'Tất cả cấp độ' : `Cấp độ ${l}`}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
           </div>
         </div>
+      </div>
 
-        <div className="text-xs font-mono text-muted-foreground">
-          Đang hiển thị: <strong className="text-foreground">{visibleRecords.length}</strong> bài luyện
-        </div>
+      <div className="text-xs font-mono text-muted-foreground">
+        Đang hiển thị: <strong className="text-foreground">{visibleRecords.length}</strong> bài luyện
       </div>
     </div>
   )}

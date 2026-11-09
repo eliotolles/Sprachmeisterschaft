@@ -158,13 +158,19 @@ export function ExamsListPage() {
         }
       />
 
-      <ExamCategoryNav value={category} onChange={setCategory}/>
-      {/* Filter by Level */}
-      <LevelFilter
-        selectedLevel={selectedLevel}
-        onSelectLevel={setSelectedLevel}
-        includeAll={true}
-      />
+      <div className="surface px-3.5 py-2 border border-border rounded-lg shadow-2xs bg-card/60 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5 flex-wrap">
+          <ExamCategoryNav value={category} onChange={setCategory}/>
+          <LevelFilter
+            selectedLevel={selectedLevel}
+            onSelectLevel={setSelectedLevel}
+            includeAll={true}
+          />
+        </div>
+        <div className="text-xs font-mono text-muted-foreground">
+          Đang hiển thị: <strong className="text-foreground">{filteredExams.length}</strong> đề thi
+        </div>
+      </div>
 
       {/* Exams Grid or Empty State */}
       {filteredExams.length === 0 ? (

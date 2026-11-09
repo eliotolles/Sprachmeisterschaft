@@ -74,7 +74,10 @@ export function SkillsOverviewPage() {
         }
       />
 
-      <ExamCategoryNav value={category} onChange={setCategory}/>
+      <div className="surface px-3.5 py-2 border border-border rounded-lg shadow-2xs bg-card/60 flex items-center justify-between gap-3">
+        <ExamCategoryNav value={category} onChange={setCategory}/>
+        <span className="text-xs font-mono text-muted-foreground hidden sm:inline">Phân loại theo chuẩn đề thi</span>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {[...SKILLS,{id:'explore',icon:'Compass',de:'Lernen & Entdecken',vi:'Học & khám phá',tagline:'Hiểu cách dùng tiếng Đức trong đời sống.',desc:'Cấu trúc câu, phát âm, giao tiếp, văn hóa và tiếng Đức nâng cao.'}].map((skill) => {
           const Icon = ICON_MAP[skill.icon] || Sparkles;
