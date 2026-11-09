@@ -6,6 +6,7 @@ import {
   APP_AI_TASKS,
 } from '@/data/ai-models-catalog';
 import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
+import { hasValidApiKey, autoDispatchAIWorkforce } from '@/lib/ai-auto-dispatcher';
 import { getAllExams } from '@/data/all-exams';
 import { GRAMMAR_CORE } from '@/data/grammar';
 import { SITUATIONS } from '@/data/situations';
@@ -73,15 +74,6 @@ export function AdminReportsTab({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
-
-  // Hàm kiểm tra tính hợp lệ của API Key (hỗ trợ cả key lưu mã hóa trên server lẫn key local)
-  const hasValidApiKey = (cfg) => {
-    if (!cfg) return false;
-    if (cfg.provider === 'custom') return true;
-    if (typeof cfg.apiKey === 'string' && cfg.apiKey.trim().length > 0) return true;
-    if (typeof cfg.maskedKey === 'string' && (cfg.maskedKey.includes('server') || cfg.maskedKey.includes('••••'))) return true;
-    return false;
-  };
 
   // ====================================================================
   // 1. THU THẬP & PHÂN TÍCH CHỈ SỐ HỆ THỐNG
@@ -199,6 +191,26 @@ export function AdminReportsTab({
       // BƯỚC 2: Quét phân công tác vụ (Task Assignments)
       setScanProgress(50);
       setScanStatusText('Đang đối chiếu phân công tác vụ ứng dụng với khả năng của AI...');
+
+      // Tự động phân chia việc cho AI (Autonomous Dispatch):
+      // Nếu có tác vụ trống mà hệ thống có AI khả dụng, tự động bố trí việc ngay (như nhân viên ngồi vào làm việc)
+      const validConfigs = aiConfigs.filter((c) => c.enabled !== false && hasValidApiKey(c));
+      const hasUnassigned = APP_AI_TASKS.some((t) => {
+        const assigned = aiAssignments[t.id];
+        const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
+        return !assigned?.model && pooled.length === 0;
+      });
+
+      if (hasUnassigned && validConfigs.length > 0) {
+        try {
+          await autoDispatchAIWorkforce({
+            db,
+            aiConfigs: validConfigs,
+            currentAssignments: aiAssignments,
+            setAiAssignments,
+          });
+        } catch {}
+      }
 
       APP_AI_TASKS.forEach((task) => {
         const assigned = aiAssignments[task.id];
@@ -484,40 +496,25 @@ export function AdminReportsTab({
     }
   };
 
-  // Tự động phân công toàn bộ 8 tác vụ cho các con AI đang có
+  // Tự động phân công toàn bộ 8 tác vụ cho các con AI đang có (như nhân viên ngồi vào làm việc luôn)
   const handleAutoAssignAll = async () => {
     setIsScanning(true);
     setScanProgress(30);
     setScanStatusText('Đang tự động phân bổ trọn vẹn 8 tác vụ cho dàn AI...');
     try {
-      const configs = db.aiConfig.getConfigs();
-      if (!configs || configs.length === 0) {
-        toast.error('Chưa có cấu hình AI nào trong hệ thống!');
-        return;
-      }
-      const visionCfg = configs.find((c) => c.hasVision && hasValidApiKey(c)) || configs.find((c) => c.hasVision) || configs[0];
-      const generalCfg = configs.find((c) => hasValidApiKey(c) && !c.hasVision) || configs.find((c) => hasValidApiKey(c)) || configs[0];
+      const res = await autoDispatchAIWorkforce({
+        db,
+        aiConfigs,
+        currentAssignments: aiAssignments,
+        setAiAssignments,
+        force: true,
+      });
 
-      for (const task of APP_AI_TASKS) {
-        const chosen = task.needsVision ? visionCfg : generalCfg;
-        if (chosen) {
-          try {
-            await db.aiConfig.setAssignment(task.id, chosen.id, chosen.model);
-          } catch {
-            try {
-              await db.aiConfig.setAssignment(task.id, chosen.provider, chosen.model);
-            } catch {}
-          }
-          if (db.aiConfig.addToTaskPool) {
-            try {
-              await db.aiConfig.addToTaskPool(task.id, chosen.id);
-            } catch {}
-          }
-        }
+      if (res.dispatchedCount > 0) {
+        toast.success(`Đã tự động phân bổ hoàn tất ${res.dispatchedCount} vị trí công việc cho dàn AI!`);
+      } else {
+        toast.info('Tất cả các vị trí công việc đã có AI phụ trách tối ưu.');
       }
-
-      if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
-      toast.success('Đã tự động gán hoàn tất toàn bộ 8 tác vụ cho dàn AI!');
       await runDeepAudit();
     } catch (err) {
       toast.error('Lỗi khi phân công tự động: ' + err.message);

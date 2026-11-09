@@ -13,6 +13,7 @@ import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import { ModelCatalogModal } from '@/components/admin/ModelCatalogModal';
 import { AdminReportsTab } from '@/components/admin/AdminReportsTab';
+import { autoDispatchAIWorkforce } from '@/lib/ai-auto-dispatcher';
 import {
   discoverProviderModels,
   verifyProviderKey,
@@ -219,7 +220,39 @@ export function AdminPage() {
     .filter((s) => !situationDeletedIds.includes(s.id))
     .map((s) => (situationOverrides[s.id] ? { ...s, ...situationOverrides[s.id] } : s));
 
-  useEffect(()=>{if(!elioAIAdmin()?.isActive())return;elioAIAdmin().hydrate().catch(error=>toast.error(error.message));const timer=setInterval(()=>setAiConfigs(db.aiConfig.getConfigs()),1000);return()=>clearInterval(timer);},[]);
+  useEffect(() => {
+    let mounted = true;
+    const initAndDispatch = async () => {
+      try {
+        if (elioAIAdmin()?.isActive()) {
+          await elioAIAdmin().hydrate();
+        }
+        if (!mounted) return;
+        const cfgs = db.aiConfig.getConfigs();
+        setAiConfigs(cfgs);
+        const asgns = db.aiConfig.getAssignments();
+        setAiAssignments(asgns);
+
+        // Tự động phân chia việc cho AI nếu có tác vụ chưa có người phụ trách (như nhân viên ngồi vào làm việc)
+        if (cfgs.length > 0) {
+          await autoDispatchAIWorkforce({
+            db,
+            aiConfigs: cfgs,
+            currentAssignments: asgns,
+            setAiAssignments,
+          });
+        }
+      } catch (error) {
+        if (mounted && error.message) toast.error(error.message);
+      }
+    };
+    initAndDispatch();
+    const timer = setInterval(() => setAiConfigs(db.aiConfig.getConfigs()), 1000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   // Sync discovered catalog when provider type changes
   useEffect(() => {
@@ -518,14 +551,31 @@ export function AdminPage() {
       enabled: true,
       discoveredAt: new Date().toISOString(),
     };
-    try {await db.aiConfig.saveConfig(newConfig);
-    setAiConfigs(db.aiConfig.getConfigs());
-    setProviderName('');
-    setApiKey('');
-    setBackupModel('');
-    setCustomModelInput('');
-    toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
-    }catch(error){toast.error(error.message);}
+    try {
+      await db.aiConfig.saveConfig(newConfig);
+      const updatedConfigs = db.aiConfig.getConfigs();
+      setAiConfigs(updatedConfigs);
+      setProviderName('');
+      setApiKey('');
+      setBackupModel('');
+      setCustomModelInput('');
+
+      // Tự động phân chia việc cho AI mới (như nhân viên ngồi vào là làm việc luôn)
+      const dispatchRes = await autoDispatchAIWorkforce({
+        db,
+        aiConfigs: updatedConfigs,
+        currentAssignments: db.aiConfig.getAssignments(),
+        setAiAssignments,
+      });
+
+      if (dispatchRes.dispatchedCount > 0) {
+        toast.success(`Đã nạp AI "${newConfig.name}" và tự động giao việc vào các nhóm tác vụ phù hợp!`);
+      } else {
+        toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   const handleDeleteAIConfig = async (id) => {
@@ -1288,6 +1338,40 @@ export function AdminPage() {
               <p className="font-body text-xs text-muted-foreground mt-0.5">
                 Mỗi công việc có danh sách các Key riêng (Ưu tiên #1, #2, #3). Tự chuyển key khác cùng nhóm khi 429/Timeout, không gọi nhầm nhóm khác.
               </p>
+            </div>
+
+            {/* Banner Tự động phân chia việc cho AI (Autonomous Dispatch) */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200">
+              <div className="flex items-start sm:items-center gap-2.5">
+                <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
+                <div>
+                  <div className="text-xs font-bold font-mono flex items-center gap-2">
+                    <span>TỰ ĐỘNG PHÂN CHIA VIỆC CHO AI (AUTONOMOUS DISPATCH)</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-600 text-white font-bold">TỰ ĐỘNG 24/7</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-sans mt-0.5">
+                    Mỗi AI khi nạp vào hệ thống được tự động bố trí vị trí làm việc phù hợp với chuyên môn (như nhân viên ngồi vào bàn làm việc luôn).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await autoDispatchAIWorkforce({
+                    db,
+                    aiConfigs: db.aiConfig.getConfigs(),
+                    currentAssignments: db.aiConfig.getAssignments(),
+                    setAiAssignments,
+                    force: true,
+                  });
+                  toast.success(`Đã tự động tái phân bổ hoàn tất ${res.dispatchedCount} vị trí công việc cho dàn AI!`);
+                  setAiConfigs([...db.aiConfig.getConfigs()]);
+                }}
+                className="tap px-3 py-1.5 rounded-sm border border-emerald-500/40 bg-card hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 self-start sm:self-auto shadow-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Tự động phân chia lại</span>
+              </button>
             </div>
 
             <div className="space-y-4">
