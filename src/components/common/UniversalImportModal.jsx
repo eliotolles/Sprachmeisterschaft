@@ -90,7 +90,10 @@ export function UniversalImportModal({
   const [examTeil, setExamTeil] = useState(1);
   const [examTasks, setExamTasks] = useState([]);
 
-  // Module 4: Luyện nghe (YouTube)
+  // Module 4: Luyện nghe (YouTube & Podcast)
+  const [targetCollectionId, setTargetCollectionId] = useState(defaultCollectionId || '');
+  const [listeningMode, setListeningMode] = useState('youtube'); // 'youtube' | 'quiz' | 'podcast' | 'dictation' | 'shadowing'
+  const [listeningCollections, setListeningCollections] = useState([]);
   const [listeningLinkType, setListeningLinkType] = useState('video'); // 'video' | 'playlist'
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [playlistVideos, setPlaylistVideos] = useState([]);
@@ -118,8 +121,27 @@ export function UniversalImportModal({
       setWarningText('');
       setProgressText('');
       setTitle('');
+
+      // Nạp danh sách bộ nghe hiện có trong hệ thống
+      try {
+        const cols = db.listening.getCollections() || [];
+        setListeningCollections(cols);
+        if (defaultCollectionId) {
+          setTargetCollectionId(defaultCollectionId);
+          const found = cols.find(c => c.id === defaultCollectionId);
+          if (found) {
+            if (found.level) setLevel(found.level);
+            if (found.scope) setScope(found.scope);
+          }
+        } else {
+          setTargetCollectionId('');
+        }
+      } catch {
+        setListeningCollections([]);
+        setTargetCollectionId('');
+      }
     }
-  }, [isOpen, defaultType]);
+  }, [isOpen, defaultType, defaultCollectionId]);
 
   // Khóa cuộn trang nền khi mở popup độc lập
   useEffect(() => {
@@ -482,22 +504,29 @@ export function UniversalImportModal({
 
       // 4. LƯU VIDEO HOẶC PLAYLIST LUYỆN NGHE
       else if (activeModule === 'listening') {
-        const colTitle = title || (listeningLinkType === 'playlist' ? 'Bộ Playlist YouTube' : 'Video cá nhân');
+        let col = null;
+        if (targetCollectionId) {
+          col = db.listening.getCollectionById(targetCollectionId) || listeningCollections.find(c => c.id === targetCollectionId);
+        }
+
+        const colTitle = col ? col.title : (title || (listeningLinkType === 'playlist' ? 'Bộ Playlist YouTube' : 'Video cá nhân'));
+
+        if (!col) {
+          col = db.listening.createCollection({
+            title: colTitle,
+            deTitle: colTitle,
+            provider: listeningMode === 'podcast' ? 'Podcast' : (listeningLinkType === 'playlist' ? 'YouTube Playlist' : (scope === 'private' ? 'Video của tôi' : 'Cộng đồng')),
+            category: listeningMode,
+            level,
+            scope,
+            thumbnail: listeningLinkType === 'playlist' && playlistVideos[0]?.id ? `https://img.youtube.com/vi/${playlistVideos[0].id}/hqdefault.jpg` : undefined,
+            description: `Bộ luyện nghe ${colTitle}`,
+          });
+        }
 
         if (listeningLinkType === 'playlist') {
           const selectedVideos = playlistVideos.filter(v => v.selected !== false);
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
-
-          const firstVid = selectedVideos[0]?.id;
-          const col = db.listening.createCollection({
-            title: colTitle,
-            deTitle: colTitle,
-            provider: 'YouTube Playlist',
-            level,
-            scope,
-            thumbnail: firstVid ? `https://img.youtube.com/vi/${firstVid}/hqdefault.jpg` : undefined,
-            description: `Bộ luyện nghe playlist ${colTitle} (${selectedVideos.length} tập)`,
-          });
 
           for (const v of selectedVideos) {
             db.listening.createEpisode({
@@ -507,39 +536,27 @@ export function UniversalImportModal({
               level,
               youtubeId: v.id,
               scope,
+              category: listeningMode,
               subtitles: [],
             });
           }
 
-          toast.success(`Đã lưu thành công bộ "${colTitle}" gồm ${selectedVideos.length} tập video!`);
+          toast.success(`Đã lưu thành công bộ "${col.title}" gồm ${selectedVideos.length} tập video!`);
         } else {
           const videoId = extractYouTubeId(youtubeUrl);
-          // Tạo hoặc lấy bộ video
-          let col = db.listening.getCollections({ scope }).find(c => c.title.toLowerCase() === colTitle.toLowerCase());
-          if (!col) {
-            col = db.listening.createCollection({
-              title: colTitle,
-              deTitle: colTitle,
-              provider: scope === 'private' ? 'Video của tôi' : 'Cộng đồng',
-              level,
-              scope,
-              thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-              description: 'Bộ luyện nghe ' + colTitle,
-            });
-          }
-
-          // Tạo tập video kèm phụ đề cues
+          const episodeTitle = (targetCollectionId && title) ? title : colTitle;
           db.listening.createEpisode({
             collectionId: col.id,
-            title: colTitle,
-            deTitle: colTitle,
+            title: episodeTitle,
+            deTitle: episodeTitle,
             level,
             youtubeId: videoId,
             scope,
+            category: listeningMode,
             subtitles: youtubeCues,
           });
 
-          toast.success(`Đã lưu video "${colTitle}" kèm ${youtubeCues.length} câu phụ đề song ngữ!`);
+          toast.success(`Đã thêm video "${episodeTitle}" vào bộ "${col.title}" thành công!`);
         }
       }
 
@@ -651,40 +668,128 @@ export function UniversalImportModal({
           {step === 1 && (
             <div className="space-y-5">
               
-              {/* THÔNG TIN CHUNG: TIÊU ĐỀ, CẤP ĐỘ, PHẠM VI */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1 sm:col-span-1">
-                  <label className="text-xs font-mono font-medium text-muted-foreground">Tên bộ / Chủ đề</label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    placeholder="VD: Goethe B1 Lektion 1..."
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
-                  />
+              {/* THÔNG TIN CHUNG: TIÊU ĐỀ, CẤP ĐỘ, PHẠM VI & CHỌN BỘ ĐÍCH */}
+              {activeModule === 'listening' ? (
+                <div className="space-y-3 p-3.5 sm:p-4 rounded-xl border border-accent/20 bg-accent/5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-foreground flex items-center justify-between">
+                        <span className="font-bold text-accent">Import vào bộ nào? *</span>
+                        <span className="text-[10px] text-muted-foreground">Chọn bộ đã có hoặc tạo mới</span>
+                      </label>
+                      <select
+                        value={targetCollectionId}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setTargetCollectionId(val);
+                          if (val) {
+                            const found = listeningCollections.find(c => c.id === val);
+                            if (found) {
+                              if (found.level) setLevel(found.level);
+                              if (found.scope) setScope(found.scope);
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono text-foreground font-semibold cursor-pointer shadow-2xs"
+                      >
+                        <option value="">+ Tạo bộ nghe mới (nhập tên bên dưới)</option>
+                        {listeningCollections.map(col => (
+                          <option key={col.id} value={col.id}>
+                            📁 {col.title} ({col.level || 'B1'} · {col.scope === 'public' ? 'Kho chung' : 'Cá nhân'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        Mục luyện nghe (Chế độ tương ứng ở kho nghe)
+                      </label>
+                      <select
+                        value={listeningMode}
+                        onChange={e => setListeningMode(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono cursor-pointer shadow-2xs"
+                      >
+                        <option value="youtube">📺 YouTube (Dán link, học với phụ đề)</option>
+                        <option value="quiz">🎧 Bài nghe & Quiz (Nghe, hiểu và trả lời câu hỏi)</option>
+                        <option value="podcast">🎙️ Podcast (Các tập nghe do bạn hoặc Admin thêm)</option>
+                        <option value="dictation">✍️ Chép chính tả (Nghe từng câu, gõ và đối chiếu)</option>
+                        <option value="shadowing">🗣️ Shadowing (Nghe mẫu, ghi âm và nghe lại)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="space-y-1 sm:col-span-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">
+                        {targetCollectionId ? 'Tiêu đề tập video (Tùy chọn)' : 'Tên bộ nghe mới *'}
+                      </label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        placeholder={targetCollectionId ? 'Để trống sẽ lấy tên từ video YouTube...' : 'VD: Märchen, Deutsch lernen B1...'}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">Cấp độ đích</label>
+                      <select
+                        value={level}
+                        onChange={e => setLevel(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
+                      >
+                        {LEVEL_IDS.map(l => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-medium text-muted-foreground">Phạm vi lưu</label>
+                      <select
+                        value={scope}
+                        onChange={e => setScope(e.target.value)}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                      >
+                        <option value="private">Chỉ riêng tôi (Cá nhân)</option>
+                        {isAdmin && <option value="public">Kho chung toàn hệ thống (Super Admin)</option>}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-mono font-medium text-muted-foreground">Cấp độ đích</label>
-                  <select
-                    value={level}
-                    onChange={e => setLevel(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
-                  >
-                    {LEVEL_IDS.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-mono font-medium text-muted-foreground">Tên bộ / Chủ đề</label>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={e => setTitle(e.target.value)}
+                      placeholder="VD: Goethe B1 Lektion 1..."
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-mono font-medium text-muted-foreground">Cấp độ đích</label>
+                    <select
+                      value={level}
+                      onChange={e => setLevel(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card font-mono"
+                    >
+                      {LEVEL_IDS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-mono font-medium text-muted-foreground">Phạm vi lưu</label>
+                    <select
+                      value={scope}
+                      onChange={e => setScope(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
+                    >
+                      <option value="private">Chỉ riêng tôi (Cá nhân)</option>
+                      {isAdmin && <option value="public">Kho chung toàn hệ thống (Super Admin)</option>}
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-mono font-medium text-muted-foreground">Phạm vi lưu</label>
-                  <select
-                    value={scope}
-                    onChange={e => setScope(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-card"
-                  >
-                    <option value="private">Chỉ riêng tôi (Cá nhân)</option>
-                    {isAdmin && <option value="public">Kho chung toàn hệ thống (Super Admin)</option>}
-                  </select>
-                </div>
-              </div>
+              )}
 
               {/* MODULE 1: TỪ VỰNG */}
               {activeModule === 'vocabulary' && (
