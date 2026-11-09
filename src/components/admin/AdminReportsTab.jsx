@@ -191,6 +191,14 @@ export function AdminReportsTab({
       APP_AI_TASKS.forEach((task) => {
         const assigned = aiAssignments[task.id];
         if (!assigned || !assigned.model) {
+          // Tìm config đang khả dụng trong danh sách của người dùng
+          const availableCfg = aiConfigs.find(
+            (c) => c.enabled !== false && c.apiKey?.trim() && (!task.needsVision || c.hasVision)
+          ) || aiConfigs.find((c) => c.apiKey?.trim()) || aiConfigs[0];
+
+          const recModel = availableCfg?.model || task.defaultRecommendation;
+          const recProvider = availableCfg?.provider || 'gemini';
+
           newIssues.push({
             id: `err-unassigned-${task.id}`,
             level: 'critical',
@@ -199,8 +207,12 @@ export function AdminReportsTab({
             desc: `Tác vụ thuộc nhóm [${task.category}] đang bị bỏ trống. Khi học viên truy cập tính năng này sẽ gặp thông báo lỗi.`,
             fixAction: 'assign_recommended_task',
             taskId: task.id,
-            recommendedModel: task.defaultRecommendation,
-            fixLabel: `Gán tự động model ${task.defaultRecommendation}`,
+            targetConfigId: availableCfg?.id || null,
+            recommendedModel: recModel,
+            recommendedProvider: recProvider,
+            fixLabel: availableCfg
+              ? `Gán bằng [${availableCfg.name}]`
+              : `Gán tự động model ${task.defaultRecommendation}`,
           });
         } else {
           // Kiểm tra tác vụ cần Vision
@@ -389,14 +401,18 @@ export function AdminReportsTab({
         // Loại bỏ issue khỏi list
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'assign_recommended_task') {
-        // Tìm config phù hợp nhất hoặc tạo mới
-        const suitableCfg = aiConfigs.find((c) => c.hasVision || c.provider === 'gemini') || aiConfigs[0];
-        const prov = suitableCfg?.provider || 'gemini';
-        const model = suitableCfg?.model || issue.recommendedModel || 'gemini-2.5-flash';
+        let chosenCfg = issue.targetConfigId
+          ? aiConfigs.find((c) => c.id === issue.targetConfigId)
+          : null;
+        if (!chosenCfg) {
+          chosenCfg = aiConfigs.find((c) => c.enabled !== false && c.apiKey?.trim()) || aiConfigs[0];
+        }
+        const prov = chosenCfg?.provider || issue.recommendedProvider || 'gemini';
+        const model = chosenCfg?.model || issue.recommendedModel || 'gemini-2.5-flash';
 
         await db.aiConfig.setAssignment(issue.taskId, prov, model);
         if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
-        toast.success(`Đã tự động gán [${prov.toUpperCase()} - ${model}] cho tác vụ!`);
+        toast.success(`Đã gán [${prov.toUpperCase()} - ${model}] cho tác vụ!`);
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'fix_vision_assignment') {
         const visionCfg = aiConfigs.find((c) => c.hasVision);
@@ -839,6 +855,37 @@ export function AdminReportsTab({
               </div>
             </div>
           )}
+
+          {/* Hướng dẫn giải pháp thay thế khi Key Gemini hỏng */}
+          <div className="surface p-5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3 font-mono">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs uppercase tracking-wider">
+              <Zap className="w-4 h-4" />
+              <span>Giải pháp thay thế tức thì khi Key Gemini bị hết hạn / lỗi Quota</span>
+            </div>
+            <p className="text-xs text-foreground/90 font-body leading-relaxed">
+              Nếu API Key Google AI Studio của bạn bị báo lỗi hoặc vượt quá hạn ngạch (Rate Limit 15 RPM), bạn có 3 phương án thay thế hoàn toàn miễn phí 100%:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1">
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">1. Dùng Groq API (Khuyên dùng #1)</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Tốc độ siêu tốc 300 token/s, miễn phí 100%. Đăng ký lấy key tại <code>console.groq.com</code> và gán model <code>llama-3.3-70b-versatile</code>.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">2. Dùng OpenRouter Free</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Hàng chục model miễn phí có hậu tố <code>:free</code> như DeepSeek R1, Llama 3.3. Lấy key tại <code>openrouter.ai</code>.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">3. Lấy lại Key Gemini mới</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Đăng nhập <code>aistudio.google.com</code> bằng tài khoản Google khác hoặc tạo project mới để nhận ngay API Key Free 100%.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -918,6 +965,32 @@ export function AdminReportsTab({
                         <p className="text-xs text-muted-foreground font-body leading-relaxed">
                           {issue.desc}
                         </p>
+                        {issue.category === 'Phân công tác vụ' && aiConfigs.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 pt-2">
+                            <span className="text-[11px] text-muted-foreground">Hoặc chọn AI bạn đang có:</span>
+                            <select
+                              defaultValue=""
+                              onChange={async (e) => {
+                                const cid = e.target.value;
+                                if (!cid) return;
+                                const cfg = aiConfigs.find((c) => c.id === cid);
+                                if (!cfg) return;
+                                await db.aiConfig.setAssignment(issue.taskId, cfg.provider, cfg.model);
+                                if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
+                                toast.success(`Đã gán [${cfg.name}] cho tác vụ!`);
+                                setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
+                              }}
+                              className="px-2 py-1 text-xs rounded border border-border bg-card text-foreground font-mono"
+                            >
+                              <option value="">-- Chọn con AI bạn đang có --</option>
+                              {aiConfigs.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} · {c.model} {c.hasVision ? '[Vision]' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
 
                       {issue.fixLabel && (
@@ -936,6 +1009,37 @@ export function AdminReportsTab({
               })}
             </div>
           )}
+
+          {/* Hướng dẫn giải pháp thay thế khi Key Gemini hỏng */}
+          <div className="surface p-5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3 font-mono">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs uppercase tracking-wider">
+              <Zap className="w-4 h-4" />
+              <span>Giải pháp thay thế tức thì khi Key Gemini bị hết hạn / lỗi Quota</span>
+            </div>
+            <p className="text-xs text-foreground/90 font-body leading-relaxed">
+              Nếu API Key Google AI Studio của bạn bị báo lỗi hoặc vượt quá hạn ngạch (Rate Limit 15 RPM), bạn có 3 phương án thay thế hoàn toàn miễn phí 100%:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-1">
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">1. Dùng Groq API (Khuyên dùng #1)</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Tốc độ siêu tốc 300 token/s, miễn phí 100%. Đăng ký lấy key tại <code>console.groq.com</code> và gán model <code>llama-3.3-70b-versatile</code>.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">2. Dùng OpenRouter Free</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Hàng chục model miễn phí có hậu tố <code>:free</code> như DeepSeek R1, Llama 3.3. Lấy key tại <code>openrouter.ai</code>.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg border border-border bg-card space-y-1.5">
+                <div className="font-bold text-accent">3. Lấy lại Key Gemini mới</div>
+                <p className="text-[11px] text-muted-foreground font-body">
+                  Đăng nhập <code>aistudio.google.com</code> bằng tài khoản Google khác hoặc tạo project mới để nhận ngay API Key Free 100%.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
