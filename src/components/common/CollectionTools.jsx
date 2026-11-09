@@ -46,12 +46,7 @@ export function CollectionToolbar(){
   const [dropdownOpen,setDropdownOpen]=useState(false);
   const menuRef=useRef(null);
 
-  // Không hiển thị trên các trang luyện nghe/video (vì đã có quy trình import & tạo bộ riêng trong modal)
-  if(currentPath.startsWith('/skills/listening') || currentPath.startsWith('/listening') || currentPath.startsWith('/videos') || currentPath==='/personal-videos') return null;
-
-  const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin'||currentPath.startsWith('/collections')||currentPath.startsWith('/practice');
-
-  // Đóng dropdown khi click ra ngoài
+  // Đóng dropdown khi click ra ngoài (đặt hook trước mọi return điều kiện)
   useEffect(()=>{
     if(!dropdownOpen)return;
     const handleClickOutside=(e)=>{
@@ -63,6 +58,10 @@ export function CollectionToolbar(){
     return()=>document.removeEventListener('mousedown',handleClickOutside);
   },[dropdownOpen]);
 
+  // Không hiển thị trên các trang luyện nghe/video (vì đã có quy trình import & tạo bộ riêng trong modal)
+  if(currentPath.startsWith('/skills/listening') || currentPath.startsWith('/listening') || currentPath.startsWith('/videos') || currentPath==='/personal-videos') return null;
+
+  const supported=currentPath.startsWith('/vocabulary')||currentPath.startsWith('/skills')||currentPath.startsWith('/exams')||currentPath==='/admin'||currentPath.startsWith('/collections')||currentPath.startsWith('/practice');
   if(!supported)return null;
   const skill=collectionSkillForPath(currentPath),collection=new URLSearchParams(search).get('collection');
 
