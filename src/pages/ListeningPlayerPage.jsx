@@ -206,11 +206,22 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           modestbranding: 1,
           enablejsapi: 1,
           playsinline: 1,
+          cc_load_policy: 0, // Tắt phụ đề mặc định của YouTube để không bị hộp đen che video
+          iv_load_policy: 3, // Tắt chú thích trên video
         },
         events: {
           onReady: (event) => {
             if (isMounted) {
               event.target.setPlaybackRate(playbackSpeed);
+              try {
+                if (typeof event.target.unloadModule === 'function') {
+                  event.target.unloadModule('captions');
+                  event.target.unloadModule('cc');
+                }
+                if (typeof event.target.setOption === 'function') {
+                  event.target.setOption('captions', 'track', {});
+                }
+              } catch {}
             }
           },
           onStateChange: (event) => {

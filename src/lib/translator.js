@@ -29,6 +29,9 @@ export async function translateTextLines(lines) {
     // Khớp kết quả trả về với số dòng ban đầu
     return cleanLines.map((original, i) => {
       if (!original) return '';
+      if (/^\[(Musik|Music)\]$/i.test(original)) return '[Âm nhạc]';
+      if (/^\[(Applaus|Applause)\]$/i.test(original)) return '[Tiếng vỗ tay]';
+      if (/^\[(Lachen|Laughter)\]$/i.test(original)) return '[Tiếng cười]';
       if (/^\[.+\]$/.test(original) || /^\(.+\)$/.test(original)) return original;
       return translatedLines[i] ? translatedLines[i].trim() : '';
     });
