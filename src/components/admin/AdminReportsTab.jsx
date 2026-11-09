@@ -74,6 +74,15 @@ export function AdminReportsTab({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Hàm kiểm tra tính hợp lệ của API Key (hỗ trợ cả key lưu mã hóa trên server lẫn key local)
+  const hasValidApiKey = (cfg) => {
+    if (!cfg) return false;
+    if (cfg.provider === 'custom') return true;
+    if (typeof cfg.apiKey === 'string' && cfg.apiKey.trim().length > 0) return true;
+    if (typeof cfg.maskedKey === 'string' && (cfg.maskedKey.includes('server') || cfg.maskedKey.includes('••••'))) return true;
+    return false;
+  };
+
   // ====================================================================
   // 1. THU THẬP & PHÂN TÍCH CHỈ SỐ HỆ THỐNG
   // ====================================================================
@@ -82,11 +91,14 @@ export function AdminReportsTab({
     const activeConfigs = aiConfigs.filter((c) => c.enabled !== false).length;
     const visionConfigs = aiConfigs.filter((c) => c.hasVision).length;
 
-    // Tác vụ đã gán AI
+    // Tác vụ đã gán AI (kiểm tra cả assignment trực tiếp lẫn task pool)
     const totalTasks = APP_AI_TASKS.length;
-    const assignedTasksCount = Object.keys(aiAssignments || {}).filter(
-      (taskId) => aiAssignments[taskId]?.model
-    ).length;
+    const assignedTasksCount = APP_AI_TASKS.filter((task) => {
+      const assigned = aiAssignments[task.id];
+      if (assigned?.model) return true;
+      const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
+      return pooled.length > 0;
+    }).length;
 
     // Điểm độ trễ trung bình từ các lần test
     const testedEntries = Object.values(aiMonitorResults).filter((r) => r.latency);
@@ -156,8 +168,8 @@ export function AdminReportsTab({
       }
 
       aiConfigs.forEach((cfg) => {
-        // Kiểm tra API Key
-        if (!cfg.apiKey?.trim() && cfg.provider !== 'custom') {
+        // Kiểm tra API Key (hỗ trợ cả key lưu mã hóa trên server lẫn key local)
+        if (!hasValidApiKey(cfg)) {
           newIssues.push({
             id: `err-key-${cfg.id}`,
             level: 'critical',
@@ -190,11 +202,14 @@ export function AdminReportsTab({
 
       APP_AI_TASKS.forEach((task) => {
         const assigned = aiAssignments[task.id];
-        if (!assigned || !assigned.model) {
+        const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
+        const isAssigned = Boolean(assigned?.model || pooled.length > 0);
+
+        if (!isAssigned) {
           // Tìm config đang khả dụng trong danh sách của người dùng
           const availableCfg = aiConfigs.find(
-            (c) => c.enabled !== false && c.apiKey?.trim() && (!task.needsVision || c.hasVision)
-          ) || aiConfigs.find((c) => c.apiKey?.trim()) || aiConfigs[0];
+            (c) => c.enabled !== false && hasValidApiKey(c) && (!task.needsVision || c.hasVision)
+          ) || aiConfigs.find((c) => hasValidApiKey(c)) || aiConfigs[0];
 
           const recModel = availableCfg?.model || task.defaultRecommendation;
           const recProvider = availableCfg?.provider || 'gemini';
@@ -218,18 +233,19 @@ export function AdminReportsTab({
           // Kiểm tra tác vụ cần Vision
           if (task.needsVision) {
             const matchedCfg = aiConfigs.find(
-              (c) => c.provider === assigned.provider && c.model === assigned.model
+              (c) => (c.provider === assigned?.provider && c.model === assigned?.model) ||
+                     pooled.some(p => p.id === c.id)
             );
-            if (matchedCfg && !matchedCfg.hasVision) {
+            if (matchedCfg && !matchedCfg.hasVision && !pooled.some(p => p.hasVision)) {
               newIssues.push({
                 id: `err-vision-mismatch-${task.id}`,
                 level: 'critical',
                 category: 'Tương thích Vision/OCR',
                 title: `Lỗi bất tương thích: "${task.name}" yêu cầu Vision nhưng model không hỗ trợ!`,
-                desc: `Model ${assigned.model} hiện tại không có khả năng đọc ảnh chụp bài tập hoặc PDF.`,
+                desc: `Model ${assigned?.model || 'được gán'} hiện tại không có khả năng đọc ảnh chụp bài tập hoặc PDF.`,
                 fixAction: 'fix_vision_assignment',
                 taskId: task.id,
-                fixLabel: 'Chuyển sang Gemini Flash (Đọc ảnh tốt nhất)',
+                fixLabel: 'Chuyển sang model hỗ trợ Vision',
               });
             }
           }
@@ -241,7 +257,7 @@ export function AdminReportsTab({
       setScanStatusText('Đang thực hiện ping kiểm tra tốc độ phản hồi thực tế của các con AI...');
 
       for (const cfg of aiConfigs) {
-        if (!cfg.apiKey?.trim() && cfg.provider !== 'custom') {
+        if (!hasValidApiKey(cfg)) {
           monitorMap[cfg.id] = {
             success: false,
             message: 'Thiếu API Key',
@@ -405,19 +421,39 @@ export function AdminReportsTab({
           ? aiConfigs.find((c) => c.id === issue.targetConfigId)
           : null;
         if (!chosenCfg) {
-          chosenCfg = aiConfigs.find((c) => c.enabled !== false && c.apiKey?.trim()) || aiConfigs[0];
+          chosenCfg = aiConfigs.find((c) => c.enabled !== false && hasValidApiKey(c)) || aiConfigs[0];
         }
-        const prov = chosenCfg?.provider || issue.recommendedProvider || 'gemini';
-        const model = chosenCfg?.model || issue.recommendedModel || 'gemini-2.5-flash';
+        if (!chosenCfg) {
+          toast.error('Không tìm thấy cấu hình AI phù hợp!');
+          return;
+        }
 
-        await db.aiConfig.setAssignment(issue.taskId, prov, model);
+        try {
+          await db.aiConfig.setAssignment(issue.taskId, chosenCfg.id, chosenCfg.model);
+        } catch {
+          try {
+            await db.aiConfig.setAssignment(issue.taskId, chosenCfg.provider, chosenCfg.model);
+          } catch {}
+        }
+        if (db.aiConfig.addToTaskPool) {
+          try { await db.aiConfig.addToTaskPool(issue.taskId, chosenCfg.id); } catch {}
+        }
         if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
-        toast.success(`Đã gán [${prov.toUpperCase()} - ${model}] cho tác vụ!`);
+        toast.success(`Đã gán [${chosenCfg.name}] cho tác vụ!`);
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'fix_vision_assignment') {
-        const visionCfg = aiConfigs.find((c) => c.hasVision);
+        const visionCfg = aiConfigs.find((c) => c.hasVision && hasValidApiKey(c)) || aiConfigs.find((c) => c.hasVision);
         if (visionCfg) {
-          await db.aiConfig.setAssignment(issue.taskId, visionCfg.provider, visionCfg.model);
+          try {
+            await db.aiConfig.setAssignment(issue.taskId, visionCfg.id, visionCfg.model);
+          } catch {
+            try {
+              await db.aiConfig.setAssignment(issue.taskId, visionCfg.provider, visionCfg.model);
+            } catch {}
+          }
+          if (db.aiConfig.addToTaskPool) {
+            try { await db.aiConfig.addToTaskPool(issue.taskId, visionCfg.id); } catch {}
+          }
           if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
           toast.success(`Đã đổi tác vụ sang model có Vision: ${visionCfg.model}!`);
         } else {
@@ -445,6 +481,48 @@ export function AdminReportsTab({
       }
     } catch (err) {
       toast.error('Lỗi khi khắc phục: ' + err.message);
+    }
+  };
+
+  // Tự động phân công toàn bộ 8 tác vụ cho các con AI đang có
+  const handleAutoAssignAll = async () => {
+    setIsScanning(true);
+    setScanProgress(30);
+    setScanStatusText('Đang tự động phân bổ trọn vẹn 8 tác vụ cho dàn AI...');
+    try {
+      const configs = db.aiConfig.getConfigs();
+      if (!configs || configs.length === 0) {
+        toast.error('Chưa có cấu hình AI nào trong hệ thống!');
+        return;
+      }
+      const visionCfg = configs.find((c) => c.hasVision && hasValidApiKey(c)) || configs.find((c) => c.hasVision) || configs[0];
+      const generalCfg = configs.find((c) => hasValidApiKey(c) && !c.hasVision) || configs.find((c) => hasValidApiKey(c)) || configs[0];
+
+      for (const task of APP_AI_TASKS) {
+        const chosen = task.needsVision ? visionCfg : generalCfg;
+        if (chosen) {
+          try {
+            await db.aiConfig.setAssignment(task.id, chosen.id, chosen.model);
+          } catch {
+            try {
+              await db.aiConfig.setAssignment(task.id, chosen.provider, chosen.model);
+            } catch {}
+          }
+          if (db.aiConfig.addToTaskPool) {
+            try {
+              await db.aiConfig.addToTaskPool(task.id, chosen.id);
+            } catch {}
+          }
+        }
+      }
+
+      if (setAiAssignments) setAiAssignments(db.aiConfig.getAssignments());
+      toast.success('Đã tự động gán hoàn tất toàn bộ 8 tác vụ cho dàn AI!');
+      await runDeepAudit();
+    } catch (err) {
+      toast.error('Lỗi khi phân công tự động: ' + err.message);
+    } finally {
+      setIsScanning(false);
     }
   };
 
@@ -570,6 +648,18 @@ export function AdminReportsTab({
 
           {/* Nút hành động chính */}
           <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center">
+            {stats.assignedTasksCount < stats.totalTasks && (
+              <button
+                type="button"
+                disabled={isScanning}
+                onClick={handleAutoAssignAll}
+                className="tap px-3.5 py-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                title="Tự động phân bổ dàn AI cho toàn bộ 8 tác vụ"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-500" />
+                <span>⚡ Tự gán cả 8 tác vụ</span>
+              </button>
+            )}
             <button
               type="button"
               disabled={isScanning}
@@ -894,7 +984,7 @@ export function AdminReportsTab({
       {/* ============================================================ */}
       {subTab === 'issues' && (
         <div className="space-y-4 animate-fade-in font-mono">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h3 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-accent" />
@@ -904,15 +994,29 @@ export function AdminReportsTab({
                 Elio Sentinel liên tục rà soát cấu hình AI, kho dữ liệu bài học và tính tương thích tác vụ.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={isScanning}
-              onClick={runDeepAudit}
-              className="tap px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-bold flex items-center gap-1.5"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-              <span>Quét lại ngay</span>
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {stats.assignedTasksCount < stats.totalTasks && (
+                <button
+                  type="button"
+                  disabled={isScanning}
+                  onClick={handleAutoAssignAll}
+                  className="tap px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5"
+                  title="Tự động gán các con AI đang có cho toàn bộ 8 tác vụ"
+                >
+                  <Zap className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>⚡ Tự gán cả 8 tác vụ</span>
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={isScanning}
+                onClick={runDeepAudit}
+                className="tap px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-bold flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+                <span>Quét lại ngay</span>
+              </button>
+            </div>
           </div>
 
           {detectedIssues.length === 0 ? (
