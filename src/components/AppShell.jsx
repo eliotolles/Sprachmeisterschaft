@@ -1,6 +1,7 @@
 import {elioClient,elioAuthentication} from '@/lib/elio-auth-runtime';
 import {ScreenWordLookup} from '@/components/vocabulary/ScreenWordLookup';
 import {CollectionToolbar} from '@/components/common/CollectionTools';
+import {FloatingAiAssistant} from '@/components/common/FloatingAiAssistant';
 import {toast} from 'sonner';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, Link } from '@/lib/router';
@@ -436,6 +437,9 @@ export function AppShell({ children }) {
         {children}
         <ScreenWordLookup/>
       </main>
+
+      {/* Persistent 24/7 AI Floating Assistant Widget */}
+      <FloatingAiAssistant />
 
       {/* Mobile Bottom Navigation (5 quick items) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card/95 backdrop-blur-md border-t border-border flex items-center justify-around py-1.5 px-2">
