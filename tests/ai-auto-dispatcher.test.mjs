@@ -9,6 +9,10 @@ test('hasValidApiKey correctly detects server and local keys', () => {
   assert.equal(hasValidApiKey({ apiKey: 'my-key' }), true);
   assert.equal(hasValidApiKey({ apiKey: '', maskedKey: '•••••• (server)' }), true);
   assert.equal(hasValidApiKey({ apiKey: '', maskedKey: '••••1234' }), true);
+  assert.equal(hasValidApiKey({ apiKey: '', maskedKey: 'sk-123...4567' }), true);
+  assert.equal(hasValidApiKey({ apiKey: '', maskedKey: '********' }), true);
+  assert.equal(hasValidApiKey({ id: 'ai-cfg-gemini', apiKey: '' }), false);
+  assert.equal(hasValidApiKey({ id: 'ai-cfg-custom-1', name: 'User AI', model: 'gpt-4o', apiKey: '' }), true);
   assert.equal(hasValidApiKey({ provider: 'custom' }), true);
 });
 
@@ -25,7 +29,7 @@ test('autoDispatchAIWorkforce automatically assigns all 8 tasks and populates ta
   const configs = [
     { id: 'cfg-vis', name: 'Vision AI', provider: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free', hasVision: true, apiKey: 'k1', enabled: true },
     { id: 'cfg-text', name: 'Fast Text AI', provider: 'groq', model: 'llama-3.3-70b-versatile', hasVision: false, apiKey: 'k2', enabled: true },
-    { id: 'cfg-pro', name: 'Pro AI', provider: 'gemini', model: 'gemini-2.5-pro', hasVision: false, apiKey: 'k3', enabled: true },
+    { id: 'cfg-pro', name: 'Pro AI', provider: 'gemini', model: 'gemini-3-pro', hasVision: false, apiKey: 'k3', enabled: true },
   ];
 
   const assignments = {};

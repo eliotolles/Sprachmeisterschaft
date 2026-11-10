@@ -55,8 +55,23 @@ export function AdminReportsTab({
   const [aiMonitorResults, setAiMonitorResults] = useState({});
   // Danh sách lỗi & cảnh báo rà soát được
   const [detectedIssues, setDetectedIssues] = useState([]);
-  // Tab con trong Báo cáo: 'overview' | 'issues' | 'fleet' | 'chat'
+  // Tab con trong Báo cáo: 'overview' | 'issues' | 'fleet' | 'hourly' | 'chat'
   const [subTab, setSubTab] = useState('overview');
+
+  // --------------------------------------------------------------------
+  // GIÁM SÁT TỰ ĐỘNG THEO GIỜ (SENTINEL HOURLY MONITOR)
+  // --------------------------------------------------------------------
+  const [isHourlyActive, setIsHourlyActive] = useState(true);
+  const [hourlyIntervalMinutes, setHourlyIntervalMinutes] = useState(60);
+  const [nextAuditCountdown, setNextAuditCountdown] = useState(60 * 60);
+  const [hourlyLogs, setHourlyLogs] = useState(() => {
+    try {
+      const stored = localStorage.getItem('sprach_sentinel_hourly_logs');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Chat tương tác với Con AI Quản lý (Sentinel)
   const [chatMessages, setChatMessages] = useState([
@@ -64,7 +79,7 @@ export function AdminReportsTab({
       id: 'msg-welcome',
       sender: 'sentinel',
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-      text: 'Chào Quản trị viên! Tôi là **Elio Sentinel** — AI Giám sát & Quản lý Hệ thống. Nhiệm vụ của tôi là kiểm tra, giám sát liên tục toàn bộ các con AI khác đang phục vụ học viên, đồng thời rà soát mọi lỗi phát sinh trong hệ thống để báo cáo kịp thời cho bạn. Bạn có thể bấm "Chạy rà soát toàn bộ" hoặc hỏi tôi bất kỳ vấn đề gì về hệ thống!',
+      text: 'Chào Quản trị viên! Tôi là **Elio Sentinel** — AI Giám sát & Quản lý Hệ thống. Nhiệm vụ của tôi là kiểm tra, giám sát liên tục toàn bộ các con AI khác đang phục vụ học viên, đồng thời rà soát mọi lỗi phát sinh trong hệ thống theo từng mốc giờ để báo cáo kịp thời cho bạn. Tôi đang trực tiếp đứng ra giám sát định kỳ theo giờ!',
     },
   ]);
   const [inputQuery, setInputQuery] = useState('');
@@ -75,18 +90,47 @@ export function AdminReportsTab({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Bộ đếm lùi thời gian cho Giám Sát Theo Giờ
+  useEffect(() => {
+    if (!isHourlyActive) return;
+    const interval = setInterval(() => {
+      setNextAuditCountdown((prev) => {
+        if (prev <= 1) {
+          runDeepAudit();
+          return hourlyIntervalMinutes * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isHourlyActive, hourlyIntervalMinutes]);
+
   // ====================================================================
   // 1. THU THẬP & PHÂN TÍCH CHỈ SỐ HỆ THỐNG
   // ====================================================================
+  // Lọc bỏ 3 template mẫu rỗng ban đầu nếu người dùng đã tạo các con AI thật
+  const effectiveConfigs = useMemo(() => {
+    const hasRealConfigs = aiConfigs.some(
+      (c) => !['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id)
+    );
+    if (!hasRealConfigs) return aiConfigs;
+    return aiConfigs.filter((c) => {
+      const isPlaceholder = ['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id);
+      if (isPlaceholder && !c.apiKey && !c.maskedKey) return false;
+      return true;
+    });
+  }, [aiConfigs]);
+
   const stats = useMemo(() => {
-    const totalConfigs = aiConfigs.length;
-    const activeConfigs = aiConfigs.filter((c) => c.enabled !== false).length;
-    const visionConfigs = aiConfigs.filter((c) => c.hasVision).length;
+    const totalConfigs = effectiveConfigs.length;
+    const activeConfigs = effectiveConfigs.filter((c) => c.enabled !== false).length;
+    const visionConfigs = effectiveConfigs.filter((c) => c.hasVision).length;
 
     // Tác vụ đã gán AI (kiểm tra cả assignment trực tiếp lẫn task pool)
     const totalTasks = APP_AI_TASKS.length;
+    const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
     const assignedTasksCount = APP_AI_TASKS.filter((task) => {
-      const assigned = aiAssignments[task.id];
+      const assigned = currentAssignments[task.id];
       if (assigned?.model) return true;
       const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
       return pooled.length > 0;
@@ -147,7 +191,7 @@ export function AdminReportsTab({
       setScanProgress(25);
       setScanStatusText('Đang kiểm tra thông số và tính tương thích của từng con AI...');
 
-      if (aiConfigs.length === 0) {
+      if (effectiveConfigs.length === 0) {
         newIssues.push({
           id: 'err-no-ai',
           level: 'critical',
@@ -159,7 +203,7 @@ export function AdminReportsTab({
         });
       }
 
-      aiConfigs.forEach((cfg) => {
+      effectiveConfigs.forEach((cfg) => {
         // Kiểm tra API Key (hỗ trợ cả key lưu mã hóa trên server lẫn key local)
         if (!hasValidApiKey(cfg)) {
           newIssues.push({
@@ -192,11 +236,13 @@ export function AdminReportsTab({
       setScanProgress(50);
       setScanStatusText('Đang đối chiếu phân công tác vụ ứng dụng với khả năng của AI...');
 
+      let currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
+
       // Tự động phân chia việc cho AI (Autonomous Dispatch):
       // Nếu có tác vụ trống mà hệ thống có AI khả dụng, tự động bố trí việc ngay (như nhân viên ngồi vào làm việc)
-      const validConfigs = aiConfigs.filter((c) => c.enabled !== false && hasValidApiKey(c));
+      const validConfigs = effectiveConfigs.filter((c) => c.enabled !== false && hasValidApiKey(c));
       const hasUnassigned = APP_AI_TASKS.some((t) => {
-        const assigned = aiAssignments[t.id];
+        const assigned = currentAssignments[t.id];
         const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
         return !assigned?.model && pooled.length === 0;
       });
@@ -206,22 +252,23 @@ export function AdminReportsTab({
           await autoDispatchAIWorkforce({
             db,
             aiConfigs: validConfigs,
-            currentAssignments: aiAssignments,
+            currentAssignments,
             setAiAssignments,
           });
+          currentAssignments = db.aiConfig?.getAssignments?.() || currentAssignments;
         } catch {}
       }
 
       APP_AI_TASKS.forEach((task) => {
-        const assigned = aiAssignments[task.id];
+        const assigned = currentAssignments[task.id];
         const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
         const isAssigned = Boolean(assigned?.model || pooled.length > 0);
 
         if (!isAssigned) {
           // Tìm config đang khả dụng trong danh sách của người dùng
-          const availableCfg = aiConfigs.find(
+          const availableCfg = effectiveConfigs.find(
             (c) => c.enabled !== false && hasValidApiKey(c) && (!task.needsVision || c.hasVision)
-          ) || aiConfigs.find((c) => hasValidApiKey(c)) || aiConfigs[0];
+          ) || effectiveConfigs.find((c) => hasValidApiKey(c)) || effectiveConfigs[0];
 
           const recModel = availableCfg?.model || task.defaultRecommendation;
           const recProvider = availableCfg?.provider || 'gemini';
@@ -244,7 +291,7 @@ export function AdminReportsTab({
         } else {
           // Kiểm tra tác vụ cần Vision
           if (task.needsVision) {
-            const matchedCfg = aiConfigs.find(
+            const matchedCfg = effectiveConfigs.find(
               (c) => (c.provider === assigned?.provider && c.model === assigned?.model) ||
                      pooled.some(p => p.id === c.id)
             );
@@ -268,7 +315,7 @@ export function AdminReportsTab({
       setScanProgress(75);
       setScanStatusText('Đang thực hiện ping kiểm tra tốc độ phản hồi thực tế của các con AI...');
 
-      for (const cfg of aiConfigs) {
+      for (const cfg of effectiveConfigs) {
         if (!hasValidApiKey(cfg)) {
           monitorMap[cfg.id] = {
             success: false,
@@ -355,16 +402,16 @@ export function AdminReportsTab({
       }
 
       // Đề xuất tối ưu chi phí (Info)
-      const hasGemini = aiConfigs.some((c) => c.provider === 'gemini');
+      const hasGemini = effectiveConfigs.some((c) => c.provider === 'gemini');
       if (!hasGemini) {
         newIssues.push({
           id: 'info-recommend-gemini',
           level: 'info',
           category: 'Tối ưu Chi phí',
-          title: 'Khuyến nghị thêm Google Gemini 2.5 Flash',
-          desc: 'Gemini 2.5 Flash hoàn toàn miễn phí 15 RPM tại Google AI Studio, đọc được ảnh bài tập, PDF và tốc độ cực nhanh.',
+          title: 'Khuyến nghị thêm Google Gemini Flash Latest',
+          desc: 'Gemini Flash Latest hỗ trợ Vision đọc ảnh bài tập, PDF và tốc độ phản hồi cực nhanh.',
           fixAction: 'add_default_gemini',
-          fixLabel: 'Thêm cấu hình Gemini 2.5 Flash',
+          fixLabel: 'Thêm cấu hình Gemini Flash Latest',
         });
       }
 
@@ -373,6 +420,37 @@ export function AdminReportsTab({
       setAiMonitorResults(monitorMap);
       setDetectedIssues(newIssues);
       setLastScannedAt(new Date());
+
+      // Ghi nhật ký giám sát định kỳ theo giờ (Hourly Sentinel Audit Log)
+      const onlineCount = Object.values(monitorMap).filter((m) => m.status === 'online').length;
+      const testedLatencies = Object.values(monitorMap).filter((m) => m.latency).map((m) => m.latency);
+      const currentAvgLatency = testedLatencies.length > 0
+        ? Math.round(testedLatencies.reduce((a, b) => a + b, 0) / testedLatencies.length)
+        : null;
+
+      const hourlyEntry = {
+        id: `audit-${Date.now()}`,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        date: new Date().toLocaleDateString('vi-VN'),
+        timestamp: Date.now(),
+        healthScore: Math.max(0, 100 - newIssues.filter((i) => i.level === 'critical').length * 20 - newIssues.filter((i) => i.level === 'warning').length * 8),
+        totalAI: effectiveConfigs.length,
+        onlineAI: onlineCount,
+        avgLatency: currentAvgLatency,
+        issueCount: newIssues.length,
+        criticalCount: newIssues.filter((i) => i.level === 'critical').length,
+        note: newIssues.filter((i) => i.level === 'critical').length === 0
+          ? 'Toàn bộ dàn AI hoạt động hoàn hảo'
+          : `Phát hiện ${newIssues.filter((i) => i.level === 'critical').length} lỗi cần lưu ý`,
+      };
+
+      setHourlyLogs((prev) => {
+        const nextLogs = [hourlyEntry, ...prev.slice(0, 23)];
+        try {
+          localStorage.setItem('sprach_sentinel_hourly_logs', JSON.stringify(nextLogs));
+        } catch {}
+        return nextLogs;
+      });
 
       // Thông báo con AI Sentinel cập nhật chat
       const issueSummaryText =
@@ -386,7 +464,7 @@ export function AdminReportsTab({
           id: `msg-scan-${Date.now()}`,
           sender: 'sentinel',
           timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          text: `Tôi vừa hoàn tất giám sát toàn bộ ${aiConfigs.length} con AI và rà soát hệ thống.\n\n${issueSummaryText}`,
+          text: `Tôi vừa hoàn tất giám sát toàn bộ ${effectiveConfigs.length} con AI và rà soát hệ thống.\n\n${issueSummaryText}`,
         },
       ]);
 
@@ -413,10 +491,10 @@ export function AdminReportsTab({
       if (issue.fixAction === 'add_default_gemini') {
         const newCfg = {
           id: `ai-cfg-gemini-${Date.now()}`,
-          name: 'Google Gemini 2.5 Flash (Free Tier)',
+          name: 'Google Gemini Flash Latest',
           provider: 'gemini',
-          model: 'gemini-2.5-flash',
-          backupModel: 'gemini-2.0-flash',
+          model: 'gemini-flash-latest',
+          backupModel: 'gemini-3.8-flash',
           apiKey: '',
           hasVision: true,
           priority: 1,
@@ -425,15 +503,15 @@ export function AdminReportsTab({
         };
         await db.aiConfig.saveConfig(newCfg);
         if (setAiConfigs) setAiConfigs(db.aiConfig.getConfigs());
-        toast.success('Đã thêm mẫu cấu hình Gemini 2.5 Flash! Hãy nhập API Key để kích hoạt.');
+        toast.success('Đã thêm cấu hình Gemini Flash Latest! Hãy nhập API Key để kích hoạt.');
         // Loại bỏ issue khỏi list
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'assign_recommended_task') {
         let chosenCfg = issue.targetConfigId
-          ? aiConfigs.find((c) => c.id === issue.targetConfigId)
+          ? effectiveConfigs.find((c) => c.id === issue.targetConfigId)
           : null;
         if (!chosenCfg) {
-          chosenCfg = aiConfigs.find((c) => c.enabled !== false && hasValidApiKey(c)) || aiConfigs[0];
+          chosenCfg = effectiveConfigs.find((c) => c.enabled !== false && hasValidApiKey(c)) || effectiveConfigs[0];
         }
         if (!chosenCfg) {
           toast.error('Không tìm thấy cấu hình AI phù hợp!');
@@ -454,7 +532,7 @@ export function AdminReportsTab({
         toast.success(`Đã gán [${chosenCfg.name}] cho tác vụ!`);
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'fix_vision_assignment') {
-        const visionCfg = aiConfigs.find((c) => c.hasVision && hasValidApiKey(c)) || aiConfigs.find((c) => c.hasVision);
+        const visionCfg = effectiveConfigs.find((c) => c.hasVision && hasValidApiKey(c)) || effectiveConfigs.find((c) => c.hasVision);
         if (visionCfg) {
           try {
             await db.aiConfig.setAssignment(issue.taskId, visionCfg.id, visionCfg.model);
@@ -473,18 +551,44 @@ export function AdminReportsTab({
         }
         setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
       } else if (issue.fixAction === 'set_default_backup') {
-        const cfg = aiConfigs.find((c) => c.id === issue.targetConfigId);
+        const cfg = effectiveConfigs.find((c) => c.id === issue.targetConfigId) || aiConfigs.find((c) => c.id === issue.targetConfigId);
         if (cfg) {
-          const defaultBackup =
-            cfg.provider === 'gemini'
-              ? 'gemini-2.0-flash'
+          // 1. Tìm model khác cùng provider mà người dùng đã thêm thành công vào hệ thống
+          const otherSameProvider = effectiveConfigs.find(
+            (c) => c.provider === cfg.provider && c.id !== cfg.id && c.model !== cfg.model && c.model
+          );
+
+          // 2. Tìm từ catalog đã lưu của provider
+          const cat = db.aiConfig?.getCatalog?.(cfg.provider);
+          const catalogAlt = cat?.models?.find((m) => m.id !== cfg.model && !m.id.includes('2.5'));
+
+          const chosenBackup =
+            otherSameProvider?.model ||
+            catalogAlt?.id ||
+            (cfg.provider === 'gemini'
+              ? (cfg.model === 'gemini-3.8-flash' ? 'gemini-flash-latest' : 'gemini-3.8-flash')
               : cfg.provider === 'groq'
-              ? 'llama-3.3-70b-versatile'
-              : 'gemini-2.5-flash';
-          await db.aiConfig.saveConfig({ ...cfg, backupModel: defaultBackup });
-          if (setAiConfigs) setAiConfigs(db.aiConfig.getConfigs());
-          toast.success(`Đã gán model dự phòng: ${defaultBackup}!`);
-          setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
+              ? (cfg.model === 'llama-3.3-70b-versatile' ? 'qwen/qwen3.8-27b' : 'llama-3.3-70b-versatile')
+              : 'nvidia/nemotron-3.5-super-vl:free');
+
+          try {
+            await db.aiConfig.saveConfig({ ...cfg, backupModel: chosenBackup });
+            if (setAiConfigs) setAiConfigs(db.aiConfig.getConfigs());
+            toast.success(`Đã tự động gán model dự phòng: ${chosenBackup}!`);
+            setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
+          } catch (saveErr) {
+            // Thử fallback model khác nếu bị từ chối
+            if (otherSameProvider && otherSameProvider.model !== chosenBackup) {
+              try {
+                await db.aiConfig.saveConfig({ ...cfg, backupModel: otherSameProvider.model });
+                if (setAiConfigs) setAiConfigs(db.aiConfig.getConfigs());
+                toast.success(`Đã tự động gán model dự phòng: ${otherSameProvider.model}!`);
+                setDetectedIssues((prev) => prev.filter((i) => i.id !== issue.id));
+                return;
+              } catch {}
+            }
+            toast.error(`Không thể gán ${chosenBackup}: ${saveErr.message}. Vui lòng chọn model dự phòng tại tab AI.`);
+          }
         }
       } else if (issue.fixAction === 'navigate_ai_tab') {
         if (onNavigateTab) onNavigateTab('ai');
@@ -574,8 +678,8 @@ export function AdminReportsTab({
         }
       } else if (qLower.includes('miễn phí') || qLower.includes('tiết kiệm') || qLower.includes('chi phí') || qLower.includes('free')) {
         replyText = `💡 **Chiến lược Zero-Cost (Chi phí 0đ) tôi đề xuất cho bạn:**\n\n` +
-          `1. **Tác vụ Đọc ảnh bài tập & OCR (ocr_image):** Dùng **Google Gemini 2.5 Flash** (Free 15 RPM tại Google AI Studio) — đây là model đọc ảnh mạnh nhất hiện nay.\n` +
-          `2. **Tác vụ Chấm viết & Đàm thoại Elio (writing_grading, elio_chat):** Dùng **Groq (Llama 3.3 70B)** hoặc **DeepSeek R1/V3 Free trên OpenRouter** (tốc độ 300 token/s, miễn phí 100%).\n` +
+          `1. **Tác vụ Đọc ảnh bài tập & OCR (ocr_image):** Dùng **Google Gemini Flash Latest / Gemini 3+** — model đọc ảnh cực nhanh và chính xác.\n` +
+          `2. **Tác vụ Chấm viết & Đàm thoại Elio (writing_grading, elio_chat):** Dùng **Groq (Llama 3.3 70B hoặc Qwen)** hoặc **DeepSeek R1/V3 Free trên OpenRouter** (tốc độ 300 token/s, miễn phí 100%).\n` +
           `3. **Tác vụ Thẩm định kỳ thi (exam_evaluation):** Dùng **DeepSeek R1 Distill** trên Groq hoặc Together AI để suy luận logic giải thích từng câu hỏi.\n\n` +
           `Khi cấu hình như trên, hệ thống của bạn vận hành trơn tru mà không mất một đồng chi phí API nào!`;
       } else {
@@ -785,13 +889,72 @@ export function AdminReportsTab({
       </div>
 
       {/* ============================================================ */}
+      {/* THANH ĐIỀU KHIỂN: GIÁM SÁT TỰ ĐỘNG THEO GIỜ (HOURLY SENTINEL) */}
+      {/* ============================================================ */}
+      <div className="surface p-4 rounded-xl border border-accent/30 bg-accent/5 flex flex-col md:flex-row md:items-center justify-between gap-3 font-mono text-xs">
+        <div className="flex items-center gap-2.5">
+          <Clock className={`w-4 h-4 text-accent ${isHourlyActive ? 'animate-pulse' : ''}`} />
+          <div>
+            <div className="flex items-center gap-2 font-bold text-foreground">
+              <span>ELIO SENTINEL GIÁM SÁT THEO GIỜ</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isHourlyActive ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-muted text-muted-foreground'}`}>
+                {isHourlyActive ? '🟢 ĐANG TRỰC CHIẾN' : '⚪ ĐÃ TẠM DỪNG'}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-sans mt-0.5">
+              {isHourlyActive
+                ? `Tự động ping đo độ trễ và rà soát lỗi dàn AI theo định kỳ. Lần quét kế tiếp sau: ${Math.floor(nextAuditCountdown / 60)} phút ${nextAuditCountdown % 60} giây.`
+                : 'Giám sát định kỳ đang tạm dừng. Bấm "Bật giám sát" để Sentinel tiếp tục quét theo chu kỳ.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <label className="text-[11px] text-muted-foreground hidden sm:inline">Chu kỳ:</label>
+          <select
+            value={hourlyIntervalMinutes}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setHourlyIntervalMinutes(val);
+              setNextAuditCountdown(val * 60);
+              toast.info(`Đã đổi chu kỳ giám sát thành mỗi ${val} phút`);
+            }}
+            className="px-2.5 py-1.5 rounded-lg border border-border bg-card text-foreground text-xs font-mono font-semibold"
+          >
+            <option value={15}>Mỗi 15 phút</option>
+            <option value={30}>Mỗi 30 phút</option>
+            <option value={60}>Mỗi 1 giờ (Chuẩn)</option>
+            <option value={120}>Mỗi 2 giờ</option>
+            <option value={360}>Mỗi 6 giờ</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !isHourlyActive;
+              setIsHourlyActive(next);
+              toast[next ? 'success' : 'info'](next ? 'Đã bật giám sát định kỳ theo giờ!' : 'Đã tạm dừng giám sát theo giờ.');
+            }}
+            className={`tap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+              isHourlyActive
+                ? 'border-emerald-500/40 bg-card hover:bg-emerald-50 text-emerald-700 dark:text-emerald-300'
+                : 'border-border bg-card hover:bg-muted text-muted-foreground'
+            }`}
+          >
+            {isHourlyActive ? 'Tạm dừng' : 'Bật giám sát'}
+          </button>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
       {/* THANH ĐIỀU HƯỚNG CÁC TAB CON CỦA BÁO CÁO */}
       {/* ============================================================ */}
       <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto text-xs font-mono">
         {[
           { id: 'overview', label: '📊 Bản Báo cáo Tổng hợp', count: null },
           { id: 'issues', label: '⚠️ Danh sách Lỗi & Rà soát', count: detectedIssues.length },
-          { id: 'fleet', label: '🤖 Giám sát từng con AI', count: aiConfigs.length },
+          { id: 'fleet', label: '🤖 Giám sát từng con AI', count: effectiveConfigs.length },
+          { id: 'hourly', label: '🕒 Giám sát theo giờ', count: hourlyLogs.length },
           { id: 'chat', label: '💬 Hỏi đáp với Sentinel AI', count: null },
         ].map((tab) => {
           const isActive = subTab === tab.id;
@@ -884,7 +1047,7 @@ export function AdminReportsTab({
                   Khuyến nghị Tối ưu hóa từ Sentinel AI
                 </div>
                 <p className="text-xs text-foreground/80 leading-relaxed font-mono">
-                  1. <strong>Tối đa hóa Free Tier:</strong> Nên cấu hình <em>Google Gemini 2.5 Flash</em> làm model chính cho OCR và chấm viết, đồng thời dùng <em>Groq (Llama 3.3 70B)</em> cho đàm thoại Elio để đạt tốc độ 300 token/s mà không tốn chi phí.<br />
+                  1. <strong>Tối đa hóa Free Tier:</strong> Nên cấu hình <em>Google Gemini Flash Latest / Gemini 3+</em> làm model chính cho OCR và chấm viết, đồng thời dùng <em>Groq (Llama 3.3 70B hoặc Qwen)</em> cho đàm thoại Elio để đạt tốc độ 300 token/s mà không tốn chi phí.<br />
                   2. <strong>Bật dự phòng Failover:</strong> Luôn cài đặt ít nhất một Backup Model cho mỗi cấu hình AI để hệ thống tự động nhảy sang model phụ khi nhà mạng hoặc API bị nghẽn.<br />
                   3. <strong>Kiểm tra định kỳ:</strong> Hãy bấm "Chạy rà soát toàn bộ" mỗi khi bạn thêm mới bài học hoặc cập nhật khóa API.
                 </p>
@@ -1084,7 +1247,7 @@ export function AdminReportsTab({
                               className="px-2 py-1 text-xs rounded border border-border bg-card text-foreground font-mono"
                             >
                               <option value="">-- Chọn con AI bạn đang có --</option>
-                              {aiConfigs.map((c) => (
+                              {effectiveConfigs.map((c) => (
                                 <option key={c.id} value={c.id}>
                                   {c.name} · {c.model} {c.hasVision ? '[Vision]' : ''}
                                 </option>
@@ -1185,20 +1348,26 @@ export function AdminReportsTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border font-mono">
-                  {aiConfigs.length === 0 ? (
+                  {effectiveConfigs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-muted-foreground">
                         Chưa có con AI nào được cấu hình trong hệ thống.
                       </td>
                     </tr>
                   ) : (
-                    aiConfigs.map((cfg) => {
+                    effectiveConfigs.map((cfg) => {
                       const mon = aiMonitorResults[cfg.id] || {};
-                      // Lấy các task gán cho config này
+                      const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
+                      const pooledTasks = APP_AI_TASKS.filter((t) => {
+                        const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
+                        return pooled.some((p) => p.id === cfg.id);
+                      });
+                      // Lấy các task gán cho config này (trực tiếp hoặc qua pool)
                       const assignedTasks = APP_AI_TASKS.filter(
                         (t) =>
-                          aiAssignments[t.id]?.provider === cfg.provider &&
-                          aiAssignments[t.id]?.model === cfg.model
+                          currentAssignments[t.id]?.configId === cfg.id ||
+                          (currentAssignments[t.id]?.provider === cfg.provider && currentAssignments[t.id]?.model === cfg.model) ||
+                          pooledTasks.some((p) => p.id === t.id)
                       );
 
                       return (
@@ -1301,6 +1470,145 @@ export function AdminReportsTab({
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* TAB CON: NHẬT KÝ GIÁM SÁT THEO GIỜ CỦA SENTINEL */}
+      {/* ============================================================ */}
+      {subTab === 'hourly' && (
+        <div className="space-y-4 animate-fade-in font-mono">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+            <div>
+              <h3 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                <Clock className="w-5 h-5 text-accent" />
+                <span>Nhật ký Giám sát Định kỳ theo Giờ (Sentinel Hourly Audits)</span>
+              </h3>
+              <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                Elio Sentinel trực tiếp đứng ra đo lường, rà soát và lưu trữ dữ liệu sức khỏe dàn AI theo từng mốc giờ.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isScanning}
+                onClick={runDeepAudit}
+                className="tap px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-bold flex items-center gap-1.5 shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+                <span>Quét ngay mốc này</span>
+              </button>
+
+              {hourlyLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHourlyLogs([]);
+                    try { localStorage.removeItem('sprach_sentinel_hourly_logs'); } catch {}
+                    toast.info('Đã xóa toàn bộ nhật ký giám sát cũ.');
+                  }}
+                  className="tap px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-bold text-muted-foreground"
+                >
+                  Xóa lịch sử
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Hộp trạng thái trực chiến */}
+          <div className="surface p-4 rounded-xl border border-accent/20 bg-accent/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+              <div>
+                <span className="font-bold text-foreground">Trạng thái: Sentinel đang trực chiến 24/7</span>
+                <span className="text-muted-foreground ml-2">
+                  (Chu kỳ quét: <strong className="text-accent">{hourlyIntervalMinutes} phút</strong>)
+                </span>
+              </div>
+            </div>
+            <div className="text-muted-foreground">
+              Lần quét tự động kế tiếp sau: <strong className="text-accent text-sm">{Math.floor(nextAuditCountdown / 60)}p {nextAuditCountdown % 60}s</strong>
+            </div>
+          </div>
+
+          {/* Bảng danh sách các mốc giờ */}
+          {hourlyLogs.length === 0 ? (
+            <div className="surface p-12 text-center rounded-xl border border-border bg-card space-y-3">
+              <Clock className="w-10 h-10 text-muted-foreground mx-auto stroke-1" />
+              <div className="font-bold text-sm text-foreground">Chưa có mốc giám sát nào được ghi lại</div>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto font-sans">
+                Sentinel sẽ tự động rà soát và lưu nhật ký đầu tiên khi hết đếm lùi, hoặc bạn có thể bấm nút quét ngay phía trên!
+              </p>
+              <button
+                type="button"
+                onClick={runDeepAudit}
+                className="tap px-4 py-2 rounded-lg bg-accent text-accent-foreground text-xs font-bold font-mono inline-flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Tạo mốc giám sát đầu tiên ngay</span>
+              </button>
+            </div>
+          ) : (
+            <div className="surface rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <th className="p-3">Mốc Thời Gian</th>
+                      <th className="p-3">Sức Khỏe</th>
+                      <th className="p-3">Dàn AI (Online/Tổng)</th>
+                      <th className="p-3">Độ Trễ TB</th>
+                      <th className="p-3">Số Lỗi</th>
+                      <th className="p-3">Đánh Giá Từ Sentinel</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {hourlyLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="p-3 font-bold text-foreground">
+                          <div>{log.time}</div>
+                          <div className="text-[10px] text-muted-foreground font-normal">{log.date}</div>
+                        </td>
+                        <td className="p-3 font-bold">
+                          <span className={`px-2 py-0.5 rounded text-[11px] ${
+                            log.healthScore >= 90
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-rose-500/15 text-rose-600'
+                          }`}>
+                            {log.healthScore}%
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-semibold text-accent">{log.onlineAI || log.totalAI}</span>
+                          <span className="text-muted-foreground">/{log.totalAI} con AI</span>
+                        </td>
+                        <td className="p-3 font-semibold">
+                          {log.avgLatency ? (
+                            <span className={log.avgLatency < 500 ? 'text-emerald-500' : 'text-foreground'}>
+                              {log.avgLatency}ms
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">---</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {log.issueCount > 0 ? (
+                            <span className="text-rose-500 font-bold">{log.issueCount} lỗi</span>
+                          ) : (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">0 lỗi (Chuẩn)</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-muted-foreground max-w-xs truncate">
+                          {log.note || 'Hoạt động ổn định'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1471,7 +1779,7 @@ ${
 ---
 
 ## 4. KHUYẾN NGHỊ TỐI ƯU TỪ CHIEF AI SUPERVISOR
-1. Ưu tiên sử dụng Gemini 2.5 Flash cho các tác vụ Vision & OCR đề thi (Free tier 15 RPM).
+1. Ưu tiên sử dụng Gemini Flash Latest / Gemini 3+ cho các tác vụ Vision & OCR đề thi.
 2. Tận dụng Groq (Llama 3.3 70B) cho đàm thoại Elio để đạt tốc độ tức thì 300 token/s.
 3. Luôn cấu hình Backup Model cho tất cả các con AI để đảm bảo cơ chế chuyển mạch tự động không bị đứt đoạn.
 `;

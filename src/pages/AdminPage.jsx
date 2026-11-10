@@ -124,7 +124,7 @@ export function AdminPage() {
   // Form New AI
   const [providerName, setProviderName] = useState('');
   const [providerType, setProviderType] = useState('gemini');
-  const [selectedModel, setSelectedModel] = useState(()=>elioAIAdmin()?.isActive()?'':'gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState(()=>elioAIAdmin()?.isActive()?'':'gemini-flash-latest');
   const [backupModel, setBackupModel] = useState('');
   const [customModelInput, setCustomModelInput] = useState('');
   const [isCustomModelMode, setIsCustomModelMode] = useState(false);
@@ -965,7 +965,7 @@ export function AdminPage() {
                         }
                         setCustomModelInput(val);
                       }}
-                      placeholder="Gõ mã model (vd: gemini-2.5-flash, llama-3.3-70b-versatile...)"
+                      placeholder="Gõ mã model (vd: gemini-flash-latest, llama-3.3-70b-versatile...)"
                       className="w-full px-3 py-2 text-xs rounded-sm border border-accent bg-card text-accent font-mono font-bold"
                     />
                   ) : (

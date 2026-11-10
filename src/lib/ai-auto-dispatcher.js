@@ -6,8 +6,14 @@ import { APP_AI_TASKS } from '../data/ai-models-catalog.js';
 export function hasValidApiKey(cfg) {
   if (!cfg) return false;
   if (cfg.provider === 'custom') return true;
+  // Key trực tiếp dạng chuỗi
   if (typeof cfg.apiKey === 'string' && cfg.apiKey.trim().length > 0) return true;
-  if (typeof cfg.maskedKey === 'string' && (cfg.maskedKey.includes('server') || cfg.maskedKey.includes('••••'))) return true;
+  // Chuỗi che key (bất kể định dạng '•••••• (server)', '********', 'sk-...1234')
+  if (typeof cfg.maskedKey === 'string' && cfg.maskedKey.trim().length > 0) return true;
+  // Các config thật do người dùng tạo (khác 3 mock template rỗng ban đầu)
+  if (cfg.id && !['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(cfg.id)) {
+    if (cfg.model && (cfg.name || cfg.label)) return true;
+  }
   return false;
 }
 
@@ -37,9 +43,9 @@ export function scoreAIForTask(cfg, task) {
 
   // Nhóm Chấm chữa bài viết & Phân tích ngữ pháp sâu
   if (['writing_grading', 'exam_evaluation', 'grammar_deep'].includes(task.id)) {
-    if (modelLower.includes('pro') || modelLower.includes('reasoner') || modelLower.includes('deepseek') || modelLower.includes('2.5-pro')) {
+    if (modelLower.includes('pro') || modelLower.includes('reasoner') || modelLower.includes('deepseek') || modelLower.includes('3-pro') || modelLower.includes('flash-latest')) {
       score += 400;
-    } else if (modelLower.includes('nemotron') || modelLower.includes('qwen') || modelLower.includes('70b')) {
+    } else if (modelLower.includes('nemotron') || modelLower.includes('qwen') || modelLower.includes('70b') || modelLower.includes('3.8-flash')) {
       score += 300;
     } else if (modelLower.includes('flash') || modelLower.includes('gpt-4')) {
       score += 200;
