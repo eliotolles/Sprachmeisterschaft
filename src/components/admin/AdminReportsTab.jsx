@@ -98,6 +98,21 @@ export function AdminReportsTab({
   const [isKickingWorkforce, setIsKickingWorkforce] = useState(false);
   const [workforceActions, setWorkforceActions] = useState(() => getSentinelWorkforceActions());
 
+  // Lọc bỏ 3 template mẫu rỗng ban đầu nếu người dùng đã tạo các con AI thật
+  const effectiveConfigs = useMemo(() => {
+    const hasRealConfigs = aiConfigs.some(
+      (c) => !['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id)
+    );
+    if (!hasRealConfigs) return aiConfigs;
+    return aiConfigs.filter((c) => {
+      const isPlaceholder = ['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id);
+      if (isPlaceholder && !c.apiKey && !c.maskedKey) return false;
+      return true;
+    });
+  }, [aiConfigs]);
+
+  const allAppAiTasks = useMemo(() => getAllAppAiTasks(), [aiConfigs]);
+
   // Lắng nghe các hành động thúc đẩy được Sentinel ghi nhận trong khi chạy ngầm
   useEffect(() => {
     const handleWorkforceEvent = (e) => {
@@ -191,21 +206,6 @@ export function AdminReportsTab({
   // ====================================================================
   // 1. THU THẬP & PHÂN TÍCH CHỈ SỐ HỆ THỐNG
   // ====================================================================
-  // Lọc bỏ 3 template mẫu rỗng ban đầu nếu người dùng đã tạo các con AI thật
-  const effectiveConfigs = useMemo(() => {
-    const hasRealConfigs = aiConfigs.some(
-      (c) => !['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id)
-    );
-    if (!hasRealConfigs) return aiConfigs;
-    return aiConfigs.filter((c) => {
-      const isPlaceholder = ['ai-cfg-gemini', 'ai-cfg-groq', 'ai-cfg-openrouter'].includes(c.id);
-      if (isPlaceholder && !c.apiKey && !c.maskedKey) return false;
-      return true;
-    });
-  }, [aiConfigs]);
-
-  const allAppAiTasks = useMemo(() => getAllAppAiTasks(), [aiConfigs]);
-
   const stats = useMemo(() => {
     const totalConfigs = effectiveConfigs.length;
     const activeConfigs = effectiveConfigs.filter((c) => c.enabled !== false).length;

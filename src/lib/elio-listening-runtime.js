@@ -93,14 +93,21 @@ export function installListeningRuntime(db){
   getCollections:(options={})=>{
    scope();
    const deletedCols = getDeletedCollections();
+   const legacyCols = (legacy.getCollections(options) || []).filter(c => !isCollectionDeleted(c, deletedCols));
    if(listeningCoreActive()&&collections.length>0){
     const filtered=collections
       .filter(c => !isCollectionDeleted(c, deletedCols))
       .filter(c=>(!options.level||options.level==='ALL'||c.levels?.includes(options.level))&&(!options.scope||c.scope===options.scope));
-    return filtered;
+    const merged = [...filtered];
+    for (const lc of legacyCols) {
+      const exists = merged.some(c => c.id === lc.id || (c.title && lc.title && c.title.toLowerCase() === lc.title.toLowerCase()));
+      if (!exists) {
+        merged.push(lc);
+      }
+    }
+    return merged;
    }
-   const legacyCols = legacy.getCollections(options) || [];
-   return legacyCols.filter(c => !isCollectionDeleted(c, deletedCols));
+   return legacyCols;
   },
   getCollectionById:id=>{
    scope();
@@ -118,12 +125,19 @@ export function installListeningRuntime(db){
    const deletedCols = getDeletedCollections();
    const deletedEps = getDeletedEpisodes();
    if (deletedCols.includes(id)) return [];
+   let found = [];
    if(listeningCoreActive()&&episodes.length>0){
-    const found=episodes.filter(e=>(e.collection_id===id||encodeURIComponent(e.recordId)===id||e.collectionId===id) && !isEpisodeDeleted(e, deletedEps, deletedCols));
-    return found;
+    found=episodes.filter(e=>(e.collection_id===id||encodeURIComponent(e.recordId)===id||e.collectionId===id) && !isEpisodeDeleted(e, deletedEps, deletedCols));
    }
-   const legacyEps = legacy.getEpisodes(id) || [];
-   return legacyEps.filter(e => !isEpisodeDeleted(e, deletedEps, deletedCols));
+   const legacyEps = (legacy.getEpisodes(id) || []).filter(e => !isEpisodeDeleted(e, deletedEps, deletedCols));
+   if (found.length === 0) return legacyEps;
+   const merged = [...found];
+   for (const le of legacyEps) {
+     if (!merged.some(e => e.id === le.id || (e.youtubeId && le.youtubeId && e.youtubeId === le.youtubeId))) {
+       merged.push(le);
+     }
+   }
+   return merged;
   },
   getEpisodeById:id=>{
    scope();
