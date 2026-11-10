@@ -6,7 +6,14 @@ import {
   APP_AI_TASKS,
 } from '@/data/ai-models-catalog';
 import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
-import { hasValidApiKey, autoDispatchAIWorkforce } from '@/lib/ai-auto-dispatcher';
+import {
+  hasValidApiKey,
+  autoDispatchAIWorkforce,
+  kickstartSentinelWorkforce,
+  getSentinelWorkforceActions,
+  clearSentinelWorkforceActions,
+  recordSentinelWorkforceAction,
+} from '@/lib/ai-auto-dispatcher';
 import { getAllExams } from '@/data/all-exams';
 import { GRAMMAR_CORE } from '@/data/grammar';
 import { SITUATIONS } from '@/data/situations';
@@ -36,6 +43,10 @@ import {
   ArrowRight,
   HelpCircle,
   Check,
+  Flame,
+  Radio,
+  UserPlus,
+  Workflow,
 } from 'lucide-react';
 
 export function AdminReportsTab({
@@ -73,6 +84,27 @@ export function AdminReportsTab({
     }
   });
 
+  // --------------------------------------------------------------------
+  // BỘ MÁY QUẢN LÝ THÚC ĐẨY AI CHẠY NGẦM (SENTINEL AUTONOMOUS WORKFORCE ENGINE)
+  // Con Quản lý có nhiệm vụ chạy ngầm và đốc thúc dàn AI làm việc liên tục
+  // --------------------------------------------------------------------
+  const [isWorkforceDaemonActive, setIsWorkforceDaemonActive] = useState(true);
+  const [workforceIntervalSec, setWorkforceIntervalSec] = useState(30);
+  const [nextWorkforceCountdown, setNextWorkforceCountdown] = useState(30);
+  const [isKickingWorkforce, setIsKickingWorkforce] = useState(false);
+  const [workforceActions, setWorkforceActions] = useState(() => getSentinelWorkforceActions());
+
+  // Lắng nghe các hành động thúc đẩy được Sentinel ghi nhận trong khi chạy ngầm
+  useEffect(() => {
+    const handleWorkforceEvent = (e) => {
+      if (e?.detail) {
+        setWorkforceActions((prev) => [e.detail, ...prev.filter((a) => a.id !== e.detail.id).slice(0, 49)]);
+      }
+    };
+    window.addEventListener('sprach_sentinel_workforce_event', handleWorkforceEvent);
+    return () => window.removeEventListener('sprach_sentinel_workforce_event', handleWorkforceEvent);
+  }, []);
+
   // Chat tương tác với Con AI Quản lý (Sentinel)
   const [chatMessages, setChatMessages] = useState([
     {
@@ -104,6 +136,53 @@ export function AdminReportsTab({
     }, 1000);
     return () => clearInterval(interval);
   }, [isHourlyActive, hourlyIntervalMinutes]);
+
+  // Hàm kích hoạt thúc đẩy dàn AI (thực thi cả ngầm lẫn bấm tay)
+  const triggerWorkforceKick = async ({ silent = false, forceReassign = false, sendWarmupPulse = true } = {}) => {
+    setIsKickingWorkforce(true);
+    try {
+      const res = await kickstartSentinelWorkforce({
+        db,
+        aiConfigs: effectiveConfigs,
+        setAiConfigs,
+        aiAssignments,
+        setAiAssignments,
+        forceReassign,
+        sendWarmupPulse,
+      });
+
+      // Cập nhật lại danh sách actions
+      setWorkforceActions(getSentinelWorkforceActions());
+
+      if (!silent) {
+        if (res.actionsPerformed > 0) {
+          toast.success(`⚡ Sentinel vừa hoàn tất thúc đẩy ${res.actionsPerformed} hành động cho dàn AI!`);
+        } else {
+          toast.info('⚡ Dàn AI đang làm việc tối ưu 100%, các vị trí công việc đều có nhân sự túc trực.');
+        }
+      }
+      return res;
+    } catch (err) {
+      if (!silent) toast.error('Lỗi khi thúc đẩy AI: ' + err.message);
+    } finally {
+      setIsKickingWorkforce(false);
+    }
+  };
+
+  // Vòng lặp đếm lùi nhịp thúc giục chạy ngầm của Sentinel
+  useEffect(() => {
+    if (!isWorkforceDaemonActive) return;
+    const interval = setInterval(() => {
+      setNextWorkforceCountdown((prev) => {
+        if (prev <= 1) {
+          triggerWorkforceKick({ silent: true, sendWarmupPulse: true });
+          return workforceIntervalSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWorkforceDaemonActive, workforceIntervalSec, effectiveConfigs, aiAssignments]);
 
   // ====================================================================
   // 1. THU THẬP & PHÂN TÍCH CHỈ SỐ HỆ THỐNG
@@ -682,6 +761,13 @@ export function AdminReportsTab({
           `2. **Tác vụ Chấm viết & Đàm thoại Elio (writing_grading, elio_chat):** Dùng **Groq (Llama 3.3 70B hoặc Qwen)** hoặc **DeepSeek R1/V3 Free trên OpenRouter** (tốc độ 300 token/s, miễn phí 100%).\n` +
           `3. **Tác vụ Thẩm định kỳ thi (exam_evaluation):** Dùng **DeepSeek R1 Distill** trên Groq hoặc Together AI để suy luận logic giải thích từng câu hỏi.\n\n` +
           `Khi cấu hình như trên, hệ thống của bạn vận hành trơn tru mà không mất một đồng chi phí API nào!`;
+      } else if (qLower.includes('thúc đẩy') || qLower.includes('chạy ngầm') || qLower.includes('làm việc') || qLower.includes('quản lý') || qLower.includes('nhân viên') || qLower.includes('đốc thúc')) {
+        replyText = `⚡ **Báo cáo Bộ máy Quản lý Thúc đẩy AI:**\n\n` +
+          `Tôi là **Elio Sentinel** đang liên tục **chạy ngầm 24/7** để đốc thúc toàn bộ ${effectiveConfigs.length} con AI trong hệ thống làm việc:\n` +
+          `• **Tình trạng phân công:** Đã đốc thúc phân bổ **${stats.assignedTasksCount}/${stats.totalTasks} tác vụ** (100% các vị trí đều có AI túc trực).\n` +
+          `• **Chế độ chạy ngầm:** ${isWorkforceDaemonActive ? '🟢 Đang kích hoạt (xung nhịp mỗi ' + workforceIntervalSec + ' giây)' : '⚪ Tạm dừng'}.\n` +
+          `• **Đã thực hiện:** **${workforceActions.length} hành động** tự động (giao việc, ghép đôi dự phòng failover, phát xung nhịp Keep-Alive làm nóng kết nối).\n\n` +
+          `👉 Bạn có thể chuyển qua tab **"⚡ Thúc đẩy & Điều phối AI"** để xem dòng nhật ký hành động trực tiếp thời gian thực hoặc bấm nút "Thúc đẩy AI ngay"!`;
       } else {
         replyText = `Tôi đã ghi nhận yêu cầu: "${query}".\n\n📊 **Tình trạng tổng quan hiện tại:**\n• Tổng số AI đang giám sát: **${aiConfigs.length} con**\n• Số tác vụ đã phân công: **${Object.keys(aiAssignments).length}/${APP_AI_TASKS.length} tác vụ**\n• Điểm sức khỏe hệ thống: **${stats.healthScore}/100 điểm**\n• Số lỗi đang chờ xử lý: **${detectedIssues.length} mục**\n\nBạn có thể bảo tôi kiểm tra lại kết nối hoặc đề xuất cách sửa lỗi bất cứ lúc nào!`;
       }
@@ -947,11 +1033,85 @@ export function AdminReportsTab({
       </div>
 
       {/* ============================================================ */}
+      {/* THANH ĐIỀU KHIỂN: BỘ MÁY QUẢN LÝ THÚC ĐẨY AI CHẠY NGẦM */}
+      {/* ============================================================ */}
+      <div className="surface p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex flex-col md:flex-row md:items-center justify-between gap-3 font-mono text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+            <Zap className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${isWorkforceDaemonActive ? 'animate-bounce' : ''}`} />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2 font-bold text-foreground">
+              <span>SENTINEL THÚC ĐẨY & ĐIỀU PHỐI DÀN AI</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isWorkforceDaemonActive ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-muted text-muted-foreground'}`}>
+                {isWorkforceDaemonActive ? '🟢 ĐANG CHẠY NGẦM 24/7' : '⚪ ĐÃ TẠM DỪNG'}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-normal">
+                (Đã thực hiện: <strong className="text-foreground">{workforceActions.length}</strong> hành động)
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-sans mt-0.5">
+              {isWorkforceDaemonActive
+                ? `Sentinel chạy ngầm tự động giao việc cho AI, ghép đôi dự phòng và phát xung nhịp Keep-Alive. Nhịp thúc giục kế tiếp sau: ${nextWorkforceCountdown}s.`
+                : 'Chế độ chạy ngầm đang tạm dừng. Bấm "Kích hoạt" để Sentinel tiếp tục tự động thúc đẩy dàn AI.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+          <button
+            type="button"
+            disabled={isKickingWorkforce}
+            onClick={() => triggerWorkforceKick({ silent: false, sendWarmupPulse: true })}
+            className="tap px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm transition-all"
+            title="Thúc đẩy, làm nóng dàn AI và kiểm tra phân công ngay lập tức"
+          >
+            <Flame className={`w-3.5 h-3.5 ${isKickingWorkforce ? 'animate-spin' : ''}`} />
+            <span>{isKickingWorkforce ? 'Đang thúc đẩy...' : 'Thúc đẩy AI ngay'}</span>
+          </button>
+
+          <select
+            value={workforceIntervalSec}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setWorkforceIntervalSec(val);
+              setNextWorkforceCountdown(val);
+              toast.info(`Đã đổi nhịp thúc đẩy ngầm thành mỗi ${val} giây`);
+            }}
+            className="px-2 py-1.5 rounded-lg border border-border bg-card text-foreground text-xs font-mono font-semibold"
+          >
+            <option value={15}>Mỗi 15s</option>
+            <option value={30}>Mỗi 30s (Khuyên dùng)</option>
+            <option value={60}>Mỗi 1 phút</option>
+            <option value={120}>Mỗi 2 phút</option>
+            <option value={300}>Mỗi 5 phút</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !isWorkforceDaemonActive;
+              setIsWorkforceDaemonActive(next);
+              toast[next ? 'success' : 'info'](next ? 'Đã bật chế độ chạy ngầm thúc đẩy dàn AI!' : 'Đã tạm dừng chạy ngầm.');
+            }}
+            className={`tap px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+              isWorkforceDaemonActive
+                ? 'border-border bg-card hover:bg-muted text-muted-foreground'
+                : 'border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+            }`}
+          >
+            {isWorkforceDaemonActive ? 'Tạm dừng' : 'Kích hoạt'}
+          </button>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
       {/* THANH ĐIỀU HƯỚNG CÁC TAB CON CỦA BÁO CÁO */}
       {/* ============================================================ */}
       <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto text-xs font-mono">
         {[
           { id: 'overview', label: '📊 Bản Báo cáo Tổng hợp', count: null },
+          { id: 'dispatch', label: '⚡ Thúc đẩy & Điều phối AI', count: workforceActions.length },
           { id: 'issues', label: '⚠️ Danh sách Lỗi & Rà soát', count: detectedIssues.length },
           { id: 'fleet', label: '🤖 Giám sát từng con AI', count: effectiveConfigs.length },
           { id: 'hourly', label: '🕒 Giám sát theo giờ', count: hourlyLogs.length },
@@ -1135,6 +1295,282 @@ export function AdminReportsTab({
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* TAB CON MỚI: BỘ MÁY QUẢN LÝ THÚC ĐẨY & ĐIỀU PHỐI DÀN AI */}
+      {/* ============================================================ */}
+      {subTab === 'dispatch' && (
+        <div className="space-y-5 animate-fade-in font-mono">
+          {/* Thẻ Chỉ huy Bộ máy Thúc đẩy */}
+          <div className="surface p-5 sm:p-6 rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-card to-card space-y-4 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm relative">
+                  <Zap className="w-6 h-6 animate-pulse" />
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-background" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                      Autonomous AI Workforce Dispatcher & Watchdog
+                    </span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      {isWorkforceDaemonActive ? 'CHẠY NGẦM LIÊN TỤC 24/7' : 'TẠM DỪNG'}
+                    </span>
+                  </div>
+                  <h3 className="font-heading text-lg sm:text-xl font-bold text-foreground">
+                    Bộ máy Quản lý Thúc đẩy & Điều phối Dàn AI
+                  </h3>
+                  <p className="text-xs text-muted-foreground font-sans max-w-2xl leading-relaxed">
+                    Trưởng ban Quản lý <strong>Elio Sentinel</strong> tự động chạy ngầm, liên tục đốc thúc các con AI làm việc: tự động phân công tác vụ ứng dụng, tự động ghép đôi dự phòng Failover và phát xung nhịp Keep-Alive làm nóng kết nối, bảo đảm không con AI nào ngồi chơi và không tác vụ nào bị đình trệ.
+                  </p>
+                </div>
+              </div>
+
+              {/* Các nút điều hành nhanh */}
+              <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center">
+                <button
+                  type="button"
+                  disabled={isKickingWorkforce}
+                  onClick={() => triggerWorkforceKick({ silent: false, sendWarmupPulse: true })}
+                  className="tap px-3.5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                  title="Sentinel phát xung nhịp thúc đẩy toàn bộ dàn AI ngay lập tức"
+                >
+                  <Flame className={`w-4 h-4 ${isKickingWorkforce ? 'animate-spin' : ''}`} />
+                  <span>{isKickingWorkforce ? 'Đang thúc đẩy...' : 'Thúc đẩy dàn AI ngay'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isKickingWorkforce}
+                  onClick={() => triggerWorkforceKick({ silent: false, forceReassign: true, sendWarmupPulse: true })}
+                  className="tap px-3.5 py-2.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors"
+                  title="Tái phân bổ lại tối ưu toàn bộ 8 tác vụ cho các con AI"
+                >
+                  <Workflow className="w-3.5 h-3.5 text-accent" />
+                  <span>Tái phân bổ cả 8 tác vụ</span>
+                </button>
+
+                {workforceActions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSentinelWorkforceActions();
+                      setWorkforceActions([]);
+                      toast.info('Đã xóa toàn bộ nhật ký thúc đẩy cũ.');
+                    }}
+                    className="tap px-3 py-2.5 rounded-lg border border-border hover:bg-muted text-xs font-medium text-muted-foreground transition-colors"
+                  >
+                    Xóa nhật ký
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Chỉ số vận hành ngầm */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs border-t border-emerald-500/20">
+              <div className="p-2.5 rounded-lg bg-card/60 border border-border space-y-0.5">
+                <div className="text-muted-foreground text-[11px]">Tần suất thúc giục ngầm</div>
+                <div className="font-bold text-foreground flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Mỗi {workforceIntervalSec} giây</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-card/60 border border-border space-y-0.5">
+                <div className="text-muted-foreground text-[11px]">Xung nhịp kế tiếp</div>
+                <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                  sau {nextWorkforceCountdown}s
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-card/60 border border-border space-y-0.5">
+                <div className="text-muted-foreground text-[11px]">Tác vụ có AI túc trực</div>
+                <div className="font-bold text-foreground">
+                  {stats.assignedTasksCount}/{stats.totalTasks} vị trí (100%)
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-card/60 border border-border space-y-0.5">
+                <div className="text-muted-foreground text-[11px]">Hành động đã ghi nhận</div>
+                <div className="font-bold text-accent">
+                  {workforceActions.length} hành động
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BẢNG PHÂN CÔNG NHÂN SỰ 8 TÁC VỤ ỨNG DỤNG */}
+          <div className="surface p-5 rounded-xl border border-border bg-card space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+              <div>
+                <h4 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-accent" />
+                  <span>Sơ đồ Nhân sự AI được Quản lý Phân công (8 Tác vụ)</span>
+                </h4>
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  Sentinel giám sát từng vị trí công việc, tự động giao cho con AI phù hợp nhất với chuyên môn.
+                </p>
+              </div>
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                100% Vị trí có AI đảm nhiệm
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {APP_AI_TASKS.map((task) => {
+                const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
+                const assigned = currentAssignments[task.id];
+                const pool = db.aiConfig?.getTaskPool?.(task.id) || [];
+                const assignedCfg = effectiveConfigs.find(
+                  (c) => c.id === assigned?.configId || c.model === assigned?.model
+                );
+
+                return (
+                  <div
+                    key={task.id}
+                    className="p-3.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 transition-colors space-y-2.5 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-foreground flex items-center gap-1.5">
+                          <span>{task.name}</span>
+                          {task.needsVision && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20 font-bold">
+                              Vision
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground font-sans">{task.description}</div>
+                      </div>
+                      <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-500" />
+                        Đang làm việc
+                      </span>
+                    </div>
+
+                    {/* Con AI nhận việc */}
+                    <div className="p-2 rounded-lg bg-card border border-border flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Bot className="w-3.5 h-3.5 text-accent shrink-0" />
+                        <div className="truncate">
+                          <span className="font-bold text-foreground">
+                            {assignedCfg?.name || assigned?.model || 'Đang phân công...'}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground ml-1.5">
+                            ({assigned?.model || 'auto'})
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-accent font-bold uppercase shrink-0">
+                        ⚡ Đốc thúc liên tục
+                      </span>
+                    </div>
+
+                    {/* Dự phòng */}
+                    {pool.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span>Dự phòng Failover:</span>
+                        <span className="font-semibold text-foreground">
+                          {pool.length} AI trong Task Pool
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DÒNG NHẬT KÝ THÚC ĐẨY TỰ ĐỘNG THỜI GIAN THỰC (LIVE WORKFORCE FEED) */}
+          <div className="surface p-5 rounded-xl border border-border bg-card space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+              <div>
+                <h4 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                  <span>Dòng Hành động Thúc đẩy Thời gian Thực (Live Sentinel Workforce Feed)</span>
+                </h4>
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  Nhật ký trực tiếp các hành động Sentinel tự động chạy ngầm để đốc thúc dàn AI làm việc.
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground font-mono">
+                Lưu tối đa 50 hành động gần nhất
+              </span>
+            </div>
+
+            {workforceActions.length === 0 ? (
+              <div className="p-8 text-center rounded-xl border border-dashed border-border space-y-3">
+                <Zap className="w-8 h-8 text-muted-foreground mx-auto stroke-1" />
+                <div className="font-bold text-sm text-foreground">Chưa có hành động thúc đẩy nào</div>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto font-sans">
+                  Sentinel sẽ tự động thực hiện và ghi nhận hành động đầu tiên trong nhịp đếm lùi kế tiếp, hoặc bạn có thể bấm nút thúc đẩy ngay phía trên!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => triggerWorkforceKick({ silent: false, sendWarmupPulse: true })}
+                  className="tap px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>Kích hoạt nhịp thúc đẩy đầu tiên</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+                {workforceActions.map((act) => {
+                  const isDispatch = act.type === 'DISPATCH';
+                  const isFailover = act.type === 'FAILOVER_PAIR';
+                  const isWarmup = act.type === 'WARMUP';
+
+                  return (
+                    <div
+                      key={act.id}
+                      className="p-3 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors flex items-start gap-3 text-xs"
+                    >
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                          isDispatch
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : isFailover
+                            ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                            : isWarmup
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                            : 'bg-accent/15 text-accent border border-accent/30'
+                        }`}
+                      >
+                        {isDispatch ? (
+                          <UserPlus className="w-3.5 h-3.5" />
+                        ) : isFailover ? (
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                        ) : isWarmup ? (
+                          <Flame className="w-3.5 h-3.5" />
+                        ) : (
+                          <Radio className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-bold text-foreground">
+                            {act.title}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            {act.timeStr}
+                          </span>
+                        </div>
+                        {act.detail && (
+                          <p className="text-[11px] text-muted-foreground font-sans leading-relaxed">
+                            {act.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

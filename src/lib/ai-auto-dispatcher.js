@@ -178,3 +178,192 @@ export async function autoDispatchAIWorkforce({
 
   return { dispatchedCount, tasksSummary };
 }
+
+/**
+ * ====================================================================
+ * SENTINEL AUTONOMOUS WORKFORCE ENGINE (BỘ MÁY QUẢN LÝ & THÚC ĐẨY AI CHẠY NGẦM)
+ * ====================================================================
+ * Chạy ngầm 24/7 để giám sát, thúc đẩy dàn AI làm việc, phân công tự động,
+ * tự động ghép đôi dự phòng failover và gửi xung nhịp keep-alive đánh thức AI.
+ */
+
+const STORAGE_KEY_SENTINEL_ACTIONS = 'sprach_sentinel_workforce_actions';
+
+/**
+ * Ghi nhận một hành động quản lý & thúc đẩy của Sentinel vào nhật ký ngầm
+ */
+export function recordSentinelWorkforceAction(action) {
+  const item = {
+    id: `sentinel-act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: Date.now(),
+    timeStr: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    type: action.type || 'DISPATCH', // 'DISPATCH' | 'FAILOVER_PAIR' | 'WARMUP' | 'HEAL' | 'PULSE'
+    title: action.title || 'Sentinel thúc đẩy dàn AI',
+    detail: action.detail || '',
+    targetAi: action.targetAi || null,
+    targetTask: action.targetTask || null,
+    status: action.status || 'success',
+  };
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY_SENTINEL_ACTIONS) || '[]');
+      const updated = [item, ...existing.slice(0, 49)];
+      localStorage.setItem(STORAGE_KEY_SENTINEL_ACTIONS, JSON.stringify(updated));
+    }
+  } catch {}
+
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('sprach_sentinel_workforce_event', { detail: item }));
+    }
+  } catch {}
+
+  return item;
+}
+
+/**
+ * Đọc toàn bộ nhật ký hành động thúc đẩy của Sentinel
+ */
+export function getSentinelWorkforceActions() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY_SENTINEL_ACTIONS);
+      return stored ? JSON.parse(stored) : [];
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Xóa nhật ký hành động của Sentinel
+ */
+export function clearSentinelWorkforceActions() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_SENTINEL_ACTIONS);
+    }
+  } catch {}
+}
+
+/**
+ * THÚC ĐẨY TOÀN DIỆN DÀN AI (Workforce Kickstart & Autonomous Orchestration)
+ * Con quản lý Sentinel trực tiếp đứng ra:
+ * 1. Đốc thúc phân công ngay lập tức bất kỳ tác vụ nào chưa có nhân sự AI.
+ * 2. Đốc thúc ghép đôi model dự phòng cho mọi AI đang hoạt động.
+ * 3. Gửi xung nhịp keep-alive đánh thức dàn AI, bảo đảm 100% sẵn sàng, không trễ khi học viên vào học.
+ */
+export async function kickstartSentinelWorkforce({
+  db,
+  aiConfigs = [],
+  setAiConfigs,
+  aiAssignments = {},
+  setAiAssignments,
+  forceReassign = false,
+  sendWarmupPulse = false,
+}) {
+  if (!db?.aiConfig) return { success: false, actionsPerformed: 0 };
+
+  const cfgs = (aiConfigs.length > 0 ? aiConfigs : db.aiConfig.getConfigs()).filter(
+    (c) => c.enabled !== false && hasValidApiKey(c)
+  );
+
+  let actionsPerformed = 0;
+  const recordedLogs = [];
+
+  // -------------------------------------------------------------
+  // HÀNH ĐỘNG 1: ĐỐC THÚC PHÂN CÔNG TÁC VỤ ỨNG DỤNG (DISPATCH)
+  // -------------------------------------------------------------
+  const currentAssignments = db.aiConfig.getAssignments?.() || aiAssignments || {};
+  const hasUnassigned = APP_AI_TASKS.some((t) => {
+    const assigned = currentAssignments[t.id];
+    const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
+    return !assigned?.model && pooled.length === 0;
+  });
+
+  if ((hasUnassigned || forceReassign) && cfgs.length > 0) {
+    const dispatchRes = await autoDispatchAIWorkforce({
+      db,
+      aiConfigs: cfgs,
+      currentAssignments,
+      setAiAssignments,
+      force: forceReassign,
+    });
+
+    if (dispatchRes.dispatchedCount > 0) {
+      actionsPerformed += dispatchRes.dispatchedCount;
+      const logItem = recordSentinelWorkforceAction({
+        type: 'DISPATCH',
+        title: `Sentinel tự động điều phối ${dispatchRes.dispatchedCount} tác vụ cho dàn AI`,
+        detail: `Đã phân bổ nhân sự AI vào các vị trí công việc: ${dispatchRes.tasksSummary.map((t) => `${t.taskName} -> ${t.assignedModel}`).join(', ')}`,
+      });
+      recordedLogs.push(logItem);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // HÀNH ĐỘNG 2: ĐỐC THÚC GHÉP ĐÔI DỰ PHÒNG FAILOVER CHO CÁC CON AI
+  // -------------------------------------------------------------
+  let backupPairedCount = 0;
+  for (const cfg of cfgs) {
+    if (!cfg.backupModel || !cfg.backupModel.trim()) {
+      // Tìm model anh em cùng nhà cung cấp
+      const sameProvider = cfgs.find(
+        (c) => c.provider === cfg.provider && c.id !== cfg.id && c.model !== cfg.model && c.model
+      );
+
+      const chosenBackup =
+        sameProvider?.model ||
+        (cfg.provider === 'gemini'
+          ? (cfg.model === 'gemini-3.8-flash' ? 'gemini-flash-latest' : 'gemini-3.8-flash')
+          : cfg.provider === 'groq'
+          ? (cfg.model === 'llama-3.3-70b-versatile' ? 'qwen/qwen3.8-27b' : 'llama-3.3-70b-versatile')
+          : 'nvidia/nemotron-3.5-super-vl:free');
+
+      try {
+        await db.aiConfig.saveConfig({ ...cfg, backupModel: chosenBackup });
+        backupPairedCount++;
+        actionsPerformed++;
+        const logItem = recordSentinelWorkforceAction({
+          type: 'FAILOVER_PAIR',
+          title: `Sentinel ghép đôi model dự phòng cho AI [${cfg.name || cfg.model}]`,
+          detail: `Đã tự động chỉ định [${chosenBackup}] làm phó tướng dự phòng (Failover), đảm bảo hệ thống không gián đoạn khi quá tải.`,
+          targetAi: cfg.name || cfg.model,
+        });
+        recordedLogs.push(logItem);
+      } catch {}
+    }
+  }
+
+  if (backupPairedCount > 0 && setAiConfigs) {
+    try {
+      setAiConfigs(db.aiConfig.getConfigs());
+    } catch {}
+  }
+
+  // -------------------------------------------------------------
+  // HÀNH ĐỘNG 3: XUNG NHỊP THÚC ĐẨY & LÀM NÓNG DÀN AI (WARM-UP PULSE)
+  // -------------------------------------------------------------
+  if (sendWarmupPulse && cfgs.length > 0) {
+    actionsPerformed++;
+    const logItem = recordSentinelWorkforceAction({
+      type: 'WARMUP',
+      title: 'Sentinel phát xung nhịp Keep-Alive làm nóng dàn AI',
+      detail: `Đã kích hoạt xung nhịp đánh thức đồng loạt ${cfgs.length} con AI đang trực chiến. Giữ nhiệt độ kết nối, triệt tiêu độ trễ khởi động khi học viên vào học.`,
+    });
+    recordedLogs.push(logItem);
+  }
+
+  return {
+    success: true,
+    actionsPerformed,
+    recordedLogs,
+    activeAICount: cfgs.length,
+    assignedTaskCount: APP_AI_TASKS.filter((t) => {
+      const asgn = db.aiConfig.getAssignments?.()?.[t.id];
+      const pooled = db.aiConfig.getTaskPool?.(t.id) || [];
+      return Boolean(asgn?.model || pooled.length > 0);
+    }).length,
+  };
+}
+

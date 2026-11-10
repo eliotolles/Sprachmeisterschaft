@@ -13,7 +13,7 @@ import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import { ModelCatalogModal } from '@/components/admin/ModelCatalogModal';
 import { AdminReportsTab } from '@/components/admin/AdminReportsTab';
-import { autoDispatchAIWorkforce } from '@/lib/ai-auto-dispatcher';
+import { autoDispatchAIWorkforce, kickstartSentinelWorkforce } from '@/lib/ai-auto-dispatcher';
 import {
   discoverProviderModels,
   verifyProviderKey,
@@ -251,6 +251,35 @@ export function AdminPage() {
     return () => {
       mounted = false;
       clearInterval(timer);
+    };
+  }, []);
+
+  // SENTINEL AUTONOMOUS BACKGROUND ENGINE:
+  // Con Quản lý Elio Sentinel chạy ngầm 24/7 để thúc đẩy dàn AI làm việc, phân công nhiệm vụ và ghép đôi dự phòng
+  useEffect(() => {
+    let mounted = true;
+    const runSentinelDaemon = async () => {
+      if (!mounted) return;
+      try {
+        const cfgs = db.aiConfig?.getConfigs?.() || [];
+        if (cfgs.length > 0) {
+          await kickstartSentinelWorkforce({
+            db,
+            aiConfigs: cfgs,
+            setAiConfigs,
+            setAiAssignments,
+          });
+        }
+      } catch {}
+    };
+
+    const initialKick = setTimeout(runSentinelDaemon, 3000);
+    const daemonInterval = setInterval(runSentinelDaemon, 45000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(initialKick);
+      clearInterval(daemonInterval);
     };
   }, []);
 

@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreAIForTask, autoDispatchAIWorkforce, hasValidApiKey } from '../src/lib/ai-auto-dispatcher.js';
+import {
+  scoreAIForTask,
+  autoDispatchAIWorkforce,
+  hasValidApiKey,
+  kickstartSentinelWorkforce,
+  recordSentinelWorkforceAction,
+  getSentinelWorkforceActions,
+} from '../src/lib/ai-auto-dispatcher.js';
 import { APP_AI_TASKS } from '../src/data/ai-models-catalog.js';
 
 test('hasValidApiKey correctly detects server and local keys', () => {
@@ -67,3 +74,44 @@ test('autoDispatchAIWorkforce automatically assigns all 8 tasks and populates ta
   assert.ok(assignments.elio_chat.configId);
   assert.ok(pools.elio_chat.length > 0);
 });
+
+test('kickstartSentinelWorkforce pairs backup models and dispatches workforce with action records', async () => {
+  const configs = [
+    { id: 'cfg-gem-1', name: 'Gemini Primary', provider: 'gemini', model: 'gemini-flash-latest', backupModel: '', hasVision: true, apiKey: 'k1', enabled: true },
+    { id: 'cfg-gem-2', name: 'Gemini Backup', provider: 'gemini', model: 'gemini-3.8-flash', backupModel: '', hasVision: true, apiKey: 'k2', enabled: true },
+  ];
+  const assignments = {};
+  const savedConfigs = [...configs];
+
+  const fakeDb = {
+    aiConfig: {
+      getConfigs: () => savedConfigs,
+      getAssignments: () => assignments,
+      getTaskPool: () => [],
+      setAssignment: async (taskId, configId, model) => {
+        assignments[taskId] = { configId, model };
+      },
+      addToTaskPool: async () => {},
+      saveConfig: async (cfg) => {
+        const idx = savedConfigs.findIndex((c) => c.id === cfg.id);
+        if (idx >= 0) savedConfigs[idx] = cfg;
+      },
+    },
+  };
+
+  const res = await kickstartSentinelWorkforce({
+    db: fakeDb,
+    aiConfigs: savedConfigs,
+    sendWarmupPulse: true,
+  });
+
+  assert.equal(res.success, true);
+  assert.ok(res.actionsPerformed > 0);
+  assert.equal(res.activeAICount, 2);
+  // Backup model must be paired
+  assert.ok(savedConfigs[0].backupModel.length > 0);
+  assert.equal(savedConfigs[0].backupModel, 'gemini-3.8-flash');
+  // Task dispatch must be populated
+  assert.equal(Object.keys(assignments).length, 8);
+});
+
