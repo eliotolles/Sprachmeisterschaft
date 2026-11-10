@@ -348,14 +348,41 @@ export function UniversalImportModal({
       // 4. MODULE LUYỆN NGHE (YouTube)
       else if (activeModule === 'listening') {
         if (listeningLinkType === 'playlist') {
-          setProgressText('Đang lấy danh sách các tập từ Playlist YouTube...');
+          setProgressText('Đang kết nối Cloudflare Edge và bóc tách Playlist YouTube...');
           const listMatch = (youtubeUrl || '').match(/[?&]list=([^#&?]+)/);
           const playlistId = listMatch ? listMatch[1] : null;
 
           let items = [];
           const seen = new Set();
+          let playlistFoundTitle = '';
 
-          // 1. Phân tích nếu có danh sách video do người dùng dán vào
+          // 1. GỌI API EDGE ROUTE CLOUDFLARE NỘI BỘ (/api/youtube/playlist)
+          // 100% không bị CORS từ browser và hỗ trợ cấu trúc lockupViewModel mới nhất của YouTube
+          if (playlistId) {
+            try {
+              const res = await fetch(`/api/youtube/playlist?list=${encodeURIComponent(playlistId)}`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+                  for (const v of data.items) {
+                    if (v.id && !seen.has(v.id)) {
+                      seen.add(v.id);
+                      items.push({
+                        id: v.id,
+                        title: v.title || `Tập ${items.length + 1}`,
+                        selected: true,
+                      });
+                    }
+                  }
+                  if (data.title) playlistFoundTitle = data.title;
+                }
+              }
+            } catch (edgeErr) {
+              console.warn('Edge playlist fetch error:', edgeErr);
+            }
+          }
+
+          // 2. Phân tích nếu có danh sách video do người dùng dán vào
           if (playlistManualList && playlistManualList.trim()) {
             const lines = playlistManualList.split('\n');
             for (const line of lines) {
@@ -372,37 +399,49 @@ export function UniversalImportModal({
             }
           }
 
-          // 2. Thử gọi các public instance Invidious để lấy toàn bộ playlist
+          // 3. Fallback: Thử qua public proxy CORS nếu chạy môi trường local không có worker
           if (playlistId && items.length === 0) {
-            const instances = [
-              'https://invidious.nerdvpn.de',
-              'https://inv.tux.pizza',
-              'https://yt.drgnz.club',
-              'https://vid.priv.au'
+            const corsProxies = [
+              `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.youtube.com/playlist?list=${playlistId}`)}`,
             ];
-            for (const base of instances) {
+            for (const proxyUrl of corsProxies) {
               try {
                 const controller = new AbortController();
-                const tid = setTimeout(() => controller.abort(), 6000);
-                const res = await fetch(`${base}/api/v1/playlists/${playlistId}`, { signal: controller.signal });
+                const tid = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(proxyUrl, { signal: controller.signal });
                 clearTimeout(tid);
                 if (res.ok) {
-                  const data = await res.json();
-                  if (Array.isArray(data.videos) && data.videos.length > 0) {
-                    for (const v of data.videos) {
-                      if (v.videoId && !seen.has(v.videoId)) {
-                        seen.add(v.videoId);
-                        items.push({
-                          id: v.videoId,
-                          title: v.title || `Tập ${items.length + 1}`,
-                          selected: true
-                        });
+                  const html = await res.text();
+                  const match = html.match(/var ytInitialData = ({.*?});<\/script>/s) || html.match(/ytInitialData = ({.*?});/s);
+                  if (match) {
+                    const data = JSON.parse(match[1]);
+                    if (data.metadata?.playlistMetadataRenderer?.title) {
+                      playlistFoundTitle = data.metadata.playlistMetadataRenderer.title;
+                    }
+                    function scan(obj) {
+                      if (!obj || typeof obj !== 'object') return;
+                      if (obj.lockupViewModel) {
+                        const lock = obj.lockupViewModel;
+                        const vId = lock.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId || lock.contentId;
+                        const vTitle = lock.metadata?.lockupMetadataViewModel?.title?.content || '';
+                        if (vId && !seen.has(vId) && vId.length === 11) {
+                          seen.add(vId);
+                          items.push({ id: vId, title: vTitle || `Tập ${items.length + 1}`, selected: true });
+                        }
                       }
+                      if (obj.playlistVideoRenderer) {
+                        const pvr = obj.playlistVideoRenderer;
+                        const vId = pvr.videoId;
+                        const vTitle = pvr.title?.runs?.[0]?.text || pvr.title?.simpleText || '';
+                        if (vId && !seen.has(vId) && vId.length === 11) {
+                          seen.add(vId);
+                          items.push({ id: vId, title: vTitle || `Tập ${items.length + 1}`, selected: true });
+                        }
+                      }
+                      for (const k of Object.keys(obj)) scan(obj[k]);
                     }
-                    if (items.length > 0) {
-                      if (!title.trim() && data.title) setTitle(data.title);
-                      break;
-                    }
+                    scan(data);
+                    if (items.length > 0) break;
                   }
                 }
               } catch {}
@@ -419,8 +458,13 @@ export function UniversalImportModal({
           }
 
           setPlaylistVideos(items);
-          if (!title.trim()) setTitle(`Bộ Playlist YouTube (${items.length} tập)`);
+          if (playlistFoundTitle && (!title.trim() || title.startsWith('Bộ Playlist'))) {
+            setTitle(playlistFoundTitle);
+          } else if (!title.trim()) {
+            setTitle(`Bộ Playlist YouTube (${items.length} tập)`);
+          }
           setStep(2);
+          toast.success(`Đã tìm thấy thành công ${items.length} tập video trong Playlist!`);
         } else {
           const videoId = extractYouTubeId(youtubeUrl);
           if (!videoId) throw new Error('Đường link YouTube hoặc Video ID không hợp lệ.');

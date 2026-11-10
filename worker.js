@@ -45,6 +45,11 @@ export default {
       return handleAiVerify(request, env);
     }
 
+    // 4. Native YouTube Playlist Parser Endpoint (CORS-free Edge Gateway)
+    if (url.pathname === '/api/youtube/playlist' && (request.method === 'GET' || request.method === 'POST')) {
+      return handleYoutubePlaylist(request, env);
+    }
+
     // Read-only Elio content endpoint, disabled unless explicitly enabled in preview.
     // Never writes to Turso, never returns tokens, and never touches user data.
     if (url.pathname === '/api/content/elio-vocabulary' && request.method === 'GET') {
@@ -469,6 +474,149 @@ async function handleAiVerify(request, env) {
     return jsonResponse({ success: true, message: `${provider.toUpperCase()} Key hợp lệ!` });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message }, 500);
+  }
+}
+
+/**
+ * Handle Native YouTube Playlist Parsing at Cloudflare Edge
+ * Directly fetches YouTube Playlist HTML and extracts all video IDs and titles
+ * Supports both YouTube lockupViewModel (modern) and playlistVideoRenderer (classic)
+ */
+async function handleYoutubePlaylist(request) {
+  try {
+    const url = new URL(request.url);
+    let playlistId = url.searchParams.get('list') || url.searchParams.get('playlistId');
+
+    if (!playlistId && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        playlistId = body?.playlistId || body?.list;
+        if (!playlistId && body?.url) {
+          const match = String(body.url).match(/[?&]list=([^#&?]+)/);
+          if (match) playlistId = match[1];
+        }
+      } catch {}
+    }
+
+    if (!playlistId && url.searchParams.get('url')) {
+      const match = url.searchParams.get('url').match(/[?&]list=([^#&?]+)/);
+      if (match) playlistId = match[1];
+    }
+
+    if (!playlistId) {
+      return jsonResponse({ success: false, error: 'Thiếu playlistId hoặc link YouTube chứa tham số list' }, 400);
+    }
+
+    // Clean playlist ID
+    playlistId = playlistId.trim().replace(/^list=/, '');
+
+    // Fetch trang playlist từ YouTube
+    const ytUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+    const ytRes = await fetch(ytUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'vi,de,en;q=0.9',
+      },
+    });
+
+    if (!ytRes.ok) {
+      return jsonResponse({ success: false, error: 'Không thể kết nối đến YouTube hoặc playlist không công khai.' }, 502);
+    }
+
+    const html = await ytRes.text();
+    const match = html.match(/var ytInitialData = ({.*?});<\/script>/s) || html.match(/ytInitialData = ({.*?});/s);
+
+    let title = 'Playlist YouTube';
+    const items = [];
+    const seen = new Set();
+
+    if (match) {
+      try {
+        const data = JSON.parse(match[1]);
+        title = data.metadata?.playlistMetadataRenderer?.title ||
+                data.header?.playlistHeaderRenderer?.title?.simpleText ||
+                data.microformat?.microformatDataRenderer?.title ||
+                'Playlist YouTube';
+
+        // Đệ quy quét mọi video trong cấu trúc JSON
+        function extractVideos(obj) {
+          if (!obj || typeof obj !== 'object') return;
+
+          // 1. Cấu trúc YouTube lockupViewModel (Hiện đại 2025-2026)
+          if (obj.lockupViewModel) {
+            const lockup = obj.lockupViewModel;
+            const vTitle = lockup.metadata?.lockupMetadataViewModel?.title?.content || '';
+            const endpoint = lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint || {};
+            const vId = endpoint.videoId || lockup.contentId;
+            if (vId && !seen.has(vId) && typeof vId === 'string' && vId.length === 11) {
+              seen.add(vId);
+              items.push({
+                id: vId,
+                title: vTitle || `Tập ${items.length + 1}`,
+                url: `https://www.youtube.com/watch?v=${vId}`,
+              });
+            }
+          }
+
+          // 2. Cấu trúc YouTube playlistVideoRenderer (Truyền thống)
+          if (obj.playlistVideoRenderer) {
+            const pvr = obj.playlistVideoRenderer;
+            const vId = pvr.videoId;
+            const vTitle = pvr.title?.runs?.[0]?.text || pvr.title?.simpleText || '';
+            if (vId && !seen.has(vId) && typeof vId === 'string' && vId.length === 11) {
+              seen.add(vId);
+              items.push({
+                id: vId,
+                title: vTitle || `Tập ${items.length + 1}`,
+                url: `https://www.youtube.com/watch?v=${vId}`,
+              });
+            }
+          }
+
+          for (const k of Object.keys(obj)) {
+            extractVideos(obj[k]);
+          }
+        }
+
+        extractVideos(data);
+      } catch (e) {
+        console.warn('Error parsing ytInitialData:', e);
+      }
+    }
+
+    // Fallback regex trực tiếp nếu JSON parse chưa tìm thấy đủ
+    if (items.length === 0) {
+      const vidRegex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+      let m;
+      while ((m = vidRegex.exec(html)) !== null) {
+        const vId = m[1];
+        if (!seen.has(vId) && vId.length === 11) {
+          seen.add(vId);
+          items.push({
+            id: vId,
+            title: `Tập ${items.length + 1}`,
+            url: `https://www.youtube.com/watch?v=${vId}`,
+          });
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      return jsonResponse({
+        success: false,
+        error: 'Chưa tìm thấy video nào trong playlist. Hãy kiểm tra lại link hoặc đảm bảo playlist đang ở chế độ Công khai (Public/Unlisted).',
+      }, 404);
+    }
+
+    return jsonResponse({
+      success: true,
+      playlistId,
+      title,
+      total: items.length,
+      items,
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error.message || 'Lỗi xử lý playlist' }, 500);
   }
 }
 
