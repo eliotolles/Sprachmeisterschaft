@@ -7,6 +7,8 @@ import {
   kickstartSentinelWorkforce,
   recordSentinelWorkforceAction,
   getSentinelWorkforceActions,
+  autoFixAllMissingBackups,
+  autoFixAllFleetIssues,
 } from '../src/lib/ai-auto-dispatcher.js';
 import { APP_AI_TASKS } from '../src/data/ai-models-catalog.js';
 
@@ -114,4 +116,56 @@ test('kickstartSentinelWorkforce pairs backup models and dispatches workforce wi
   // Task dispatch must be populated
   assert.equal(Object.keys(assignments).length, 8);
 });
+
+test('autoFixAllFleetIssues assigns work to all configs and repairs missing backups', async () => {
+  const configs = [
+    { id: 'cfg-1', name: 'Gemini Latest', provider: 'gemini', model: 'gemini-flash-latest', backupModel: '', hasVision: true, apiKey: 'k1', enabled: true },
+    { id: 'cfg-2', name: 'Gemini 3.8', provider: 'gemini', model: 'gemini-3.8-flash', backupModel: '', hasVision: true, apiKey: 'k2', enabled: true },
+    { id: 'cfg-3', name: 'Groq Qwen', provider: 'groq', model: 'qwen/qwen3.8-27b', backupModel: '', hasVision: false, apiKey: 'k3', enabled: true },
+    { id: 'cfg-4', name: 'OpenRouter Nemotron', provider: 'openrouter', model: 'nvidia/nemotron-3.5-super-vl:free', backupModel: '', hasVision: true, apiKey: 'k4', enabled: true },
+  ];
+  const assignments = {};
+  const pools = {};
+  const savedConfigs = [...configs];
+
+  const fakeDb = {
+    aiConfig: {
+      getConfigs: () => savedConfigs,
+      getAssignments: () => assignments,
+      getTaskPool: (taskId) => pools[taskId] || [],
+      setAssignment: async (taskId, configId, model) => {
+        assignments[taskId] = { configId, model };
+      },
+      addToTaskPool: async (taskId, configId) => {
+        if (!pools[taskId]) pools[taskId] = [];
+        if (!pools[taskId].includes(configId)) pools[taskId].push(configId);
+      },
+      saveConfig: async (cfg) => {
+        const idx = savedConfigs.findIndex((c) => c.id === cfg.id);
+        if (idx >= 0) savedConfigs[idx] = cfg;
+      },
+    },
+  };
+
+  const res = await autoFixAllFleetIssues({
+    db: fakeDb,
+    aiConfigs: savedConfigs,
+  });
+
+  assert.equal(res.fixedBackups, 4);
+  assert.equal(res.dispatchedTasks, 8);
+  // All configs now have backup models
+  for (const c of savedConfigs) {
+    assert.ok(c.backupModel && c.backupModel.length > 0);
+    assert.notEqual(c.backupModel, c.model);
+    assert.ok(!c.backupModel.includes('2.5'));
+  }
+  // All configs now participate in tasks
+  for (const c of savedConfigs) {
+    const isPrimary = Object.values(assignments).some((a) => a.configId === c.id);
+    const isPooled = Object.values(pools).some((p) => p.includes(c.id));
+    assert.ok(isPrimary || isPooled, `Config ${c.id} should have work assigned`);
+  }
+});
+
 

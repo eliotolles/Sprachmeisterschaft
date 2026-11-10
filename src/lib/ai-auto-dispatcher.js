@@ -105,6 +105,8 @@ export async function autoDispatchAIWorkforce({
 
   let dispatchedCount = 0;
   const tasksSummary = [];
+  // Theo dõi số lượng tác vụ đã phân bổ cho mỗi con AI để chia đều công việc
+  const assignedCounts = {};
 
   for (const task of APP_AI_TASKS) {
     const existingAssignment = currentAssignments[task.id] || db.aiConfig.getAssignments()?.[task.id];
@@ -122,15 +124,19 @@ export async function autoDispatchAIWorkforce({
       continue;
     }
 
-    // Xếp hạng AI theo độ phù hợp chuyên môn
+    // Xếp hạng AI theo độ phù hợp chuyên môn + phạt tải để phân chia đều cho các con AI chưa có việc
     const rankedConfigs = configs
-      .map((cfg) => ({ cfg, score: scoreAIForTask(cfg, task) }))
+      .map((cfg) => {
+        const baseScore = scoreAIForTask(cfg, task);
+        if (baseScore <= 0) return { cfg, score: -9999 };
+        const loadPenalty = (assignedCounts[cfg.id] || 0) * 350;
+        return { cfg, score: baseScore - loadPenalty };
+      })
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .map((item) => item.cfg);
 
     if (rankedConfigs.length === 0) {
-      // Fallback: nếu tác vụ không bắt buộc vision, lấy bất kỳ config nào khả dụng
       if (!task.needsVision && configs.length > 0) {
         rankedConfigs.push(configs[0]);
       }
@@ -138,6 +144,7 @@ export async function autoDispatchAIWorkforce({
 
     if (rankedConfigs.length > 0) {
       const primaryAI = rankedConfigs[0];
+      assignedCounts[primaryAI.id] = (assignedCounts[primaryAI.id] || 0) + 1;
 
       // 1. Phân công model chính
       try {
@@ -148,9 +155,9 @@ export async function autoDispatchAIWorkforce({
         } catch {}
       }
 
-      // 2. Thêm vào Task Pool và nạp thêm tối đa 2 key dự phòng cùng nhóm
+      // 2. Thêm vào Task Pool và nạp thêm các key dự phòng cùng nhóm
       if (db.aiConfig.addToTaskPool) {
-        const poolCandidates = rankedConfigs.slice(0, 3);
+        const poolCandidates = rankedConfigs.slice(0, 4);
         for (const candidate of poolCandidates) {
           try {
             await db.aiConfig.addToTaskPool(task.id, candidate.id);
@@ -164,9 +171,28 @@ export async function autoDispatchAIWorkforce({
         taskName: task.name,
         assignedModel: primaryAI.model,
         assignedName: primaryAI.name,
-        poolCount: Math.min(rankedConfigs.length, 3),
+        poolCount: Math.min(rankedConfigs.length, 4),
         status: 'auto-dispatched',
       });
+    }
+  }
+
+  // 3. ĐẢM BẢO TẤT CẢ CÁC CON AI CÒN LẠI ĐỀU CÓ CÔNG VIỆC TRONG TASK POOL
+  // Không để bất kỳ con AI nào ngồi chơi xơi nước
+  if (db.aiConfig.addToTaskPool) {
+    for (const cfg of configs) {
+      // Tìm 2-3 tác vụ phù hợp nhất với năng lực của con AI này
+      const matchedTasks = APP_AI_TASKS
+        .map((t) => ({ task: t, score: scoreAIForTask(cfg, t) }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      for (const m of matchedTasks) {
+        try {
+          await db.aiConfig.addToTaskPool(m.task.id, cfg.id);
+        } catch {}
+      }
     }
   }
 
@@ -303,22 +329,14 @@ export async function kickstartSentinelWorkforce({
 
   // -------------------------------------------------------------
   // HÀNH ĐỘNG 2: ĐỐC THÚC GHÉP ĐÔI DỰ PHÒNG FAILOVER CHO CÁC CON AI
+  // Quét toàn bộ mọi cấu hình AI trong hệ thống (kể cả chưa có key) để đảm bảo không con nào thiếu backup
   // -------------------------------------------------------------
   let backupPairedCount = 0;
-  for (const cfg of cfgs) {
-    if (!cfg.backupModel || !cfg.backupModel.trim()) {
-      // Tìm model anh em cùng nhà cung cấp
-      const sameProvider = cfgs.find(
-        (c) => c.provider === cfg.provider && c.id !== cfg.id && c.model !== cfg.model && c.model
-      );
-
-      const chosenBackup =
-        sameProvider?.model ||
-        (cfg.provider === 'gemini'
-          ? (cfg.model === 'gemini-3.8-flash' ? 'gemini-flash-latest' : 'gemini-3.8-flash')
-          : cfg.provider === 'groq'
-          ? (cfg.model === 'llama-3.3-70b-versatile' ? 'qwen/qwen3.8-27b' : 'llama-3.3-70b-versatile')
-          : 'nvidia/nemotron-3.5-super-vl:free');
+  const allStoredConfigs = db.aiConfig?.getConfigs?.() || [];
+  for (const cfg of allStoredConfigs) {
+    const isMissingBackup = !cfg.backupModel || !cfg.backupModel.trim() || cfg.backupModel === cfg.model || cfg.backupModel.includes('2.5');
+    if (isMissingBackup) {
+      const chosenBackup = getRecommendedBackupModel(cfg, allStoredConfigs);
 
       try {
         await db.aiConfig.saveConfig({ ...cfg, backupModel: chosenBackup });
@@ -366,4 +384,110 @@ export async function kickstartSentinelWorkforce({
     }).length,
   };
 }
+
+/**
+ * TÌM MODEL DỰ PHÒNG TỐI ƯU TƯƠNG THÍCH CHO TỪNG NHÀ CUNG CẤP
+ * Luôn đảm bảo không bao giờ lấy 2.5 cũ, ưu tiên model anh em có sẵn
+ */
+export function getRecommendedBackupModel(cfg, allConfigs = []) {
+  if (!cfg) return 'gemini-flash-latest';
+  const provider = (cfg.provider || '').toLowerCase();
+  const model = (cfg.model || '').toLowerCase();
+
+  // 1. Tìm model anh em khác cùng provider mà người dùng đã tạo trong danh sách
+  const sibling = allConfigs.find(
+    (c) => c.provider === cfg.provider && c.id !== cfg.id && c.model !== cfg.model && c.model && !c.model.includes('2.5')
+  );
+  if (sibling && sibling.model) {
+    return sibling.model;
+  }
+
+  // 2. Tra cứu chuẩn theo nhà cung cấp
+  if (provider === 'gemini') {
+    if (model.includes('3.8-flash')) return 'gemini-flash-latest';
+    if (model.includes('flash-latest') || model.includes('3.7') || model.includes('3.5')) return 'gemini-3.8-flash';
+    if (model.includes('pro')) return 'gemini-flash-latest';
+    return 'gemini-3.8-flash';
+  }
+
+  if (provider === 'groq') {
+    if (model.includes('qwen')) return 'llama-3.3-70b-versatile';
+    if (model.includes('llama')) return 'qwen/qwen3.8-27b';
+    return 'llama-3.3-70b-versatile';
+  }
+
+  if (provider === 'openrouter') {
+    if (model.includes('nemotron')) return 'stealth/crouton-alpha';
+    if (model.includes('liquid') || model.includes('lfm') || model.includes('dots')) return 'nvidia/nemotron-3.5-super-vl:free';
+    return 'nvidia/nemotron-3.5-super-vl:free';
+  }
+
+  return 'gemini-flash-latest';
+}
+
+/**
+ * TỰ ĐỘNG SỬA TẤT CẢ CÁC CON AI CHƯA CÓ BACKUP (GÁN MODEL DỰ PHÒNG 100%)
+ */
+export async function autoFixAllMissingBackups({ db, setAiConfigs }) {
+  if (!db?.aiConfig) return { fixedCount: 0 };
+  const allConfigs = db.aiConfig.getConfigs() || [];
+  let fixedCount = 0;
+
+  for (const cfg of allConfigs) {
+    const needsBackup = !cfg.backupModel || !cfg.backupModel.trim() || cfg.backupModel === cfg.model || cfg.backupModel.includes('2.5');
+    if (needsBackup) {
+      const chosenBackup = getRecommendedBackupModel(cfg, allConfigs);
+      try {
+        await db.aiConfig.saveConfig({ ...cfg, backupModel: chosenBackup });
+        fixedCount++;
+        recordSentinelWorkforceAction({
+          type: 'FAILOVER_PAIR',
+          title: `Đã tự động gán Backup cho AI [${cfg.name || cfg.model}]`,
+          detail: `Chỉ định [${chosenBackup}] làm model dự phòng thay thế khi quá tải.`,
+          targetAi: cfg.name || cfg.model,
+        });
+      } catch {}
+    }
+  }
+
+  if (fixedCount > 0 && setAiConfigs) {
+    try {
+      setAiConfigs(db.aiConfig.getConfigs());
+    } catch {}
+  }
+
+  return { fixedCount };
+}
+
+/**
+ * TỰ ĐỘNG SẮP XẾP CÔNG VIỆC VÀ GÁN DỰ PHÒNG CHO TOÀN BỘ DÀN AI (ALL-IN-ONE FLEET HEAL)
+ * 1. Sắp xếp công việc cho tất cả các con AI chưa có việc (chia đều 8 tác vụ và đưa vào task pool).
+ * 2. Gán model dự phòng (Backup) cho toàn bộ các con AI chưa có backup.
+ */
+export async function autoFixAllFleetIssues({ db, aiConfigs = [], setAiConfigs, setAiAssignments }) {
+  if (!db?.aiConfig) return { fixedBackups: 0, dispatchedTasks: 0 };
+
+  // 1. Sửa toàn bộ các con chưa có backup
+  const backupRes = await autoFixAllMissingBackups({ db, setAiConfigs });
+
+  // 2. Tái phân bổ công việc công bằng cho toàn bộ 12 con AI
+  const dispatchRes = await autoDispatchAIWorkforce({
+    db,
+    aiConfigs,
+    force: true,
+    setAiAssignments,
+  });
+
+  recordSentinelWorkforceAction({
+    type: 'DISPATCH',
+    title: `Sentinel đã hoàn tất sắp xếp công việc và gán backup toàn diện`,
+    detail: `Đã gán model dự phòng cho ${backupRes.fixedCount} con AI và phân bổ việc làm cho toàn bộ dàn AI.`,
+  });
+
+  return {
+    fixedBackups: backupRes.fixedCount,
+    dispatchedTasks: dispatchRes.dispatchedCount,
+  };
+}
+
 

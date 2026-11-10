@@ -1417,7 +1417,11 @@ export const db = {
     getAssignments: () => ({ ...(state.aiTaskAssignments || {}) }),
     setAssignment: (taskId, providerId, model) => {
       if (!state.aiTaskAssignments) state.aiTaskAssignments = {};
-      state.aiTaskAssignments[taskId] = { provider: providerId, model };
+      state.aiTaskAssignments[taskId] = {
+        provider: providerId,
+        configId: providerId,
+        model,
+      };
       saveDatabase(state);
     },
     getTaskPool: (taskId) => {

@@ -13,6 +13,9 @@ import {
   getSentinelWorkforceActions,
   clearSentinelWorkforceActions,
   recordSentinelWorkforceAction,
+  autoFixAllMissingBackups,
+  autoFixAllFleetIssues,
+  getRecommendedBackupModel,
 } from '@/lib/ai-auto-dispatcher';
 import { getAllExams } from '@/data/all-exams';
 import { GRAMMAR_CORE } from '@/data/grammar';
@@ -555,8 +558,14 @@ export function AdminReportsTab({
     }
   };
 
-  // Tự động quét 1 lần khi mới mở trang nếu chưa quét
+  // Tự động kiểm tra và dọn dẹp các con chưa có backup + phân công công việc khi mount
   useEffect(() => {
+    const autoStaffAndFixBackups = async () => {
+      try {
+        await autoFixAllMissingBackups({ db, setAiConfigs });
+      } catch {}
+    };
+    autoStaffAndFixBackups();
     if (!lastScannedAt && aiConfigs.length > 0) {
       runDeepAudit();
     }
@@ -1748,7 +1757,7 @@ export function AdminReportsTab({
       {/* ============================================================ */}
       {subTab === 'fleet' && (
         <div className="space-y-4 animate-fade-in font-mono">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="font-heading font-bold text-base text-foreground flex items-center gap-2">
                 <Bot className="w-5 h-5 text-accent" />
@@ -1758,15 +1767,30 @@ export function AdminReportsTab({
                 Theo dõi trạng thái sống, độ trễ và tác vụ được giao cho từng con AI.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={isScanning}
-              onClick={runDeepAudit}
-              className="tap px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-bold flex items-center gap-1.5"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-              <span>Ping lại tất cả</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={async () => {
+                  toast.info('Sentinel đang sắp xếp việc cho toàn bộ dàn AI & gán model backup...');
+                  const res = await autoFixAllFleetIssues({ db, aiConfigs: effectiveConfigs, setAiConfigs, setAiAssignments });
+                  toast.success(`Đã gán backup cho ${res.fixedBackups} con AI và phân bổ việc làm cho toàn bộ dàn AI!`);
+                }}
+                className="tap px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                title="Tự động sắp xếp công việc cho các con AI chưa có việc và gán model dự phòng cho các con thiếu backup"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Sắp xếp việc & Gán Backup ngay</span>
+              </button>
+              <button
+                type="button"
+                disabled={isScanning}
+                onClick={runDeepAudit}
+                className="tap px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+                <span>Ping lại tất cả</span>
+              </button>
+            </div>
           </div>
 
           <div className="surface rounded-xl border border-border bg-card overflow-hidden shadow-sm">
@@ -1794,17 +1818,21 @@ export function AdminReportsTab({
                     effectiveConfigs.map((cfg) => {
                       const mon = aiMonitorResults[cfg.id] || {};
                       const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
-                      const pooledTasks = APP_AI_TASKS.filter((t) => {
-                        const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
-                        return pooled.some((p) => p.id === cfg.id);
+                      const primaryTasks = APP_AI_TASKS.filter((t) => {
+                        const asgn = currentAssignments[t.id];
+                        if (!asgn) return false;
+                        if (asgn.configId && asgn.configId === cfg.id) return true;
+                        if (!asgn.configId && asgn.provider === cfg.provider && asgn.model === cfg.model) {
+                          const firstMatch = effectiveConfigs.find(c => c.provider === cfg.provider && c.model === cfg.model);
+                          return firstMatch?.id === cfg.id;
+                        }
+                        return false;
                       });
-                      // Lấy các task gán cho config này (trực tiếp hoặc qua pool)
-                      const assignedTasks = APP_AI_TASKS.filter(
-                        (t) =>
-                          currentAssignments[t.id]?.configId === cfg.id ||
-                          (currentAssignments[t.id]?.provider === cfg.provider && currentAssignments[t.id]?.model === cfg.model) ||
-                          pooledTasks.some((p) => p.id === t.id)
-                      );
+
+                      const pooledTasks = APP_AI_TASKS.filter((t) => {
+                        const pool = db.aiConfig?.getTaskPool?.(t.id) || [];
+                        return pool.some((p) => p.id === cfg.id) && !primaryTasks.some((pt) => pt.id === t.id);
+                      });
 
                       return (
                         <tr key={cfg.id} className="hover:bg-muted/30 transition-colors">
@@ -1814,26 +1842,61 @@ export function AdminReportsTab({
                           </td>
                           <td className="p-3">
                             <div className="font-semibold text-accent">{cfg.model}</div>
-                            {cfg.backupModel ? (
-                              <div className="text-[10px] text-muted-foreground">Backup: {cfg.backupModel}</div>
+                            {cfg.backupModel && !cfg.backupModel.includes('2.5') ? (
+                              <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Backup: {cfg.backupModel}</div>
                             ) : (
-                              <div className="text-[10px] text-amber-500">Chưa có backup</div>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const bkp = getRecommendedBackupModel(cfg, effectiveConfigs);
+                                  await db.aiConfig.saveConfig({ ...cfg, backupModel: bkp });
+                                  if (setAiConfigs) setAiConfigs(db.aiConfig.getConfigs());
+                                  toast.success(`Đã tự động gán model dự phòng: ${bkp}`);
+                                }}
+                                className="text-[10px] text-amber-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-1 mt-0.5"
+                                title="Bấm để tự động gán model dự phòng tương thích"
+                              >
+                                <span>Chưa có backup</span>
+                                <span className="px-1 py-0.2 rounded bg-amber-500/20 text-[9px] uppercase font-bold">Gán ngay</span>
+                              </button>
                             )}
                           </td>
                           <td className="p-3">
-                            {assignedTasks.length > 0 ? (
+                            {primaryTasks.length > 0 || pooledTasks.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {assignedTasks.map((t) => (
+                                {primaryTasks.map((t) => (
                                   <span
-                                    key={t.id}
-                                    className="px-1.5 py-0.5 rounded text-[10px] bg-accent/10 text-accent font-semibold"
+                                    key={`p-${t.id}`}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold"
+                                    title="Con AI chính phụ trách tác vụ này"
                                   >
-                                    {t.name.split('(')[0]}
+                                    ⭐ {t.name.split('(')[0]}
+                                  </span>
+                                ))}
+                                {pooledTasks.map((t) => (
+                                  <span
+                                    key={`b-${t.id}`}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-semibold"
+                                    title="AI dự phòng trong Task Pool (thay ca ngay khi con chính gặp sự cố)"
+                                  >
+                                    🛡️ {t.name.split('(')[0]}
                                   </span>
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground italic">Chưa gán tác vụ</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-muted-foreground italic">Chưa gán</span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await autoDispatchAIWorkforce({ db, aiConfigs: effectiveConfigs, force: true, setAiAssignments });
+                                    toast.success(`Đã phân bổ việc cho ${cfg.name}!`);
+                                  }}
+                                  className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-bold"
+                                >
+                                  + Giao việc
+                                </button>
+                              </div>
                             )}
                           </td>
                           <td className="p-3">
