@@ -8,6 +8,7 @@ import {elioWriting} from './elio-writing-runtime.js';
 
 import { db } from './db';
 import { FREE_AI_MODELS } from '@/data/ai-models-catalog';
+import { ensureTaskHasAssignedAI } from './ai-auto-dispatcher.js';
 
 /**
  * 1. Gọi LLM an toàn với cơ chế Fallback Đa Nhà Cung Cấp
@@ -301,6 +302,20 @@ export async function executeTaskWithFallback({
   // 1. Lấy danh sách Key được gán vào nhóm tác vụ này
   const pool = db.aiConfig?.getTaskPool?.(taskId) || [];
   let candidates = pool.filter((c) => c.enabled !== false && c.apiKey);
+
+  // Nếu chưa gán key nào riêng hoặc đây là tính năng mới, Sentinel tự động bố trí AI phụ trách
+  if (candidates.length === 0) {
+    try {
+      const isVision = taskId === 'ocr_image' || Boolean(imageBase64);
+      const assigned = await ensureTaskHasAssignedAI(taskId, {
+        db,
+        taskMeta: { needsVision: isVision },
+      });
+      if (assigned?.pool?.length) {
+        candidates = assigned.pool.filter((c) => c.enabled !== false && c.apiKey);
+      }
+    } catch {}
+  }
 
   // Nếu chưa gán key nào riêng, dùng các key hoạt động toàn cục theo độ ưu tiên
   if (candidates.length === 0) {

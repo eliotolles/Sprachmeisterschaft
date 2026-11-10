@@ -16,6 +16,7 @@ import {
   autoFixAllMissingBackups,
   autoFixAllFleetIssues,
   getRecommendedBackupModel,
+  getAllAppAiTasks,
 } from '@/lib/ai-auto-dispatcher';
 import { getAllExams } from '@/data/all-exams';
 import { GRAMMAR_CORE } from '@/data/grammar';
@@ -203,15 +204,17 @@ export function AdminReportsTab({
     });
   }, [aiConfigs]);
 
+  const allAppAiTasks = useMemo(() => getAllAppAiTasks(), [aiConfigs]);
+
   const stats = useMemo(() => {
     const totalConfigs = effectiveConfigs.length;
     const activeConfigs = effectiveConfigs.filter((c) => c.enabled !== false).length;
     const visionConfigs = effectiveConfigs.filter((c) => c.hasVision).length;
 
     // Tác vụ đã gán AI (kiểm tra cả assignment trực tiếp lẫn task pool)
-    const totalTasks = APP_AI_TASKS.length;
+    const totalTasks = allAppAiTasks.length;
     const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
-    const assignedTasksCount = APP_AI_TASKS.filter((task) => {
+    const assignedTasksCount = allAppAiTasks.filter((task) => {
       const assigned = currentAssignments[task.id];
       if (assigned?.model) return true;
       const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
@@ -323,7 +326,7 @@ export function AdminReportsTab({
       // Tự động phân chia việc cho AI (Autonomous Dispatch):
       // Nếu có tác vụ trống mà hệ thống có AI khả dụng, tự động bố trí việc ngay (như nhân viên ngồi vào làm việc)
       const validConfigs = effectiveConfigs.filter((c) => c.enabled !== false && hasValidApiKey(c));
-      const hasUnassigned = APP_AI_TASKS.some((t) => {
+      const hasUnassigned = allAppAiTasks.some((t) => {
         const assigned = currentAssignments[t.id];
         const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
         return !assigned?.model && pooled.length === 0;
@@ -341,7 +344,7 @@ export function AdminReportsTab({
         } catch {}
       }
 
-      APP_AI_TASKS.forEach((task) => {
+      allAppAiTasks.forEach((task) => {
         const assigned = currentAssignments[task.id];
         const pooled = db.aiConfig?.getTaskPool?.(task.id) || [];
         const isAssigned = Boolean(assigned?.model || pooled.length > 0);
@@ -778,7 +781,7 @@ export function AdminReportsTab({
           `• **Đã thực hiện:** **${workforceActions.length} hành động** tự động (giao việc, ghép đôi dự phòng failover, phát xung nhịp Keep-Alive làm nóng kết nối).\n\n` +
           `👉 Bạn có thể chuyển qua tab **"⚡ Thúc đẩy & Điều phối AI"** để xem dòng nhật ký hành động trực tiếp thời gian thực hoặc bấm nút "Thúc đẩy AI ngay"!`;
       } else {
-        replyText = `Tôi đã ghi nhận yêu cầu: "${query}".\n\n📊 **Tình trạng tổng quan hiện tại:**\n• Tổng số AI đang giám sát: **${aiConfigs.length} con**\n• Số tác vụ đã phân công: **${Object.keys(aiAssignments).length}/${APP_AI_TASKS.length} tác vụ**\n• Điểm sức khỏe hệ thống: **${stats.healthScore}/100 điểm**\n• Số lỗi đang chờ xử lý: **${detectedIssues.length} mục**\n\nBạn có thể bảo tôi kiểm tra lại kết nối hoặc đề xuất cách sửa lỗi bất cứ lúc nào!`;
+        replyText = `Tôi đã ghi nhận yêu cầu: "${query}".\n\n📊 **Tình trạng tổng quan hiện tại:**\n• Tổng số AI đang giám sát: **${aiConfigs.length} con**\n• Số tác vụ đã phân công: **${Object.keys(aiAssignments).length}/${allAppAiTasks.length} tác vụ**\n• Điểm sức khỏe hệ thống: **${stats.healthScore}/100 điểm**\n• Số lỗi đang chờ xử lý: **${detectedIssues.length} mục**\n\nBạn có thể bảo tôi kiểm tra lại kết nối hoặc đề xuất cách sửa lỗi bất cứ lúc nào!`;
       }
 
       setChatMessages((prev) => [
@@ -1428,7 +1431,7 @@ export function AdminReportsTab({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {APP_AI_TASKS.map((task) => {
+              {allAppAiTasks.map((task) => {
                 const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
                 const assigned = currentAssignments[task.id];
                 const pool = db.aiConfig?.getTaskPool?.(task.id) || [];
@@ -1818,7 +1821,7 @@ export function AdminReportsTab({
                     effectiveConfigs.map((cfg) => {
                       const mon = aiMonitorResults[cfg.id] || {};
                       const currentAssignments = db.aiConfig?.getAssignments?.() || aiAssignments || {};
-                      const primaryTasks = APP_AI_TASKS.filter((t) => {
+                      const primaryTasks = allAppAiTasks.filter((t) => {
                         const asgn = currentAssignments[t.id];
                         if (!asgn) return false;
                         if (asgn.configId && asgn.configId === cfg.id) return true;
@@ -1829,7 +1832,7 @@ export function AdminReportsTab({
                         return false;
                       });
 
-                      const pooledTasks = APP_AI_TASKS.filter((t) => {
+                      const pooledTasks = allAppAiTasks.filter((t) => {
                         const pool = db.aiConfig?.getTaskPool?.(t.id) || [];
                         return pool.some((p) => p.id === cfg.id) && !primaryTasks.some((pt) => pt.id === t.id);
                       });

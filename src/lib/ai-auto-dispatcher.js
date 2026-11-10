@@ -1,5 +1,62 @@
 import { APP_AI_TASKS } from '../data/ai-models-catalog.js';
 
+const STORAGE_KEY_DYNAMIC_TASKS = 'sprach_dynamic_ai_tasks';
+let dynamicAiTasks = [];
+
+/**
+ * Đăng ký tác vụ AI cho tính năng mới trong ứng dụng
+ */
+export function registerAppAiTask(taskDef) {
+  if (!taskDef || !taskDef.id) return null;
+  const existingIdx = dynamicAiTasks.findIndex((t) => t.id === taskDef.id);
+  const normalizedTask = {
+    id: taskDef.id,
+    name: taskDef.name || taskDef.id,
+    category: taskDef.category || 'Tính năng mới',
+    desc: taskDef.desc || 'Tác vụ AI hỗ trợ tính năng người dùng',
+    needsVision: Boolean(taskDef.needsVision),
+    defaultRecommendation: taskDef.defaultRecommendation || 'gemini-flash-latest',
+  };
+  if (existingIdx >= 0) {
+    dynamicAiTasks[existingIdx] = normalizedTask;
+  } else {
+    dynamicAiTasks.push(normalizedTask);
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_DYNAMIC_TASKS, JSON.stringify(dynamicAiTasks));
+    }
+  } catch {}
+  return normalizedTask;
+}
+
+/**
+ * Lấy toàn bộ danh sách tác vụ AI (8 tác vụ cốt lõi + các tính năng mới đăng ký)
+ */
+export function getAllAppAiTasks() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_DYNAMIC_TASKS) || '[]');
+      if (Array.isArray(saved)) {
+        for (const t of saved) {
+          if (!dynamicAiTasks.some((dt) => dt.id === t.id)) {
+            dynamicAiTasks.push(t);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  const allMap = new Map();
+  for (const t of APP_AI_TASKS) {
+    allMap.set(t.id, t);
+  }
+  for (const t of dynamicAiTasks) {
+    allMap.set(t.id, t);
+  }
+  return Array.from(allMap.values());
+}
+
 /**
  * Kiểm tra tính hợp lệ của API Key (hỗ trợ cả key lưu mã hóa trên server lẫn local)
  */
@@ -107,8 +164,9 @@ export async function autoDispatchAIWorkforce({
   const tasksSummary = [];
   // Theo dõi số lượng tác vụ đã phân bổ cho mỗi con AI để chia đều công việc
   const assignedCounts = {};
+  const allTasks = getAllAppAiTasks();
 
-  for (const task of APP_AI_TASKS) {
+  for (const task of allTasks) {
     const existingAssignment = currentAssignments[task.id] || db.aiConfig.getAssignments()?.[task.id];
     const existingPool = db.aiConfig.getTaskPool?.(task.id) || [];
     const isAlreadyStaffed = !force && existingAssignment?.model && existingPool.length > 0;
@@ -182,7 +240,7 @@ export async function autoDispatchAIWorkforce({
   if (db.aiConfig.addToTaskPool) {
     for (const cfg of configs) {
       // Tìm 2-3 tác vụ phù hợp nhất với năng lực của con AI này
-      const matchedTasks = APP_AI_TASKS
+      const matchedTasks = allTasks
         .map((t) => ({ task: t, score: scoreAIForTask(cfg, t) }))
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score)
@@ -214,6 +272,7 @@ export async function autoDispatchAIWorkforce({
  */
 
 const STORAGE_KEY_SENTINEL_ACTIONS = 'sprach_sentinel_workforce_actions';
+let memorySentinelActions = [];
 
 /**
  * Ghi nhận một hành động quản lý & thúc đẩy của Sentinel vào nhật ký ngầm
@@ -230,6 +289,8 @@ export function recordSentinelWorkforceAction(action) {
     targetTask: action.targetTask || null,
     status: action.status || 'success',
   };
+
+  memorySentinelActions = [item, ...memorySentinelActions.slice(0, 49)];
 
   try {
     if (typeof localStorage !== 'undefined') {
@@ -255,16 +316,17 @@ export function getSentinelWorkforceActions() {
   try {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY_SENTINEL_ACTIONS);
-      return stored ? JSON.parse(stored) : [];
+      return stored ? JSON.parse(stored) : memorySentinelActions;
     }
   } catch {}
-  return [];
+  return memorySentinelActions;
 }
 
 /**
  * Xóa nhật ký hành động của Sentinel
  */
 export function clearSentinelWorkforceActions() {
+  memorySentinelActions = [];
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(STORAGE_KEY_SENTINEL_ACTIONS);
@@ -300,8 +362,9 @@ export async function kickstartSentinelWorkforce({
   // -------------------------------------------------------------
   // HÀNH ĐỘNG 1: ĐỐC THÚC PHÂN CÔNG TÁC VỤ ỨNG DỤNG (DISPATCH)
   // -------------------------------------------------------------
+  const allTasks = getAllAppAiTasks();
   const currentAssignments = db.aiConfig.getAssignments?.() || aiAssignments || {};
-  const hasUnassigned = APP_AI_TASKS.some((t) => {
+  const hasUnassigned = allTasks.some((t) => {
     const assigned = currentAssignments[t.id];
     const pooled = db.aiConfig?.getTaskPool?.(t.id) || [];
     return !assigned?.model && pooled.length === 0;
@@ -377,7 +440,7 @@ export async function kickstartSentinelWorkforce({
     actionsPerformed,
     recordedLogs,
     activeAICount: cfgs.length,
-    assignedTaskCount: APP_AI_TASKS.filter((t) => {
+    assignedTaskCount: allTasks.filter((t) => {
       const asgn = db.aiConfig.getAssignments?.()?.[t.id];
       const pooled = db.aiConfig.getTaskPool?.(t.id) || [];
       return Boolean(asgn?.model || pooled.length > 0);
@@ -488,6 +551,182 @@ export async function autoFixAllFleetIssues({ db, aiConfigs = [], setAiConfigs, 
     fixedBackups: backupRes.fixedCount,
     dispatchedTasks: dispatchRes.dispatchedCount,
   };
+}
+
+/**
+ * ĐẢM BẢO TÁC VỤ CÓ AI PHÂN CÔNG (TỰ ĐỘNG BỐ TRÍ CHO TÍNH NĂNG MỚI DÙNG AI)
+ * Bất cứ khi nào một tính năng mới trong tương lai hoặc hiện tại dùng AI,
+ * nếu chưa có nhân sự AI đảm nhiệm, Elio Sentinel sẽ lập tức:
+ * 1. Đăng ký tác vụ vào danh mục (nếu chưa có).
+ * 2. Chọn ra con AI phù hợp nhất (dựa trên Vision, năng lực lý luận/tốc độ, độ ưu tiên).
+ * 3. Gán con AI đó làm nhân sự chính và bổ sung các con AI cùng nhóm vào Task Pool dự phòng.
+ * 4. Tự động kiểm tra và gán backup model cho con AI này nếu còn thiếu.
+ * 5. Ghi nhật ký Sentinel minh bạch.
+ */
+export async function ensureTaskHasAssignedAI(taskId, { db, taskMeta = {} } = {}) {
+  if (!taskId || !db?.aiConfig) return null;
+
+  const allTasks = getAllAppAiTasks();
+  let task = allTasks.find((t) => t.id === taskId);
+  if (!task) {
+    task = registerAppAiTask({
+      id: taskId,
+      name: taskMeta.name || `Tính năng AI mới [${taskId}]`,
+      desc: taskMeta.desc || 'Tác vụ AI hỗ trợ tính năng người dùng',
+      needsVision: Boolean(taskMeta.needsVision),
+      category: taskMeta.category || 'Tính năng mới',
+    });
+  }
+
+  const assignments = db.aiConfig.getAssignments?.() || {};
+  const currentAssigned = assignments[taskId];
+  const pool = db.aiConfig.getTaskPool?.(taskId) || [];
+
+  const activePool = pool.filter((c) => c && c.enabled !== false && hasValidApiKey(c));
+  if (currentAssigned?.model && activePool.length > 0) {
+    return {
+      taskId,
+      assignedAI: activePool[0],
+      pool: activePool,
+      status: 'ready',
+    };
+  }
+
+  // Tự động phân công nếu chưa có
+  const allConfigs = (db.aiConfig.getConfigs() || []).filter(
+    (c) => c.enabled !== false && hasValidApiKey(c)
+  );
+  if (allConfigs.length === 0) return null;
+
+  const scored = allConfigs
+    .map((cfg) => ({ cfg, score: scoreAIForTask(cfg, task) }))
+    .sort((a, b) => b.score - a.score);
+
+  const bestAI = (scored[0]?.score > -9999 ? scored[0].cfg : null) || allConfigs[0];
+
+  try {
+    await db.aiConfig.setAssignment(taskId, bestAI.id, bestAI.model);
+  } catch {
+    try {
+      await db.aiConfig.setAssignment(taskId, bestAI.provider, bestAI.model);
+    } catch {}
+  }
+
+  const poolCandidates = scored.slice(0, 3).map((s) => s.cfg).filter(Boolean);
+  for (const c of poolCandidates) {
+    try {
+      await db.aiConfig.addToTaskPool(taskId, c.id);
+    } catch {}
+  }
+
+  if (!bestAI.backupModel || bestAI.backupModel === bestAI.model || bestAI.backupModel.includes('2.5')) {
+    const backup = getRecommendedBackupModel(bestAI, allConfigs);
+    try {
+      await db.aiConfig.saveConfig({ ...bestAI, backupModel: backup });
+    } catch {}
+  }
+
+  recordSentinelWorkforceAction({
+    type: 'DISPATCH',
+    title: `Sentinel tự động phân công AI cho tính năng [${task.name || taskId}]`,
+    detail: `Phát hiện tính năng mới dùng AI. Sentinel đã tự động sắp xếp AI [${bestAI.name || bestAI.model}] vào đảm nhiệm chính và bổ sung ${poolCandidates.length} key dự phòng.`,
+    targetAi: bestAI.name || bestAI.model,
+    targetTask: taskId,
+  });
+
+  return {
+    taskId,
+    assignedAI: bestAI,
+    pool: poolCandidates,
+    status: 'auto-assigned',
+  };
+}
+
+/**
+ * TỰ ĐỘNG TIẾP NHẬN & SẮP XẾP KHI CÓ API KEY HOẶC AI MỚI ĐƯỢC THÊM
+ * Con Quản lý Elio Sentinel tự động điều chỉnh, gán model backup và sắp xếp ngay vào việc.
+ */
+export async function handleNewAIConfigAdded(newConfig, { db, setAiConfigs, setAiAssignments } = {}) {
+  if (!newConfig || !db?.aiConfig) return { dispatchedCount: 0 };
+
+  const allConfigs = db.aiConfig.getConfigs() || [];
+  let updatedConfig = { ...newConfig };
+
+  // 1. Tự động gán model backup nếu thiếu hoặc đang là 2.5 cũ
+  if (
+    !updatedConfig.backupModel ||
+    !updatedConfig.backupModel.trim() ||
+    updatedConfig.backupModel === updatedConfig.model ||
+    updatedConfig.backupModel.includes('2.5')
+  ) {
+    const backup = getRecommendedBackupModel(updatedConfig, allConfigs);
+    updatedConfig.backupModel = backup;
+    try {
+      await db.aiConfig.saveConfig(updatedConfig);
+    } catch {}
+  }
+
+  let dispatchedCount = 0;
+
+  // 2. Nếu config có API key hợp lệ -> Sentinel tự động phân công vào các khâu
+  if (updatedConfig.enabled !== false && hasValidApiKey(updatedConfig)) {
+    const allTasks = getAllAppAiTasks();
+    const currentAssignments = db.aiConfig.getAssignments?.() || {};
+
+    // 2.1. Quét các tác vụ chưa có AI phân công hoặc thiếu key -> ưu tiên gán ngay
+    for (const task of allTasks) {
+      const assigned = currentAssignments[task.id];
+      const pool = db.aiConfig.getTaskPool?.(task.id) || [];
+      const isUnstaffed = !assigned?.model || pool.length === 0;
+
+      if (isUnstaffed) {
+        const score = scoreAIForTask(updatedConfig, task);
+        if (score > 0) {
+          try {
+            await db.aiConfig.setAssignment(task.id, updatedConfig.id, updatedConfig.model);
+            await db.aiConfig.addToTaskPool(task.id, updatedConfig.id);
+            dispatchedCount++;
+            recordSentinelWorkforceAction({
+              type: 'DISPATCH',
+              title: `Sentinel điều phối AI [${updatedConfig.name || updatedConfig.model}] vào khâu [${task.name}]`,
+              detail: `Nhận diện API mới. Sentinel đã tự động đưa con AI này vào phụ trách chính cho tác vụ [${task.name}].`,
+              targetAi: updatedConfig.name || updatedConfig.model,
+              targetTask: task.id,
+            });
+          } catch {}
+        }
+      }
+    }
+
+    // 2.2. Nạp vào Task Pool dự phòng của các tác vụ phù hợp nhất với năng lực của con AI này
+    const matchedTasks = allTasks
+      .map((t) => ({ task: t, score: scoreAIForTask(updatedConfig, t) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    for (const m of matchedTasks) {
+      try {
+        await db.aiConfig.addToTaskPool(m.task.id, updatedConfig.id);
+      } catch {}
+    }
+
+    recordSentinelWorkforceAction({
+      type: 'DISPATCH',
+      title: `Sentinel đã nạp API [${updatedConfig.name || updatedConfig.model}] vào hệ thống`,
+      detail: `Đã kết nối thành công và tự động sắp xếp vào Task Pool cho các tác vụ: ${matchedTasks.map((m) => m.task.name).join(', ')}.`,
+      targetAi: updatedConfig.name || updatedConfig.model,
+    });
+  }
+
+  if (setAiConfigs) {
+    try { setAiConfigs(db.aiConfig.getConfigs()); } catch {}
+  }
+  if (setAiAssignments) {
+    try { setAiAssignments(db.aiConfig.getAssignments()); } catch {}
+  }
+
+  return { dispatchedCount, config: updatedConfig };
 }
 
 

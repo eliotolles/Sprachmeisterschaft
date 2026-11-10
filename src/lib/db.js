@@ -1409,6 +1409,12 @@ export const db = {
         });
       }
       saveDatabase(state);
+      try {
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('sprach_ai_config_saved', { detail: { config } }));
+          window.dispatchEvent(new CustomEvent('sprach_db_change'));
+        }
+      } catch {}
     },
     deleteConfig: (id) => {
       state.aiConfigs = (state.aiConfigs || []).filter((c) => c.id !== id);

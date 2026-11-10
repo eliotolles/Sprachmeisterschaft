@@ -13,7 +13,7 @@ import { testAiConnection, testAiTaskSpecific } from '@/lib/ai-evaluator';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
 import { ModelCatalogModal } from '@/components/admin/ModelCatalogModal';
 import { AdminReportsTab } from '@/components/admin/AdminReportsTab';
-import { autoDispatchAIWorkforce, kickstartSentinelWorkforce } from '@/lib/ai-auto-dispatcher';
+import { autoDispatchAIWorkforce, kickstartSentinelWorkforce, handleNewAIConfigAdded } from '@/lib/ai-auto-dispatcher';
 import {
   discoverProviderModels,
   verifyProviderKey,
@@ -589,18 +589,17 @@ export function AdminPage() {
       setBackupModel('');
       setCustomModelInput('');
 
-      // Tự động phân chia việc cho AI mới (như nhân viên ngồi vào là làm việc luôn)
-      const dispatchRes = await autoDispatchAIWorkforce({
+      // Sentinel tự động tiếp nhận API mới, kiểm tra backup và tự phân chia việc cho AI vào các khâu
+      const dispatchRes = await handleNewAIConfigAdded(newConfig, {
         db,
-        aiConfigs: updatedConfigs,
-        currentAssignments: db.aiConfig.getAssignments(),
+        setAiConfigs,
         setAiAssignments,
       });
 
-      if (dispatchRes.dispatchedCount > 0) {
-        toast.success(`Đã nạp AI "${newConfig.name}" và tự động giao việc vào các nhóm tác vụ phù hợp!`);
+      if (dispatchRes?.dispatchedCount > 0) {
+        toast.success(`Đã nạp AI "${newConfig.name}" và Sentinel đã tự động bố trí vào các khâu làm việc!`);
       } else {
-        toast.success(`Đã thêm cấu hình AI: ${newConfig.name}!`);
+        toast.success(`Đã thêm cấu hình AI: ${newConfig.name}! Sentinel đã nạp vào lực lượng trực chiến.`);
       }
     } catch (error) {
       toast.error(error.message);
