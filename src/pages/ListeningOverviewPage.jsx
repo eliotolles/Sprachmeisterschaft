@@ -76,12 +76,23 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const handleDeleteCollection = async (colId, colTitle) => {
     const ok = await showConfirmModal({
       title: 'Xóa bộ video',
-      message: `Bạn có chắc chắn muốn xóa bộ video "${colTitle}" cùng toàn bộ các tập con không?`,
-      confirmText: 'Xóa bộ video',
+      message: `Bạn có chắc chắn muốn xóa bộ video "${colTitle}" cùng toàn bộ các tập con không? Hành động này không thể hoàn tác.`,
+      confirmText: 'Xóa vĩnh viễn',
       variant: 'danger',
     });
     if (ok) {
-      try{await db.listening.deleteCollection(colId);toast.success(`Đã xóa bộ video: "${colTitle}"`);}catch(error){toast.error(error.message);}
+      try {
+        await db.listening.deleteCollection(colId);
+        setCollections(db.listening.getCollections());
+        // Nếu đang mở bộ này thì quay lại danh sách
+        const next = new URLSearchParams(search);
+        next.delete('listenGroup');
+        next.delete('listenLevel');
+        navigate(currentPath + (next.toString() ? '?' + next.toString() : ''));
+        toast.success(`Đã xóa bộ video: "${colTitle}"`);
+      } catch (error) {
+        toast.error('Lỗi khi xóa bộ: ' + error.message);
+      }
     }
   };
 
@@ -105,16 +116,33 @@ export function ListeningOverviewPage({ initialTab = null }) {
     return result.collection;
   }
   const addToGroup=async group=>{if(groupBusy)return;setGroupBusy(true);try{const folder=await ensureGroupFolder(group);setImportTarget(folder.id);setIsImportOpen(true);}catch(error){toast.error(error.message);}finally{setGroupBusy(false);await elioListening()?.hydrate().catch(error=>toast.error(error.message));}};
-  const handleSaveCollectionEdit = async(e) => {
-    e.preventDefault();if(!editingCollection||groupBusy)return;setGroupBusy(true);
-    try{
-     if(listeningCoreActive()){
-      const original=collections.find(c=>c.id===editingCollection.id);const folder=await ensureGroupFolder(original,original.title);
-      await elioClient.renameCollection({id:folder.id,revision:folder.revision,name:editingCollection.title});
-      await elioListening().hydrate();
-     }else db.listening.updateCollection(editingCollection.id,{...editingCollection});
-     setEditingCollection(null);toast.success('Đã đổi tên bộ nghe.');
-    }catch(error){toast.error(error.message);}finally{setGroupBusy(false);}
+  const handleSaveCollectionEdit = async (e) => {
+    e.preventDefault();
+    if (!editingCollection || groupBusy) return;
+    setGroupBusy(true);
+    try {
+      db.listening.updateCollection(editingCollection.id, { ...editingCollection });
+      if (listeningCoreActive()) {
+        try {
+          const original = collections.find((c) => c.id === editingCollection.id);
+          if (original?.organizerId && elioClient.renameCollection) {
+            await elioClient.renameCollection({
+              id: original.organizerId,
+              revision: original.revision,
+              name: editingCollection.title,
+            });
+            await elioListening()?.hydrate();
+          }
+        } catch {}
+      }
+      setCollections(db.listening.getCollections());
+      setEditingCollection(null);
+      toast.success('Đã cập nhật thông tin bộ video thành công!');
+    } catch (error) {
+      toast.error('Lỗi khi cập nhật bộ: ' + error.message);
+    } finally {
+      setGroupBusy(false);
+    }
   };
 
   return (
@@ -199,7 +227,16 @@ export function ListeningOverviewPage({ initialTab = null }) {
         )}
       </div>
 
-      {mode&&<ListeningLibraryBrowser collections={filteredCollections} mode={mode} onAdd={addToGroup} onEdit={col=>setEditingCollection({...col})} canManage={col=>isAdmin||col.created_by===currentUser?.id}/>}
+      {mode && (
+        <ListeningLibraryBrowser
+          collections={filteredCollections}
+          mode={mode}
+          onAdd={addToGroup}
+          onEdit={(col) => setEditingCollection({ ...col })}
+          onDelete={handleDeleteCollection}
+          canManage={(col) => isAdmin || col?.created_by === currentUser?.id || !col?.created_by}
+        />
+      )}
       <CreateCollectionDialog open={creatingGroup} onClose={()=>setCreatingGroup(false)} initialSkill="listening" onCreated={async folder=>{setCreatingGroup(false);setSelectedLevel('ALL');setActiveScopeTab(folder.visibility==='private'?'personal':'all');await elioListening()?.hydrate();navigate(currentPath+'?listenMode=youtube&listenGroup='+encodeURIComponent('folder-'+folder.id));toast.success('Đã tạo bộ nghe riêng. Chọn Thêm video vào bộ này.');}}/>
       {managing&&<ImportedContentManager onClose={()=>setManaging(false)}/>}
       {/* Universal Import Modal */}
