@@ -68,9 +68,29 @@ export default {
     }
 
     // 3. Fallback: Phục vụ toàn bộ tài nguyên Single Page Application từ thư mục dist
+    // Cache: tài nguyên /assets/* của Vite có tên chứa hash nội dung nên
+    // cache dài hạn an toàn (immutable, 1 năm) — lần mở sau trình duyệt
+    // không cần tải lại bundle ~3 MB. Riêng index.html và trang SPA
+    // fallback KHÔNG cache dài (no-cache) để sau mỗi lần deploy trình
+    // duyệt luôn nhận HTML mới trỏ tới bundle mới.
     let response = await env.ASSETS.fetch(request);
+    let isSpaFallback = false;
     if (response.status === 404 && !url.pathname.startsWith('/api/')) {
       response = await env.ASSETS.fetch(new URL('/index.html', request.url));
+      isSpaFallback = true;
+    }
+    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      const headers = new Headers(response.headers);
+      if (url.pathname.startsWith('/assets/')) {
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (isSpaFallback || url.pathname === '/' || url.pathname === '/index.html') {
+        headers.set('Cache-Control', 'no-cache');
+      }
+      response = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     }
     return response;
   },

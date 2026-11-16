@@ -104,19 +104,26 @@ export function LandingPage() {
           </Link>
 
           {/* Center Links (Desktop) */}
+          {/* NOTE: plain <a href="#..."> must NOT be used here — the app uses
+              hash routing (see src/lib/router.jsx), so a "#features" href would
+              be parsed as route "features" and AuthGate would bounce the visitor
+              to /login. These buttons scroll without touching location.hash. */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-mono">
-            <a href="#features" className="text-muted-foreground hover:text-accent transition-colors">
-              Hệ thống 7 Kỹ năng
-            </a>
-            <a href="#demo" className="text-muted-foreground hover:text-accent transition-colors">
-              Thử nghiệm Minigame
-            </a>
-            <a href="#levels" className="text-muted-foreground hover:text-accent transition-colors">
-              Khung CEFR
-            </a>
-            <a href="#exams" className="text-muted-foreground hover:text-accent transition-colors">
-              9 Đề thi chính thức
-            </a>
+            {[
+              ['features', 'Hệ thống 7 Kỹ năng'],
+              ['demo', 'Thử nghiệm Minigame'],
+              ['levels', 'Khung CEFR'],
+              ['exams', '9 Đề thi chính thức'],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })}
+                className="tap cursor-pointer bg-transparent border-0 p-0 text-muted-foreground hover:text-accent transition-colors"
+              >
+                {label}
+              </button>
+            ))}
           </nav>
 
           {/* Right Action buttons */}
@@ -504,6 +511,40 @@ export function LandingPage() {
                 <div className="pt-2 border-t border-border text-[10px] font-mono text-accent">
                   Mục tiêu: {lvl.vocabTarget} từ
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* EXAMS OVERVIEW SECTION (anchor target for the top nav "9 Đề thi") */}
+      <section id="exams" className="py-20 px-4 sm:px-6 border-b border-border">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="eyebrow mb-1">Khảo thí chuẩn quốc tế</div>
+            <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-foreground">
+              9 Đề thi mô phỏng chính thức
+            </h2>
+            <p className="font-heading italic text-sm text-muted-foreground mt-2 max-w-xl mx-auto">
+              Đầy đủ 4 phần Đọc, Nghe, Viết và Nói — đăng nhập để làm bài và nhận kết luận Bestanden / Chưa đạt.
+            </p>
+            <div className="rule-double max-w-xs mx-auto mt-3" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              'Goethe-Zertifikat B1 · Modelltest 1',
+              'Goethe-Zertifikat B1 · Modelltest 2',
+              'Goethe-Zertifikat B1 · Modelltest 3',
+              'telc Deutsch B1',
+              'ÖSD Zertifikat B1',
+              'Goethe-Zertifikat A1',
+              'Goethe-Zertifikat A2',
+              'Goethe-Zertifikat B2 / C1 / C2',
+              'Deutsch-Test für Zuwanderer (DTZ) B1',
+            ].map((name) => (
+              <div key={name} className="surface p-4 border border-border flex items-center gap-3">
+                <FileCheck2 className="w-5 h-5 text-accent shrink-0" />
+                <span className="font-display text-sm font-semibold text-foreground">{name}</span>
               </div>
             ))}
           </div>

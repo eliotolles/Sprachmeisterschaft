@@ -10,7 +10,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body class="min-h-screen font-body antialiased selection:bg-accent/20 selection:text-accent">
-    <div id="root"></div>
+    <!-- Inline loading fallback: shown instantly on first load, before the
+         JS bundle (3 MB) finishes downloading and React mounts. React
+         replaces this content on mount; it is never visible afterwards. -->
+    <div id="root">
+      <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#faf6ef;color:#5b2320;font-family:Georgia,serif">
+        <div style="width:56px;height:56px;border-radius:50%;border:3px solid #e5dcc8;border-top-color:#7a1f2b;animation:sprach-spin 1s linear infinite" aria-hidden="true"></div>
+        <div style="font-size:22px;font-weight:700">Sprachmeisterschaft</div>
+        <div style="font-size:14px;opacity:.75">Đang tải nền tảng học tiếng Đức…</div>
+      </div>
+      <style>@keyframes sprach-spin{to{transform:rotate(360deg)}}</style>
+    </div>
+    <noscript><div style="padding:2rem;text-align:center">Sprachmeisterschaft cần bật JavaScript để hoạt động.</div></noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
