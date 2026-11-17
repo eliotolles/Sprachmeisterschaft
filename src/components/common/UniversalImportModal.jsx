@@ -1544,7 +1544,7 @@ export function UniversalImportModal({
                             : 'Chọn video từ máy tính (.mp4, .webm, .mov, .mkv)'}
                         </span>
                         <span className="text-xs text-muted-foreground mt-1 text-center">
-                          Video lưu trong trình duyệt này (IndexedDB), không đồng bộ sang máy khác · Mỗi video tối đa 1 GB
+                          Video lưu trong trình duyệt này (IndexedDB), không đồng bộ sang máy khác · Mỗi video tối đa 2 GB
                         </span>
                         <input
                           type="file"

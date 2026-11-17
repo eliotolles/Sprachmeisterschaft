@@ -16,8 +16,8 @@ const DB_NAME = 'sprachmeisterschaft-media';
 const DB_VERSION = 1;
 const STORE_NAME = 'videos';
 
-// Giới hạn từng file video: 1 GB. Vượt quá sẽ từ chối với thông báo rõ ràng.
-export const MAX_LOCAL_VIDEO_BYTES = 1024 * 1024 * 1024;
+// Giới hạn từng file video: 2 GB. Vượt quá sẽ từ chối với thông báo rõ ràng.
+export const MAX_LOCAL_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 
 export function formatFileSize(bytes) {
   const n = Number(bytes) || 0;
