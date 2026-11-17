@@ -89,7 +89,7 @@ export function LandingPage() {
       {/* TOP NAVIGATION BAR */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/85 border-b border-border transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          {/* Brand Wordmark — mini Igli thay cho dấu sáp "S" */}
+          {/* Brand Wordmark — mini Pandi thay cho dấu sáp "S" */}
           <Link to="/landing" className="flex items-center gap-3 group">
             <div className="w-9 h-9 rounded-full bg-[#f3e2b8] dark:bg-amber-900/40 ring-1 ring-amber-700/20 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform overflow-hidden">
               <Mascot variant="mini" size={36} />
@@ -161,16 +161,16 @@ export function LandingPage() {
             <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-accent" />
 
             <div className="text-center max-w-3xl mx-auto">
-              {/* Igli — linh vật chào mừng */}
+              {/* Pandi — linh vật chào mừng */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5 mb-6">
                 <div className="animate-float shrink-0">
                   <Mascot variant="hero" size={150} />
                 </div>
                 <div className="max-w-xs rounded-2xl border border-amber-700/20 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-left shadow-sm">
                   <p className="font-heading text-sm leading-relaxed text-foreground">
-                    <span className="font-semibold text-amber-800 dark:text-amber-200">Hallo! Ich bin Igli —</span>
+                    <span className="font-semibold text-amber-800 dark:text-amber-200">Hallo! Ich bin Pandi —</span>
                     <br />
-                    chú nhím nhỏ đồng hành cùng bạn từ A1 đến C2. Học vui, nhớ lâu!
+                    chú gấu trúc đỏ đồng hành cùng bạn từ A1 đến C2. Học vui, nhớ lâu!
                   </p>
                 </div>
               </div>

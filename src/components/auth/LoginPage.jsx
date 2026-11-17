@@ -55,10 +55,10 @@ export function LoginPage() {
       <section className="relative hidden overflow-hidden bg-[#153f36] p-12 text-[#f5f3e9] lg:flex lg:flex-col xl:p-16">
         <Link to="/landing" className="relative z-10 flex items-center gap-3 text-xl font-bold"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f3e2b8] overflow-hidden"><Mascot variant="mini" size={44} /></span>Sprachmeisterschaft</Link>
         <div className="relative z-10 my-auto max-w-lg py-20">
-          {/* Igli vẫy tay chào */}
+          {/* Pandi vẫy tay chào */}
           <div className="mb-8 flex items-end gap-4">
             <div className="animate-float shrink-0"><Mascot variant="wave" size={140} /></div>
-            <div className="mb-3 rounded-2xl rounded-bl-sm border border-white/15 bg-white/10 px-4 py-3 text-sm leading-relaxed text-white/90">„Willkommen zurück! Igli nhớ bạn rồi — ôn tiếp nhé!“</div>
+            <div className="mb-3 rounded-2xl rounded-bl-sm border border-white/15 bg-white/10 px-4 py-3 text-sm leading-relaxed text-white/90">„Willkommen zurück! Pandi nhớ bạn rồi — ôn tiếp nhé!“</div>
           </div>
           <span className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-xs tracking-widest uppercase"><Sparkles size={14} /> Dein nächster Schritt</span>
           <h1 className="font-display text-5xl font-semibold leading-tight xl:text-6xl">Mỗi ngày một chút.<br /><span className="text-[#e6eea4]">Tiếng Đức tiến xa.</span></h1>
