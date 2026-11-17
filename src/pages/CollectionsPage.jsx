@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {FolderPlus,FolderOpen,ArrowRight,ArrowLeft,Plus,MoveRight} from 'lucide-react';
+import {FolderPlus,FolderOpen,ArrowRight,ArrowLeft,Plus,MoveRight,Trash2} from 'lucide-react';
+import {showConfirmModal} from '@/components/ui/ConfirmModal';
 import {toast} from 'sonner';
 import {PageHeader} from '@/components/ui/PageHeader';
 import {CreateCollectionDialog} from '@/components/common/CollectionTools';
@@ -44,10 +45,22 @@ export function CollectionsPage({skill='all',collectionId=null}){
   try{await elioClient.moveCollectionRecord({recordId:selected,collectionId});setAttaching(false);await load();toast.success('Đã chuyển tài liệu vào bộ.');window.dispatchEvent(new CustomEvent('sprach_core_imported'));}
   catch(failure){toast.error(failure.message);}finally{setBusy(false);}
  };
+ // Trước đây không có cách nào xóa bộ học (không nút, không API): tạo xong
+ // là kẹt luôn. Xóa = lưu trữ: bộ biến khỏi danh sách, tài liệu bên trong
+ // không mất mà trở về danh sách chưa sắp xếp.
+ const handleDeleteCollection=async()=>{
+  if(!collection||busy)return;
+  const ok=await showConfirmModal({title:'Xóa bộ học',message:`Bạn có chắc muốn xóa bộ "${collection.name}" không? Các tài liệu trong bộ sẽ trở về danh sách chưa sắp xếp, không bị xóa.`,confirmText:'Xóa bộ',variant:'danger'});
+  if(!ok)return;
+  setBusy(true);
+  try{await elioClient.deleteCollection({id:collectionId,revision:collection.revision});toast.success(`Đã xóa bộ "${collection.name}".`);navigate('/collections/all');}
+  catch(failure){toast.error(failure.message||'Không xóa được bộ.');}
+  finally{setBusy(false);}
+ };
  const type=collection?.skill==='all'?'vocabulary':{pronunciation:'speaking',interview:'speaking'}[collection?.skill]||collection?.skill||'vocabulary';
  return <div className="space-y-6">
   <PageHeader eyebrow="SẮP XẾP HỌC TẬP" title={collection?.name||'Các bộ học'} subtitle={collection?COLLECTION_SKILLS[collection.skill]+' · '+(collection.visibility==='public'?'Kho chung':'Cá nhân'):'Gom tài liệu theo kỹ năng, chủ đề và mục tiêu học.'} actions={<div className="flex gap-2 flex-wrap">
-   {collectionId?(collection?.canEdit&&<><button className="tap px-3 py-2 bg-card border border-border rounded-sm font-heading" onClick={()=>setImporting(true)}><Plus className="inline w-4 h-4 mr-1"/>Import vào bộ</button><button disabled={busy} className="tap px-3 py-2 bg-card border border-border rounded-sm font-heading disabled:opacity-50" onClick={openAttach}><MoveRight className="inline w-4 h-4 mr-1"/>Thêm tài liệu có sẵn</button></>):<button className="tap px-3 py-2 bg-accent text-accent-foreground rounded-sm font-heading" onClick={()=>setCreating(true)}><FolderPlus className="inline w-4 h-4 mr-1"/>Tạo bộ</button>}
+   {collectionId?(collection?.canEdit&&<><button className="tap px-3 py-2 bg-card border border-border rounded-sm font-heading" onClick={()=>setImporting(true)}><Plus className="inline w-4 h-4 mr-1"/>Import vào bộ</button><button disabled={busy} className="tap px-3 py-2 bg-card border border-border rounded-sm font-heading disabled:opacity-50" onClick={openAttach}><MoveRight className="inline w-4 h-4 mr-1"/>Thêm tài liệu có sẵn</button><button disabled={busy} className="tap px-3 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-rose-600 rounded-sm font-heading disabled:opacity-50" onClick={handleDeleteCollection}><Trash2 className="inline w-4 h-4 mr-1"/>Xóa bộ</button></>):<button className="tap px-3 py-2 bg-accent text-accent-foreground rounded-sm font-heading" onClick={()=>setCreating(true)}><FolderPlus className="inline w-4 h-4 mr-1"/>Tạo bộ</button>}
   </div>}/>
   {collectionId&&<button onClick={()=>navigate('/collections/all')} className="tap text-sm text-accent"><ArrowLeft className="inline w-4 h-4 mr-1"/>Các bộ học</button>}
   {loading&&<p className="font-body text-muted-foreground">Đang tải bộ học…</p>}

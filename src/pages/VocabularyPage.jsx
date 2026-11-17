@@ -59,7 +59,10 @@ export function VocabularyPage() {
       return de.includes(q) || vi.includes(q);
     }
     return true;
-  }),[cards,statusFilter,search]);
+  // Thẻ xếp A–Z theo tiếng Đức cho thứ tự ổn định, dễ tìm: trước đây giữ
+  // nguyên thứ tự nạp từ server (thêm lẻ thì lên đầu, thêm loạt thì xuống
+  // cuối) nên danh sách nhìn lộn xộn, không theo thứ tự nào.
+  }).sort((a, b) => String(a.german || '').localeCompare(String(b.german || ''), 'de')),[cards,statusFilter,search]);
   const {visible:visibleCards,lastItemRef}=useProgressiveItems(filteredCards,JSON.stringify([db.auth.getUser()?.id,statusFilter,search]));
 
   // Status stats

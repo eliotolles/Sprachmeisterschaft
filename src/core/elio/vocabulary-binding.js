@@ -64,7 +64,11 @@ export function createVocabularyBinding({client,legacy,isActive,notify=()=>{}}){
   });
   mutations=task;return task;
  }
- const api={create:word=>!isActive()?legacy.create(word):createWords([word]).then(rows=>rows[0]||null),createMany:words=>!isActive()?legacy.createMany(words):createWords(words),delete:id=>!isActive()?legacy.delete(id):deleteCards([id]),update:(id,updates)=>!isActive()?legacy.update(id,updates):editWord('update',id,updates),findMany:list,findById:id=>isActive()?list().find(c=>c.id===id)||null:legacy.findById(id),
+ const api={create:word=>!isActive()?legacy.create(word):createWords([word]).then(rows=>rows[0]||null),createMany:words=>!isActive()?legacy.createMany(words):createWords(words),delete:id=>!isActive()?legacy.delete(id):deleteCards([id]),
+  // Xóa nhiều từ trong MỘT lần gọi: deleteCards gom theo bộ và chỉ gọi server
+  // một lần mỗi bộ (kèm báo lỗi từng phần), thay vì xóa từng từ rồi nuốt lỗi.
+  deleteMany:async(ids)=>{if(!isActive()){(ids||[]).forEach(id=>legacy.delete(id));return true;}return deleteCards(ids);},
+  update:(id,updates)=>!isActive()?legacy.update(id,updates):editWord('update',id,updates),findMany:list,findById:id=>isActive()?list().find(c=>c.id===id)||null:legacy.findById(id),
   clearAll:()=>!isActive()?legacy.clearAll():deleteCards(null),
   deleteByTopic:topic=>!isActive()?legacy.deleteByTopic(topic):deleteCards(null,{topic}),
   deleteByLevel:level=>!isActive()?legacy.deleteByLevel(level):deleteCards(null,{level}),

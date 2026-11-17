@@ -1,13 +1,13 @@
 import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
 import {vocabularyDetails} from '@/lib/vocabulary-details';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { VocabTabs } from '@/components/vocabulary/VocabTabs';
 import { GenderText } from '@/components/ui/GenderText';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { LevelFilter } from '@/components/ui/LevelFilter';
-import { WORDS, TOPICS } from '@/data/vocabulary';
+import { WORDS } from '@/data/vocabulary';
 import { Check, BookmarkPlus, Layers, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,14 +26,44 @@ export function VocabLibraryPage() {
     return () => window.removeEventListener('sprach_db_change', handleDbChange);
   }, []);
 
-  // Quick lookup set for saved words: "article german"
+  // Thư viện lấy từ catalogue thật trên server (từ chung is_shared) cộng với
+  // dữ liệu tĩnh WORDS. Trước đây trang chỉ đọc WORDS tĩnh — mà dữ liệu mẫu
+  // đã bị xóa hết nên thư viện luôn trống 0 từ ("Lưu tất cả (0 từ)"), nút
+  // bấm chỉ để trang trí. TOPICS tĩnh cũng không khớp chủ đề thật của từ
+  // trên server nên chip chủ đề được suy ra từ chính dữ liệu đang có.
+  const catalogWords = useMemo(() => {
+    const unique = new Map();
+    for (const w of [...WORDS, ...myCards.filter((c) => c.is_shared)]) {
+      if (!w.german) continue;
+      const key = `${(w.article || '').trim()} ${(w.german || '').trim()}`.toLowerCase();
+      if (!unique.has(key)) unique.set(key, w);
+    }
+    return [...unique.values()].sort((a, b) =>
+      String(a.german || '').localeCompare(String(b.german || ''), 'de'));
+  }, [myCards]);
+
+  const topics = useMemo(() => {
+    const seen = new Set();
+    for (const w of catalogWords) {
+      const t = (w.topic || '').trim();
+      if (t) seen.add(t);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [catalogWords]);
+
+  // "Đã lưu" chỉ tính thẻ RIÊNG (bản sao cá nhân), không tính mẫu chung:
+  // trước đây mẫu chung cũng bị tính là đã lưu nên nút "Lưu vào bộ thẻ"
+  // không bao giờ hiện cho từ trong catalogue.
   const savedKeys = new Set(
-    myCards.map((c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase())
+    myCards.filter((c) => !c.is_shared).map((c) => `${(c.article || '').trim()} ${(c.german || '').trim()}`.toLowerCase())
   );
 
-  // Filter 950 library words
-  const filteredWords = WORDS.filter((w) => {
-    if (selectedLevel !== 'ALL' && w.level !== selectedLevel) return false;
+  // Filter catalog words
+  const filteredWords = catalogWords.filter((w) => {
+    if (selectedLevel !== 'ALL') {
+      const levels = String(w.level || '').toUpperCase().match(/\b[A-C][12]\b/g) || [];
+      if (!levels.includes(selectedLevel)) return false;
+    }
     if (selectedTopic !== 'all' && w.topic !== selectedTopic) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -136,17 +166,17 @@ export function VocabLibraryPage() {
         >
           Tất cả chủ đề
         </button>
-        {TOPICS.map((t) => (
+        {topics.map((t) => (
           <button
-            key={t.id}
-            onClick={() => setSelectedTopic(t.id)}
+            key={t}
+            onClick={() => setSelectedTopic(t)}
             className={`tap px-3 py-1 rounded-sm border text-xs font-mono whitespace-nowrap ${
-              selectedTopic === t.id
+              selectedTopic === t
                 ? 'bg-accent text-accent-foreground border-accent font-semibold'
                 : 'bg-card border-border text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t.vi}
+            {t}
           </button>
         ))}
       </div>

@@ -92,3 +92,20 @@ test('new words added while studying a collection stay in that collection',async
 });
 
 test('collection names can be changed only by the owner or public-content admin with a matching revision',async()=>{const {renameCollection}=await import('../src/core/elio/collections.js');const {db,env}=fixture();try{const folder=(await createCollection(env,bob,{name:'My listening',skill:'listening',visibility:'private',requestId:'rename-one'})).collection;const renamed=await renameCollection(env,bob,{id:folder.id,revision:folder.revision,name:'New listening name'});assert.equal(renamed.collection.name,'New listening name');assert.equal(renamed.collection.id,folder.id);await assert.rejects(renameCollection(env,alice,{id:folder.id,revision:renamed.collection.revision,name:'No access'}),e=>e.status===403);await assert.rejects(renameCollection(env,bob,{id:folder.id,revision:folder.revision,name:'Stale'}),e=>e.status===409);}finally{db.close();}});
+
+test('collections can be deleted (archived) by the owner or public-content admin, with revision check',async()=>{
+ const {archiveCollection}=await import('../src/core/elio/collections.js');const {db,env}=fixture();try{
+  const folder=(await createCollection(env,bob,{name:'Xóa tôi',skill:'vocabulary',visibility:'private',requestId:'archive-one'})).collection;
+  // Stale revision must not delete.
+  await assert.rejects(archiveCollection(env,bob,{id:folder.id,revision:'stale'}),e=>e.status===409);
+  assert.equal((await listCollections(env,bob)).items.length,1);
+  // Non-owner cannot delete a private collection.
+  await assert.rejects(archiveCollection(env,alice,{id:folder.id,revision:folder.revision}),e=>e.status===403);
+  const archived=await archiveCollection(env,bob,{id:folder.id,revision:folder.revision});
+  assert.equal(archived.collection.archived,true);
+  assert.equal((await listCollections(env,bob)).items.length,0);
+  await assert.rejects(readCollection(env,bob,folder.id),e=>e.status===403);
+  // Archiving twice fails (already gone).
+  await assert.rejects(archiveCollection(env,bob,{id:folder.id,revision:archived.collection.revision}),e=>e.status===403);
+ }finally{db.close();}
+});

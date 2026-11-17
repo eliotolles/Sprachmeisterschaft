@@ -1,6 +1,5 @@
 import {vocabularyDetails} from '@/lib/vocabulary-details';
 import {WordDetailsTrigger} from '@/components/vocabulary/WordDetail';
-import {activeCollectionId} from '@/lib/collection-types';
 import {useProgressiveItems} from '@/hooks/useProgressiveItems';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/db';
@@ -56,12 +55,17 @@ export function VocabLevelsPage() {
 
   const readDecks = () => {
     const rawDecks = db.vocabulary.isCore?.()
-      ? buildLevelDecks(db.vocabulary.findMany(), { includePrivate: !!activeCollectionId(), excludeSpecialties: true })
+      // Bộ riêng cũng phải hiện ở đây (trang quản lý bộ của chính mình);
+      // trước đây chỉ hiện khi đang mở trong một bộ sưu tập (?collection=),
+      // nên bộ riêng import vào gần như "tàng hình", không xóa được.
+      ? buildLevelDecks(db.vocabulary.findMany(), { includePrivate: true, excludeSpecialties: true })
       : LEVEL_DECKS;
     const deleted = getDeletedDeckIds();
     const titleOverrides = getDeckTitleOverrides();
+    // Chỉ khớp theo ID bộ: khớp theo tên (title) sẽ giấu nhầm cả những bộ
+    // khác cùng tên chủ đề, và giấu luôn bộ mới import sau này cùng tên.
     return rawDecks
-      .filter((d) => !deleted.includes(d.id) && !deleted.includes(d.title))
+      .filter((d) => !deleted.includes(d.id))
       .map((d) => (titleOverrides[d.id] ? { ...d, title: titleOverrides[d.id] } : d));
   };
   const [decks,setDecks]=useState(readDecks);
@@ -106,21 +110,19 @@ export function VocabLevelsPage() {
     });
     if (ok) {
       try {
+        const ids = (deck.words || []).map((w) => w.id).filter(Boolean);
+        // Xóa cả bộ trong MỘT lần gọi (gom theo bộ ở tầng binding): trước đây
+        // xóa từng từ một, lỗi từng từ bị nuốt im lặng (catch {}) rồi vẫn báo
+        // "Đã xóa thành công" dù từ vẫn còn nguyên trên server.
+        if (ids.length) await db.vocabulary.deleteMany(ids);
+        // Chỉ ghi bộ vào danh sách đã xóa KHI server đã xác nhận xóa xong.
         const deleted = getDeletedDeckIds();
         if (!deleted.includes(deck.id)) deleted.push(deck.id);
-        if (deck.title && !deleted.includes(deck.title)) deleted.push(deck.title);
         localStorage.setItem('sprach_deleted_vocab_decks', JSON.stringify(deleted));
-
-        const words = deck.words || [];
-        for (const w of words) {
-          if (w.id) {
-            try { await db.vocabulary.delete(w.id); } catch {}
-          }
-        }
         window.dispatchEvent(new CustomEvent('sprach_db_change'));
         toast.success(`Đã xóa bộ từ "${deck.title}" thành công!`);
       } catch (err) {
-        toast.error('Lỗi khi xóa bộ từ: ' + err.message);
+        toast.error('Không xóa được bộ từ: ' + (err?.message || err?.code || 'lỗi không rõ') + ' — bộ từ vẫn còn nguyên, hãy thử lại.');
       }
     }
   };
@@ -135,13 +137,19 @@ export function VocabLevelsPage() {
       localStorage.setItem('sprach_vocab_deck_title_overrides', JSON.stringify(overrides));
 
       const words = deck.words || [];
+      let failed = 0;
       for (const w of words) {
         if (w.id) {
-          try { await db.vocabulary.update(w.id, { topic: cleanTitle }); } catch {}
+          // Trước đây lỗi từng từ bị nuốt im lặng rồi vẫn báo đổi tên xong.
+          try { await db.vocabulary.update(w.id, { topic: cleanTitle }); } catch { failed++; }
         }
       }
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
-      toast.success(`Đã đổi tên bộ từ thành "${cleanTitle}"!`);
+      if (failed > 0) {
+        toast.warning(`Đã đổi tên bộ từ thành "${cleanTitle}" nhưng ${failed}/${words.length} từ chưa đổi được chủ đề; hãy tải lại trang và thử lại nếu tên cũ hiện lại.`);
+      } else {
+        toast.success(`Đã đổi tên bộ từ thành "${cleanTitle}"!`);
+      }
     } catch (err) {
       toast.error('Lỗi khi đổi tên: ' + err.message);
     }

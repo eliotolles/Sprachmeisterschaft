@@ -537,6 +537,13 @@ export const db = {
       return true;
     },
 
+    // Xóa nhiều từ trong một lần gọi (dùng khi xóa cả bộ): để các trang gọi
+    // một API thống nhất dù đang ở chế độ local hay server.
+    deleteMany: (ids) => {
+      for (const id of ids || []) db.vocabulary.delete(id);
+      return true;
+    },
+
     deleteByTopic: (topic) => {
       const curUser = db.auth.getUser();
       const currentUserId = curUser?.id;

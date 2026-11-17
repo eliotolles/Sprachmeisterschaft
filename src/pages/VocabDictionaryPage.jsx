@@ -33,7 +33,9 @@ export function VocabDictionaryPage() {
       w.german.toLowerCase().includes(q) ||
       (w.vietnamese||'').toLowerCase().includes(q)
     );
-  });
+  // Từ điển phải xếp A–Z theo tiếng Đức; trước đây giữ nguyên thứ tự nạp
+  // nên các từ hiện lộn xộn, không theo thứ tự nào.
+  }).sort((a, b) => String(a.german || '').localeCompare(String(b.german || ''), 'de'));
 
   const pageCount=Math.max(1,Math.ceil(results.length/100)),currentPage=Math.min(page,pageCount);
   const handleSave = async (w) => {

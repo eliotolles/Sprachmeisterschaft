@@ -64,3 +64,14 @@ export async function renameCollection(env,user,input){
  const result=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[value,PREFIX+input.id,raw]);if(!result.rows.length)throw coreError(409,'COLLECTION_CONFLICT','Bộ vừa thay đổi; chưa ghi đè.');
  return {collection:{...data,canEdit:true,revision:await digest(value)}};
 }
+
+// Xóa bộ học = lưu trữ (archive): bộ biến khỏi danh sách, tài liệu bên trong
+// không bị xóa mà trở về danh sách chưa sắp xếp. Trước đây không hề có API
+// hay nút nào để xóa bộ — tạo bộ xong là kẹt luôn, không xóa được.
+export async function archiveCollection(env,user,input){
+ if(!input||typeof input.id!=='string'||!input.id||typeof input.revision!=='string')throw invalid();
+ const current=await readCollection(env,user,input.id,{write:true});if(input.revision!==current.revision)throw coreError(409,'COLLECTION_CONFLICT','Bộ vừa thay đổi; tải lại trước khi sửa.');
+ const {raw,revision,...data}=current;data.archived=true;data.archivedAt=new Date().toISOString();const value=JSON.stringify(data);
+ const result=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[value,PREFIX+input.id,raw]);if(!result.rows.length)throw coreError(409,'COLLECTION_CONFLICT','Bộ vừa thay đổi; chưa ghi đè.');
+ return {collection:{...data,canEdit:true,revision:await digest(value)}};
+}
