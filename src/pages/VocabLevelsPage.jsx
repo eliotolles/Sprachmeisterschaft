@@ -30,7 +30,7 @@ import { toast } from 'sonner';
 
 export function VocabLevelsPage() {
   const { navigate } = useRouter();
-  const [selectedLevel, setSelectedLevel] = useState('ALL');
+  const [selectedLevel, setSelectedLevel] = useState('A1');
   const [expandedDeckId, setExpandedDeckId] = useState('deck-a1-family');
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -71,9 +71,8 @@ export function VocabLevelsPage() {
   const [decks,setDecks]=useState(readDecks);
   useEffect(()=>{const refresh=()=>setDecks(readDecks());refresh();window.addEventListener('sprach_db_change',refresh);window.addEventListener('sprach_auth_change',refresh);return()=>{window.removeEventListener('sprach_db_change',refresh);window.removeEventListener('sprach_auth_change',refresh);};},[]);
 
-  // Filter decks
-  const filteredDecks = decks.filter(deck=>selectedLevel==='ALL'||(deck.levels||[deck.level]).includes(selectedLevel)).map(deck=>{
-    if(selectedLevel==='ALL')return {...deck,totalCardsCount:deck.cardsCount};
+  // Filter decks: chỉ lọc theo từng cấp độ (A1..C2), không còn "Tất cả".
+  const filteredDecks = decks.filter(deck=>(deck.levels||[deck.level]).includes(selectedLevel)).map(deck=>{
     const words=deck.words.filter(word=>String(word.level||deck.level).toUpperCase().match(/\b[A-C][12]\b/g)?.includes(selectedLevel));
     return {...deck,words,cardsCount:words.length,totalCardsCount:deck.cardsCount};
   });
@@ -178,16 +177,6 @@ export function VocabLevelsPage() {
 
       {/* Level Filter Chips */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        <button
-          onClick={() => setSelectedLevel('ALL')}
-          className={`tap px-3 py-1.5 rounded-sm font-mono text-xs transition-all ${
-            selectedLevel === 'ALL'
-              ? 'bg-accent text-accent-foreground font-bold shadow-sm'
-              : 'border border-border bg-card hover:bg-muted text-muted-foreground'
-          }`}
-        >
-          Tất cả cấp độ
-        </button>
         {LEVEL_IDS.map((lvl) => (
           <button
             key={lvl}
