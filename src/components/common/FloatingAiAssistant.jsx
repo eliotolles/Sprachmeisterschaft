@@ -318,7 +318,11 @@ Bất cứ lúc nào bạn gặp từ vựng khó, ngữ pháp chưa hiểu, c�
               className="relative w-14 h-14 rounded-full bg-gradient-to-tr from-accent via-accent/90 to-amber-600 text-accent-foreground shadow-2xl flex items-center justify-center border-2 border-white/25 hover:scale-105 active:scale-95 transition-all duration-300 tap"
               title="Hỏi Trợ lý ảo ELIO 24/7 (Bấm vào để hỏi đáp tức thì)"
             >
-              <Bot className="w-7 h-7 text-white drop-shadow-md animate-bounce-subtle" />
+              <img
+                src="/mascot/red-panda-mini.png"
+                alt="Pandi — linh vật gấu trúc đỏ"
+                className="w-12 h-12 rounded-full object-cover drop-shadow-md"
+              />
               <Sparkles className="w-3.5 h-3.5 text-amber-200 absolute top-2 right-2 animate-spin-slow" />
 
               {/* Huy hiệu 24/7 Trực tuyến */}

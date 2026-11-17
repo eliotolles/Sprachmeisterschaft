@@ -5,6 +5,13 @@ test('listening sources group first, preserve level children and never merge an 
  const collections=[{id:'a1',title:'Nicos Weg A1',scope:'public',level:'A1'},{id:'a2',title:'Nicos Weg A2',scope:'public',level:'A2'},{id:'mine',title:'Nicos Weg riêng',organizerId:'own',scope:'private',created_by:'u'},{id:'pod',title:'Postcard',scope:'public'}];
  const groups=listeningNavigationGroups(collections,id=>id==='mine'?[]:[{id,level:id==='a2'?'A2':'A1'}]);assert.equal(groups.length,3);const nico=groups.find(g=>g.title==='Nicos Weg');assert.deepEqual(nico.episodes.map(e=>e.level),['A1','A2']);assert.equal(nico.episodes[1].collectionId,'a2');assert.equal(groups.find(g=>g.id==='mine').episodes.length,0);assert.equal(listeningModeMatches(groups.find(g=>g.title==='Podcast'),'youtube'),false);
 });
+test('same-titled sets stay separate by scope so a private upload never leaks into the shared tab',()=>{
+ const collections=[{id:'shared-1',title:'Video máy tính',scope:'public',level:'B1'},{id:'mine-1',title:'Video máy tính',scope:'private',level:'B1',created_by:'u'}];
+ const groups=listeningNavigationGroups(collections,id=>id==='shared-1'?[{id:'ep-shared',level:'B1'}]:[{id:'ep-mine',level:'B1'}]);
+ assert.equal(groups.length,2);
+ assert.deepEqual(groups.find(g=>g.id==='shared-1').episodes.map(e=>e.id),['ep-shared']);
+ assert.deepEqual(groups.find(g=>g.id==='mine-1').episodes.map(e=>e.id),['ep-mine']);
+});
 test('all ten games have usable source-backed rounds; personal mode never silently adds foundation content',()=>{
  assert.equal(GAME_TYPES.length,10);for(const [type]of GAME_TYPES){const deck=buildGameDeck(type,gameWords(STARTER_WORDS));assert(deck.length>0,type);for(const q of deck){assert(q.answer);if(q.options)assert(q.options.includes(q.answer));}}
  for(const type of ['participle','auxiliary','structure','order'])assert.deepEqual(buildGameDeck(type,[],{personal:true}),[]);

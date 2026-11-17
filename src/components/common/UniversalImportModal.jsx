@@ -140,6 +140,8 @@ export function UniversalImportModal({
   // Video tự tải lên từ máy tính (lưu Blob trong IndexedDB, chỉ metadata vào localStorage)
   // Mỗi mục: { key, file, title, size, mimeType, subtitleFile, subtitleName, cues }
   const [localFiles, setLocalFiles] = useState([]);
+  // Nơi lưu của lần import gần nhất (tên bộ + phạm vi) để hiện ở màn hình thành công
+  const [savedDestination, setSavedDestination] = useState('');
 
   const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'm4v', 'avi'];
   const isVideoFile = (file) => {
@@ -214,10 +216,19 @@ export function UniversalImportModal({
       setVocabItems([]);
       setYoutubeCues([]);
       setLocalFiles([]);
+      setSavedDestination('');
       setExamTasks([]);
       setWarningText('');
       setProgressText('');
       setTitle('');
+
+      // Đồng bộ lại phạm vi + cấp độ theo tab đang mở MỖI LẦN mở modal.
+      // initialScope đổi theo tab Kho chung (public) / Cá nhân (private), nhưng
+      // state scope chỉ khởi tạo 1 lần lúc mount — không reset ở đây thì lần up
+      // sau vẫn dùng scope cũ của lần trước (up nhầm Cá nhân rồi up lại Kho
+      // chung vẫn bị lưu Cá nhân, reload vẫn không thấy).
+      setScope(initialScope || (isAdmin ? 'public' : 'private'));
+      setLevel('B1');
 
       if (['situation', 'situations'].includes(defaultType)) {
         setVocabTargetSection('situations');
@@ -256,7 +267,7 @@ export function UniversalImportModal({
         setTargetCollectionId('');
       }
     }
-  }, [isOpen, defaultType, defaultCollectionId]);
+  }, [isOpen, defaultType, defaultCollectionId, initialScope]);
 
   // Khóa cuộn trang nền khi mở popup độc lập
   useEffect(() => {
@@ -476,7 +487,9 @@ export function UniversalImportModal({
             prepared.push({ ...item, cues });
           }
           setLocalFiles(prepared);
-          if (!title.trim()) setTitle(`Video máy tính (${prepared.length} video)`);
+          // Tên bộ mặc định có ngày để không trùng tên với bộ đã xóa trước đó
+          // (bộ đã xóa bị lọc theo tên) và không lẫn với các lần up trước.
+          if (!title.trim()) setTitle(`Video máy tính ${new Date().toLocaleDateString('vi-VN')} (${prepared.length} video)`);
           setStep(2);
         } else if (listeningLinkType === 'playlist') {
           setProgressText('Đang kết nối Cloudflare Edge và bóc tách Playlist YouTube...');
@@ -820,7 +833,8 @@ export function UniversalImportModal({
             throw err;
           }
 
-          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" thành công!`);
+          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" (${col.scope === 'public' ? 'Kho chung' : 'Cá nhân'}) thành công!`);
+          setSavedDestination(`Đã lưu vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'}`);
         } else if (listeningLinkType === 'playlist') {
           const selectedVideos = playlistVideos.filter(v => v.selected !== false);
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
@@ -1702,8 +1716,12 @@ export function UniversalImportModal({
           {/* ======================================================== */}
           {step === 2 && (
             <div className="space-y-5">
-              <div className="p-3 bg-muted/40 border border-border rounded-lg flex items-center justify-between text-xs font-mono">
-                <span>Chủ đề: <strong>{title}</strong> · Cấp độ: <strong>{level}</strong></span>
+              <div className="p-3 bg-muted/40 border border-border rounded-lg flex items-center justify-between gap-3 text-xs font-mono flex-wrap">
+                <span>Chủ đề: <strong>{title}</strong> · Cấp độ: <strong>{level}</strong>
+                  {activeModule === 'listening' && (
+                    <> · Lưu vào bộ: <strong>{(listeningCollections.find(c => c.id === targetCollectionId)?.title) || title || 'Bộ nghe mới'}</strong> (<strong>{scope === 'public' ? 'Kho chung' : 'Cá nhân'}</strong>)</>
+                  )}
+                </span>
                 <span className="text-accent font-bold">Bước 2: Kiểm tra trước khi lưu</span>
               </div>
 
@@ -1896,6 +1914,11 @@ export function UniversalImportModal({
               <h3 className="font-heading text-lg font-bold text-foreground">
                 Import Thành Công!
               </h3>
+              {activeModule === 'listening' && savedDestination && (
+                <p className="text-xs text-foreground font-mono max-w-md mx-auto px-3 py-2 rounded-lg bg-accent/10 border border-accent/30">
+                  {savedDestination} — mở lại đúng tab trên để xem video.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground font-mono max-w-md mx-auto">
                 Tài liệu đã được lưu trực tiếp vào bộ nhớ học tập của bạn. Các phòng kỹ năng đã được cập nhật dữ liệu mới nhất.
               </p>

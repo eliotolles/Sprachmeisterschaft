@@ -1,5 +1,4 @@
 import {ListeningLibraryBrowser} from '@/components/skills/ListeningLibraryBrowser';
-import {digest} from '@/core/elio/passwords';
 import {CreateCollectionDialog} from '@/components/common/CollectionTools';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import {ImportedContentManager} from '@/components/common/ImportedContentManager';
@@ -109,13 +108,15 @@ export function ListeningOverviewPage({ initialTab = null }) {
     }
   };
 
-  async function ensureGroupFolder(group,name=group.title){
-    if(group.organizerId)return {id:group.organizerId,revision:group.revision};
-    const result=await elioClient.createCollection({name,skill:'listening',visibility:group.scope==='private'?'private':'public',requestId:'listening-group-'+await digest(group.id)});
-    for(const recordId of group.recordIds||[])await elioClient.moveCollectionRecord({recordId,collectionId:result.collection.id});
-    return result.collection;
-  }
-  const addToGroup=async group=>{if(groupBusy)return;setGroupBusy(true);try{const folder=await ensureGroupFolder(group);setImportTarget(folder.id);setIsImportOpen(true);}catch(error){toast.error(error.message);}finally{setGroupBusy(false);await elioListening()?.hydrate().catch(error=>toast.error(error.message));}};
+  const addToGroup = (collection) => {
+    // Dùng đúng id của bộ đang xem để modal tìm thấy bộ đích và thêm video vào đó.
+    // (Trước đây hàm này gọi ensureGroupFolder tạo thư mục server mới rồi trả về
+    // id thư mục server — modal không tìm thấy id đó trong kho nên toàn tạo bộ
+    // mới "Video máy tính" thay vì thêm vào bộ đang mở, và mỗi lần bấm lại
+    // sinh thêm một thư mục trống trên server.)
+    setImportTarget(collection?.id || null);
+    setIsImportOpen(true);
+  };
   const handleSaveCollectionEdit = async (e) => {
     e.preventDefault();
     if (!editingCollection || groupBusy) return;
