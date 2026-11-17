@@ -8,6 +8,7 @@ import { buildLevelDecks } from '@/lib/level-deck-adapter';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
 import { batchTranslateCues } from '@/lib/translator';
+import { saveLocalMedia, deleteLocalMedia, checkLocalVideoSize, formatFileSize } from '@/lib/local-media-store';
 import {
   detectFileType,
   parseExcelFile,
@@ -39,7 +40,36 @@ import {
   Layers,
   ArrowRight,
   RotateCcw,
+  Film,
 } from 'lucide-react';
+
+// Chuẩn hóa phụ đề SRT/VTT trước khi đưa vào parseYouTubeSubtitles:
+// - bỏ dòng đầu WEBVTT và khối NOTE của VTT
+// - đổi timestamp dạng MM:SS.mmm (hay gặp trong VTT) sang HH:MM:SS,mmm
+function normalizeSubtitleText(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let skipNote = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (/^WEBVTT/i.test(t)) continue;
+    if (/^NOTE(\s|$)/i.test(t)) {
+      skipNote = true;
+      continue;
+    }
+    if (skipNote) {
+      if (!t) skipNote = false;
+      continue;
+    }
+    out.push(line);
+  }
+  return out
+    .join('\n')
+    .replace(
+      /^(\d{2}):(\d{2})([.,]\d+)\s*-->\s*(\d{2}):(\d{2})([.,]\d+)\s*$/gm,
+      '00:$1:$2,000 --> 00:$4:$5,000'
+    );
+}
 
 const MODULES = [
   { id: 'vocabulary', label: 'Từ vựng', icon: BookOpen, desc: 'Excel, CSV, TXT, TSV, JSON, PDF' },
@@ -100,12 +130,71 @@ export function UniversalImportModal({
   const [targetCollectionId, setTargetCollectionId] = useState(defaultCollectionId || '');
   const [listeningMode, setListeningMode] = useState('youtube'); // 'youtube' | 'quiz' | 'podcast' | 'dictation' | 'shadowing'
   const [listeningCollections, setListeningCollections] = useState([]);
-  const [listeningLinkType, setListeningLinkType] = useState('video'); // 'video' | 'playlist'
+  const [listeningLinkType, setListeningLinkType] = useState('video'); // 'video' | 'playlist' | 'local'
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [playlistVideos, setPlaylistVideos] = useState([]);
   const [playlistManualList, setPlaylistManualList] = useState('');
   const [youtubeCues, setYoutubeCues] = useState([]);
   const [customSubtitles, setCustomSubtitles] = useState('');
+
+  // Video tự tải lên từ máy tính (lưu Blob trong IndexedDB, chỉ metadata vào localStorage)
+  // Mỗi mục: { key, file, title, size, mimeType, subtitleFile, subtitleName, cues }
+  const [localFiles, setLocalFiles] = useState([]);
+
+  const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'm4v', 'avi'];
+  const isVideoFile = (file) => {
+    if (!file) return false;
+    if (file.type && file.type.startsWith('video/')) return true;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    return VIDEO_EXTENSIONS.includes(ext);
+  };
+  const handleLocalVideoFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const accepted = [];
+    const rejected = [];
+    for (const f of files) {
+      if (!isVideoFile(f)) {
+        rejected.push(f.name);
+        continue;
+      }
+      try {
+        checkLocalVideoSize(f.size, f.name);
+        accepted.push(f);
+      } catch (err) {
+        rejected.push(err.message);
+      }
+    }
+    if (rejected.length) {
+      toast.error(`Không nhận ${rejected.length} file: ${rejected.slice(0, 3).join(' · ')}${rejected.length > 3 ? '…' : ''}`);
+    }
+    if (!accepted.length) return;
+    setLocalFiles((prev) => [
+      ...prev,
+      ...accepted.map((file) => ({
+        key: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        title: file.name.replace(/\.[^.]+$/, ''),
+        size: file.size,
+        mimeType: file.type || '',
+        subtitleFile: null,
+        subtitleName: '',
+        cues: [],
+      })),
+    ]);
+  };
+  const updateLocalFile = (key, patch) =>
+    setLocalFiles((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  const removeLocalFile = (key) => setLocalFiles((prev) => prev.filter((item) => item.key !== key));
+  const handleLocalSubtitleFile = (key, file) => {
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!['srt', 'vtt'].includes(ext)) {
+      toast.error('File phụ đề phải là .srt hoặc .vtt.');
+      return;
+    }
+    updateLocalFile(key, { subtitleFile: file, subtitleName: file.name });
+  };
 
   // Module 5: Kỹ năng khác
   const [readingText, setReadingText] = useState('');
@@ -124,6 +213,7 @@ export function UniversalImportModal({
       setSelectedFile(null);
       setVocabItems([]);
       setYoutubeCues([]);
+      setLocalFiles([]);
       setExamTasks([]);
       setWarningText('');
       setProgressText('');
@@ -347,7 +437,48 @@ export function UniversalImportModal({
 
       // 4. MODULE LUYỆN NGHE (YouTube)
       else if (activeModule === 'listening') {
-        if (listeningLinkType === 'playlist') {
+        if (listeningLinkType === 'local') {
+          // Video tự tải lên từ máy tính: chỉ đọc phụ đề kèm theo (nếu có),
+          // file video gốc được giữ nguyên trong bộ nhớ để lưu vào IndexedDB ở bước xác nhận.
+          if (!localFiles.length) {
+            throw new Error('Vui lòng chọn ít nhất 1 file video từ máy tính của bạn.');
+          }
+          const prepared = [];
+          for (const item of localFiles) {
+            let cues = [];
+            if (item.subtitleFile) {
+              try {
+                setProgressText(`Đang đọc phụ đề cho "${item.title}"...`);
+                const rawText = await item.subtitleFile.text();
+                cues = parseYouTubeSubtitles(normalizeSubtitleText(rawText));
+                if (cues.length) {
+                  // Tự động dịch sang tiếng Việt như luồng YouTube
+                  try {
+                    setProgressText(`Đang dịch phụ đề cho "${item.title}" sang tiếng Việt...`);
+                    cues = await batchTranslateCues(
+                      cues.map((c, idx) => ({ _id: `cue-${idx}`, start: c.start, end: c.end, de: c.de, vi: '' }))
+                    );
+                  } catch (e) {
+                    console.warn('Lỗi dịch phụ đề video máy tính:', e);
+                  }
+                } else {
+                  setWarningText(
+                    `Không đọc được câu thoại nào từ file phụ đề "${item.subtitleName}". Video vẫn lưu được, bạn có thể bổ sung phụ đề sau.`
+                  );
+                }
+              } catch (e) {
+                console.warn('Không đọc được file phụ đề:', e);
+                setWarningText(
+                  `Không đọc được file phụ đề "${item.subtitleName}". Video vẫn lưu được, bạn có thể bổ sung phụ đề sau.`
+                );
+              }
+            }
+            prepared.push({ ...item, cues });
+          }
+          setLocalFiles(prepared);
+          if (!title.trim()) setTitle(`Video máy tính (${prepared.length} video)`);
+          setStep(2);
+        } else if (listeningLinkType === 'playlist') {
           setProgressText('Đang kết nối Cloudflare Edge và bóc tách Playlist YouTube...');
           const listMatch = (youtubeUrl || '').match(/[?&]list=([^#&?]+)/);
           const playlistId = listMatch ? listMatch[1] : null;
@@ -645,7 +776,7 @@ export function UniversalImportModal({
           col = db.listening.createCollection({
             title: colTitle,
             deTitle: colTitle,
-            provider: listeningMode === 'podcast' ? 'Podcast' : (listeningLinkType === 'playlist' ? 'YouTube Playlist' : (scope === 'private' ? 'Video của tôi' : 'Cộng đồng')),
+            provider: listeningMode === 'podcast' ? 'Podcast' : (listeningLinkType === 'playlist' ? 'YouTube Playlist' : (listeningLinkType === 'local' ? 'Video của tôi' : (scope === 'private' ? 'Video của tôi' : 'Cộng đồng'))),
             category: listeningMode,
             level,
             scope,
@@ -654,7 +785,43 @@ export function UniversalImportModal({
           });
         }
 
-        if (listeningLinkType === 'playlist') {
+        if (listeningLinkType === 'local') {
+          // Video máy tính: lưu từng Blob vào IndexedDB rồi mới tạo tập video
+          if (!localFiles.length) throw new Error('Chưa chọn video nào từ máy tính.');
+          const savedIds = [];
+          try {
+            for (let i = 0; i < localFiles.length; i++) {
+              const item = localFiles[i];
+              const episodeTitle = (item.title || '').trim() || item.file.name.replace(/\.[^.]+$/, '');
+              setProgressText(`Đang lưu video ${i + 1}/${localFiles.length}: ${episodeTitle}...`);
+              const localMediaId = `lm_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+              await saveLocalMedia({ id: localMediaId, blob: item.file, name: item.file.name, type: item.mimeType });
+              savedIds.push(localMediaId);
+              db.listening.createEpisode({
+                collectionId: col.id,
+                title: episodeTitle,
+                deTitle: episodeTitle,
+                level,
+                scope,
+                category: listeningMode,
+                provider: 'Video của tôi',
+                localMediaId,
+                fileName: item.file.name,
+                fileSize: item.size,
+                mimeType: item.mimeType,
+                subtitles: item.cues || [],
+              });
+            }
+          } catch (err) {
+            // Lưu lỗi giữa chừng: dọn các Blob đã lưu trong đợt này để khỏi rác
+            for (const id of savedIds) {
+              try { await deleteLocalMedia(id); } catch {}
+            }
+            throw err;
+          }
+
+          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" thành công!`);
+        } else if (listeningLinkType === 'playlist') {
           const selectedVideos = playlistVideos.filter(v => v.selected !== false);
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
 
@@ -1259,7 +1426,7 @@ export function UniversalImportModal({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
                       <Headphones className="w-4 h-4 text-accent" />
-                      <span>Nhập Video hoặc Playlist YouTube</span>
+                      <span>Nhập Video luyện nghe (YouTube / Video máy tính)</span>
                     </h3>
 
                     {/* Switch Video vs Playlist */}
@@ -1285,6 +1452,17 @@ export function UniversalImportModal({
                         }`}
                       >
                         Playlist YouTube
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setListeningLinkType('local')}
+                        className={`px-3 py-1 rounded-md transition-all ${
+                          listeningLinkType === 'local'
+                            ? 'bg-accent text-accent-foreground font-bold shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        💻 Video máy tính
                       </button>
                     </div>
                   </div>
@@ -1320,7 +1498,7 @@ export function UniversalImportModal({
                         />
                       </details>
                     </div>
-                  ) : (
+                  ) : listeningLinkType === 'playlist' ? (
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <label className="text-xs font-mono font-medium text-muted-foreground flex items-center justify-between">
@@ -1354,6 +1532,80 @@ export function UniversalImportModal({
                       <p className="text-[11px] font-mono text-muted-foreground">
                         Hệ thống sẽ nạp toàn bộ danh sách tập vào một Bộ nghe mới. Phụ đề tiếng Đức & tiếng Việt sẽ được lấy tự động khi mở video.
                       </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Chọn nhiều file video từ máy tính */}
+                      <label className="border-2 border-dashed border-border hover:border-accent/60 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer bg-card/30 hover:bg-card transition-all">
+                        <Film className="w-8 h-8 text-muted-foreground mb-2" />
+                        <span className="text-sm font-medium text-foreground text-center">
+                          {localFiles.length
+                            ? `Đã chọn ${localFiles.length} video — bấm để thêm video khác`
+                            : 'Chọn video từ máy tính (.mp4, .webm, .mov, .mkv)'}
+                        </span>
+                        <span className="text-xs text-muted-foreground mt-1 text-center">
+                          Video lưu trong trình duyệt này (IndexedDB), không đồng bộ sang máy khác · Mỗi video tối đa 1 GB
+                        </span>
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"
+                          multiple
+                          onChange={(e) => {
+                            handleLocalVideoFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {localFiles.length > 0 && (
+                        <div className="space-y-2">
+                          {localFiles.map((item) => (
+                            <div key={item.key} className="p-3 rounded-lg border border-border bg-card space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Film className="w-4 h-4 text-accent shrink-0" />
+                                <input
+                                  type="text"
+                                  value={item.title}
+                                  onChange={(e) => updateLocalFile(item.key, { title: e.target.value })}
+                                  placeholder="Tên tập video"
+                                  className="flex-1 min-w-0 px-2 py-1 text-sm rounded border border-border bg-background text-foreground"
+                                />
+                                <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                                  {formatFileSize(item.size)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeLocalFile(item.key)}
+                                  title="Bỏ video này"
+                                  className="tap p-1 rounded hover:bg-muted text-muted-foreground hover:text-rose-500 shrink-0"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                <span className="truncate font-mono">{item.file.name}</span>
+                                <label className="ml-auto shrink-0 cursor-pointer px-2 py-1 rounded border border-border hover:bg-muted text-foreground">
+                                  {item.subtitleName ? `Phụ đề: ${item.subtitleName}` : '+ Phụ đề .srt/.vtt (tùy chọn)'}
+                                  <input
+                                    type="file"
+                                    accept=".srt,.vtt"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      handleLocalSubtitleFile(item.key, e.target.files?.[0]);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                          <p className="text-[11px] font-mono text-muted-foreground">
+                            Tổng dung lượng: {formatFileSize(localFiles.reduce((sum, f) => sum + (f.size || 0), 0))} ·
+                            Phụ đề (nếu có) sẽ được bóc tách & dịch sang tiếng Việt khi bấm "Trích xuất & Xem trước".
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1520,7 +1772,34 @@ export function UniversalImportModal({
 
               {/* PREVIEW PHỤ ĐỀ YOUTUBE HOẶC PLAYLIST */}
               {activeModule === 'listening' && (
-                listeningLinkType === 'playlist' ? (
+                listeningLinkType === 'local' ? (
+                  <div className="space-y-3">
+                    <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
+                      <span>Video máy tính sẽ lưu: <strong>{localFiles.length} video</strong></span>
+                      <span>Tổng dung lượng: <strong>{formatFileSize(localFiles.reduce((sum, f) => sum + (f.size || 0), 0))}</strong></span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-card">
+                      {localFiles.map((item) => (
+                        <div key={item.key} className="p-2.5 text-xs font-mono flex items-center gap-3">
+                          <Film className="w-4 h-4 text-accent shrink-0" />
+                          <input
+                            type="text"
+                            value={item.title}
+                            onChange={(e) => updateLocalFile(item.key, { title: e.target.value })}
+                            className="flex-1 min-w-0 px-2 py-1 rounded border border-border bg-background text-foreground"
+                          />
+                          <span className="text-muted-foreground shrink-0">{formatFileSize(item.size)}</span>
+                          <span className="text-muted-foreground shrink-0">
+                            {item.cues?.length ? `${item.cues.length} câu phụ đề` : 'Chưa có phụ đề'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] font-mono text-muted-foreground">
+                      Video được lưu vào IndexedDB của trình duyệt này. Mở tập video trong phòng Luyện nghe để học với phụ đề như video YouTube.
+                    </p>
+                  </div>
+                ) : listeningLinkType === 'playlist' ? (
                   <div className="space-y-3">
                     <div className="text-xs font-mono text-muted-foreground flex items-center justify-between">
                       <span>Đã tìm thấy: <strong>{playlistVideos.length} tập</strong></span>
@@ -1623,7 +1902,7 @@ export function UniversalImportModal({
               <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={() => { setStep(1); setSelectedFile(null); }}
+                  onClick={() => { setStep(1); setSelectedFile(null); setLocalFiles([]); }}
                   className="tap px-4 py-2 rounded-lg border border-border hover:bg-muted text-xs font-mono"
                 >
                   + Nhập tiếp tài liệu khác

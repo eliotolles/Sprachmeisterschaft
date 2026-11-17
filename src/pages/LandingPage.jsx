@@ -22,6 +22,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { GoogleButton } from '@/components/auth/GoogleButton';
+import { Mascot } from '@/components/Mascot';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LEVELS } from '@/data/levels';
 
@@ -88,10 +89,10 @@ export function LandingPage() {
       {/* TOP NAVIGATION BAR */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/85 border-b border-border transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          {/* Brand Wordmark */}
+          {/* Brand Wordmark — mini Igli thay cho dấu sáp "S" */}
           <Link to="/landing" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-full wax-seal text-white font-display font-bold text-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-              S
+            <div className="w-9 h-9 rounded-full bg-[#f3e2b8] dark:bg-amber-900/40 ring-1 ring-amber-700/20 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform overflow-hidden">
+              <Mascot variant="mini" size={36} />
             </div>
             <div>
               <div className="font-display font-bold text-lg sm:text-xl tracking-tight text-foreground leading-none">
@@ -109,9 +110,10 @@ export function LandingPage() {
               be parsed as route "features" and AuthGate would bounce the visitor
               to /login. These buttons scroll without touching location.hash. */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-mono">
+            {/* Thứ tự khớp với thứ tự các mục trên trang: minigame trước, 7 kỹ năng sau */}
             {[
-              ['features', 'Hệ thống 7 Kỹ năng'],
               ['demo', 'Thử nghiệm Minigame'],
+              ['features', 'Hệ thống 7 Kỹ năng'],
               ['levels', 'Khung CEFR'],
               ['exams', '9 Đề thi chính thức'],
             ].map(([id, label]) => (
@@ -159,6 +161,20 @@ export function LandingPage() {
             <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-accent" />
 
             <div className="text-center max-w-3xl mx-auto">
+              {/* Igli — linh vật chào mừng */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5 mb-6">
+                <div className="animate-float shrink-0">
+                  <Mascot variant="hero" size={150} />
+                </div>
+                <div className="max-w-xs rounded-2xl border border-amber-700/20 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-left shadow-sm">
+                  <p className="font-heading text-sm leading-relaxed text-foreground">
+                    <span className="font-semibold text-amber-800 dark:text-amber-200">Hallo! Ich bin Igli —</span>
+                    <br />
+                    chú nhím nhỏ đồng hành cùng bạn từ A1 đến C2. Học vui, nhớ lâu!
+                  </p>
+                </div>
+              </div>
+
               {/* Wax Seal Badge */}
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/30 bg-accent/5 mb-6 animate-float">
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
@@ -195,7 +211,7 @@ export function LandingPage() {
                 {/* 1. GOOGLE LOGIN BUTTON (PRIORITY) */}
                 <GoogleButton
                   label="Đăng nhập tức thì bằng Google"
-                  className="shadow-md hover:border-accent"
+                  variant="light"
                 />
 
                 {/* 2. Secondary CTA buttons */}
@@ -554,8 +570,8 @@ export function LandingPage() {
       {/* FINAL CALL TO ACTION BANNER */}
       <section className="py-20 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto surface p-8 sm:p-12 border-2 border-accent/40 shadow-2xl relative text-center">
-          <div className="w-14 h-14 rounded-full wax-seal text-white font-display text-2xl font-bold mx-auto mb-4 flex items-center justify-center shadow-lg animate-float">
-            S
+          <div className="mx-auto mb-4 w-fit animate-float">
+            <Mascot variant="wave" size={84} />
           </div>
 
           <div className="eyebrow mb-2">BẮT ĐẦU NGAY HÔM NAY</div>
@@ -567,7 +583,7 @@ export function LandingPage() {
           </p>
 
           <div className="max-w-md mx-auto space-y-3">
-            <GoogleButton label="Đăng nhập ngay với Google" />
+            <GoogleButton label="Đăng nhập ngay với Google" variant="light" />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <Link

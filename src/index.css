@@ -222,6 +222,22 @@ body {
   animation: pulseGlow 2.5s infinite;
 }
 
+/* Igli — linh vật nhím: cánh tay vẫy chào */
+@keyframes igliWave {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-16deg); }
+}
+
+.igli-wave-arm {
+  transform-box: fill-box;
+  transform-origin: 25% 90%;
+  animation: igliWave 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .igli-wave-arm { animation: none; }
+}
+
 /* Staggered delay utilities */
 .delay-100 { animation-delay: 100ms; }
 .delay-200 { animation-delay: 200ms; }

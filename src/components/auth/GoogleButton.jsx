@@ -6,8 +6,11 @@ import { toast } from 'sonner';
 
 export function GoogleButton({
   label = 'Tiếp tục với Google',
-  sublabel = 'Truy cập tức thì bằng tài khoản Google',
   className = '',
+  // "dark": khối tối kiểu Google (mặc định, giữ nguyên cho trang Đăng ký).
+  // "light": nền trắng, chữ tối — nhìn rõ là nút bấm được trên nền giấy
+  // kem của trang bìa (bản tối trước đây trông như bị vô hiệu hoá).
+  variant = 'dark',
   onSuccess,
 }) {
   const { navigate } = useRouter();
@@ -28,12 +31,17 @@ export function GoogleButton({
     setIsModalOpen(true);
   };
 
+  const variantStyles =
+    variant === 'light'
+      ? 'border-[#dadce0] bg-white hover:bg-[#f8f9fa] text-[#1f1f1f] hover:border-[#4285F4] hover:shadow-md'
+      : 'border-[#2d2e31] bg-[#1a1b1e] hover:bg-[#25272b] text-white hover:border-[#4285F4]';
+
   return (
     <>
       <button
         type="button"
         onClick={handleClick}
-        className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-[#2d2e31] bg-[#1a1b1e] hover:bg-[#25272b] text-white font-sans text-sm font-medium shadow-md transition-all duration-200 hover:border-[#4285F4] active:scale-[0.985] ${className}`}
+        className={`tap group relative w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border font-sans text-sm font-medium shadow-md transition-all duration-200 active:scale-[0.985] ${variantStyles} ${className}`}
       >
         {/* Google SVG Multi-color Icon */}
         <svg

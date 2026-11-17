@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
+import { getLocalMediaUrl, deleteLocalMedia } from '@/lib/local-media-store';
 import { batchTranslateCues } from '@/lib/translator';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
@@ -62,10 +63,49 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     subtitles: [],
   };
 
+  // Video tự tải lên từ máy tính: phát bằng <video> gốc với Blob từ IndexedDB
+  const isLocalEpisode = !!currentEpisode.localMediaId && !currentEpisode.youtubeId;
+  const [localVideoUrl, setLocalVideoUrl] = useState(null);
+  const [localVideoError, setLocalVideoError] = useState('');
+  const localVideoRef = useRef(null);
+
+  // Lấy Blob video từ IndexedDB và tạo object URL; thu hồi khi đổi tập/unmount
+  useEffect(() => {
+    if (!isLocalEpisode) {
+      setLocalVideoUrl(null);
+      setLocalVideoError('');
+      return;
+    }
+    let cancelled = false;
+    let url = null;
+    setLocalVideoUrl(null);
+    setLocalVideoError('');
+    getLocalMediaUrl(currentEpisode.localMediaId)
+      .then((u) => {
+        if (cancelled) {
+          if (u) URL.revokeObjectURL(u);
+          return;
+        }
+        if (!u) {
+          setLocalVideoError('Không tìm thấy file video trong trình duyệt này. Có thể video đã bị xóa khỏi IndexedDB — hãy import lại video.');
+        } else {
+          url = u;
+          setLocalVideoUrl(u);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLocalVideoError('Không mở được file video từ bộ nhớ máy. Hãy thử import lại video.');
+      });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [isLocalEpisode, currentEpisode.localMediaId]);
+
   const [captionBusy,setCaptionBusy]=useState(false);
   const [translatingBusy,setTranslatingBusy]=useState(false);
   const [preview,setPreview]=useState(null);
-  const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId]);
+  const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId,currentEpisode.localMediaId]);
   const captionScopeRef=useRef(captionScope);
   captionScopeRef.current=captionScope;
   const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
@@ -179,6 +219,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   // 1. Initialize YouTube IFrame API
   useEffect(() => {
     let isMounted = true;
+    // Video máy tính không dùng YouTube IFrame API (có adapter riêng bên dưới)
+    if (isLocalEpisode) return;
     if(coreActive&&!currentEpisode.youtubeId)return;
 
     const initYouTubePlayer = () => {
@@ -330,6 +372,40 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
+  // 2b. Video máy tính: nối <video> gốc vào cùng bộ điều khiển (play/pause/seek/tốc độ)
+  // để các nút "Nghe lại câu", "Câu trước/sau", chép chính tả... hoạt động y như YouTube.
+  useEffect(() => {
+    if (!isLocalEpisode || !localVideoUrl) return;
+    const videoEl = localVideoRef.current;
+    if (!videoEl) return;
+    videoEl.playbackRate = playbackSpeed;
+    const adapter = {
+      getCurrentTime: () => videoEl.currentTime || 0,
+      seekTo: (seconds) => { videoEl.currentTime = Math.max(0, seconds); },
+      playVideo: () => {
+        const p = videoEl.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      },
+      pauseVideo: () => videoEl.pause(),
+      setPlaybackRate: (rate) => { videoEl.playbackRate = rate; },
+      destroy: () => {},
+    };
+    playerRef.current = adapter;
+    const onPlay = () => { setIsPlaying(true); setIsSentencePaused(false); startTimeTracking(); };
+    const onPause = () => { setIsPlaying(false); stopTimeTracking(); };
+    const onEnded = () => { setIsPlaying(false); stopTimeTracking(); };
+    videoEl.addEventListener('play', onPlay);
+    videoEl.addEventListener('pause', onPause);
+    videoEl.addEventListener('ended', onEnded);
+    return () => {
+      videoEl.removeEventListener('play', onPlay);
+      videoEl.removeEventListener('pause', onPause);
+      videoEl.removeEventListener('ended', onEnded);
+      stopTimeTracking();
+      if (playerRef.current === adapter) playerRef.current = null;
+    };
+  }, [isLocalEpisode, localVideoUrl]);
+
   // 3. Playback Controls & Navigation
   const handleSeekAndPlay = (seconds, index) => {
     setActiveSubIndex(index);
@@ -455,6 +531,11 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     if (ok) {
       try{
         await db.listening.deleteEpisode(currentEpisode.id);
+        // Xóa luôn file video trong IndexedDB nếu đây là video máy tính
+        // (db.listening.deleteEpisode cũng dọn, đây là lớp dự phòng)
+        if (currentEpisode.localMediaId) {
+          try { await deleteLocalMedia(currentEpisode.localMediaId); } catch {}
+        }
         toast.success('Đã xóa video thành công!');
         navigate('/skills/listening');
       }catch(error){toast.error(error.message);}
@@ -572,7 +653,33 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         <div className="lg:col-span-7 space-y-4">
           {/* YouTube Embed Player with Floating Subtitles Overlay */}
           <div className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm">
-            <div id="youtube-player-iframe" className="w-full h-full" />
+            {isLocalEpisode ? (
+              localVideoUrl ? (
+                <video
+                  ref={localVideoRef}
+                  src={localVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6 text-center">
+                  {localVideoError ? (
+                    <>
+                      <p className="text-sm font-mono text-rose-300">{localVideoError}</p>
+                      <p className="text-xs text-white/60">
+                        Video máy tính chỉ lưu trong trình duyệt đã import. Mở lại bằng đúng trình duyệt/máy đó, hoặc import lại video.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-mono text-white/70">Đang tải video từ bộ nhớ máy…</p>
+                  )}
+                </div>
+              )
+            ) : (
+              <div id="youtube-player-iframe" className="w-full h-full" />
+            )}
 
             {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Cinema Style - Trong suốt, không hộp đen che video) */}
             {subtitles[activeSubIndex] &&

@@ -15,11 +15,29 @@
          replaces this content on mount; it is never visible afterwards. -->
     <div id="root">
       <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#faf6ef;color:#5b2320;font-family:Georgia,serif">
-        <div style="width:56px;height:56px;border-radius:50%;border:3px solid #e5dcc8;border-top-color:#7a1f2b;animation:sprach-spin 1s linear infinite" aria-hidden="true"></div>
+        <!-- Igli mini (SVG inline) — linh vật nhím của Sprachmeisterschaft -->
+        <div style="animation:sprach-bob 2.2s ease-in-out infinite" aria-hidden="true">
+          <svg width="76" height="76" viewBox="0 0 120 120">
+            <circle cx="60" cy="56" r="48" fill="#8a5a2b"/>
+            <g stroke="#b07a3e" stroke-width="3" stroke-linecap="round" fill="none">
+              <path d="M30 52 q8 -12 20 -10"/><path d="M70 34 q10 -8 20 0"/><path d="M88 56 q8 -6 14 2"/>
+            </g>
+            <circle cx="36" cy="44" r="7" fill="#8a5a2b"/><circle cx="36" cy="45" r="3.5" fill="#f6e8c8"/>
+            <circle cx="84" cy="44" r="7" fill="#8a5a2b"/><circle cx="84" cy="45" r="3.5" fill="#f6e8c8"/>
+            <ellipse cx="60" cy="72" rx="33" ry="27" fill="#f6e8c8"/>
+            <circle cx="38" cy="80" r="4.5" fill="#e8a87c" opacity="0.5"/><circle cx="82" cy="80" r="4.5" fill="#e8a87c" opacity="0.5"/>
+            <circle cx="48" cy="68" r="5.5" fill="#2b1c12"/><circle cx="72" cy="68" r="5.5" fill="#2b1c12"/>
+            <circle cx="50" cy="66" r="1.6" fill="#ffffff"/><circle cx="74" cy="66" r="1.6" fill="#ffffff"/>
+            <ellipse cx="60" cy="82" rx="5" ry="3.8" fill="#2b1c12"/>
+            <path d="M54 88 Q60 92 66 88" stroke="#2b1c12" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <path d="M26 94 Q60 106 94 94 L94 102 Q60 114 26 102 Z" fill="#2f7d6e"/>
+            <circle cx="84" cy="100" r="5" fill="#27685d"/>
+          </svg>
+        </div>
         <div style="font-size:22px;font-weight:700">Sprachmeisterschaft</div>
         <div style="font-size:14px;opacity:.75">Đang tải nền tảng học tiếng Đức…</div>
       </div>
-      <style>@keyframes sprach-spin{to{transform:rotate(360deg)}}</style>
+      <style>@keyframes sprach-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}</style>
     </div>
     <noscript><div style="padding:2rem;text-align:center">Sprachmeisterschaft cần bật JavaScript để hoạt động.</div></noscript>
     <script type="module" src="/src/main.jsx"></script>

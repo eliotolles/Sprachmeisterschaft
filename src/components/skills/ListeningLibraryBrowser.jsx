@@ -7,7 +7,7 @@ import {
   listeningLevels,
   filterListeningEpisodes,
 } from '@/lib/listening-navigation';
-import { Edit3, Trash2, Plus } from 'lucide-react';
+import { Edit3, Trash2, Plus, Video } from 'lucide-react';
 
 const button = 'tap px-3 py-2 border border-border bg-card rounded-sm font-heading text-sm';
 
@@ -355,12 +355,19 @@ export function ListeningLibraryBrowser({
                   )
                 }
               >
-                <img
-                  alt=""
-                  loading="lazy"
-                  className="w-full aspect-video object-cover"
-                  src={'https://img.youtube.com/vi/' + e.youtubeId + '/mqdefault.jpg'}
-                />
+                {e.youtubeId ? (
+                  <img
+                    alt=""
+                    loading="lazy"
+                    className="w-full aspect-video object-cover"
+                    src={'https://img.youtube.com/vi/' + e.youtubeId + '/mqdefault.jpg'}
+                  />
+                ) : (
+                  <div className="w-full aspect-video bg-muted flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                    <Video className="w-8 h-8" />
+                    <span className="text-[11px] font-mono">Video máy tính</span>
+                  </div>
+                )}
                 <div className="p-4 space-y-2">
                   <h3 className="font-heading font-semibold line-clamp-2">{e.title}</h3>
                   <p className="text-sm text-muted-foreground">

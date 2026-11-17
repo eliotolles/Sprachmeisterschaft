@@ -1,4 +1,5 @@
 import {installListeningRuntime} from './elio-listening-runtime.js';
+import { deleteLocalMediaMany } from './local-media-store.js';
 import {installAIAdminRuntime} from './elio-ai-admin-runtime.js';
 import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.js';
 import { formatDate, addDays, calculateStreak } from './algorithms';
@@ -1626,6 +1627,12 @@ export const db = {
         subtitles: ep.subtitles || [],
         quiz: ep.quiz || [],
         scope: ep.scope || 'public',
+        // Video tự tải lên từ máy tính (file nằm trong IndexedDB, chỉ metadata ở đây)
+        provider: ep.provider || undefined,
+        localMediaId: ep.localMediaId || undefined,
+        fileName: ep.fileName || undefined,
+        fileSize: ep.fileSize || undefined,
+        mimeType: ep.mimeType || undefined,
         created_by: db.auth.getUser()?.id || 'usr_anon',
         created_at: new Date().toISOString(),
       };
@@ -1641,9 +1648,12 @@ export const db = {
       return state.listeningEpisodes.find((e) => e.id === id);
     },
     deleteEpisode: (id) => {
+      // Dọn cả file video trong IndexedDB nếu tập này là video máy tính
+      const removed = (state.listeningEpisodes || []).filter((e) => e.id === id);
       state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.id !== id);
       saveDatabase(state);
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
     },
     updateCollection: (id, updates) => {
@@ -1657,20 +1667,27 @@ export const db = {
       return null;
     },
     deleteCollection: (id) => {
+      const removed = (state.listeningEpisodes || []).filter((e) => e.collectionId === id);
       state.listeningCollections = (state.listeningCollections || []).filter((c) => c.id !== id);
       state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.collectionId !== id);
       saveDatabase(state);
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
     },
     deleteAllCollections: () => {
+      const removed = [...(state.listeningEpisodes || [])];
       state.listeningCollections = [];
       state.listeningEpisodes = [];
       saveDatabase(state);
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
     },
     deleteAllEpisodes: (collectionId) => {
+      const removed = collectionId
+        ? (state.listeningEpisodes || []).filter((e) => e.collectionId === collectionId)
+        : [...(state.listeningEpisodes || [])];
       if (collectionId) {
         state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.collectionId !== collectionId);
       } else {
@@ -1678,6 +1695,7 @@ export const db = {
       }
       saveDatabase(state);
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
     },
     resetDefaults: () => {

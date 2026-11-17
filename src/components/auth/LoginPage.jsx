@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { db } from '@/lib/db';
 import { elioAuthentication } from '@/lib/elio-auth-runtime';
 import { useRouter, Link } from '@/lib/router';
-import { ArrowLeft, ArrowRight, BookOpen, Check, Eye, EyeOff, Loader2, LockKeyhole, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Loader2, LockKeyhole, Sparkles } from 'lucide-react';
+import { Mascot } from '@/components/Mascot';
 
 // Account selection belongs to Google; never publish a list of personal accounts.
 export const GOOGLE_PRESET_ACCOUNTS = [];
@@ -52,8 +53,13 @@ export function LoginPage() {
   return (
     <main className="min-h-screen bg-background text-foreground font-body lg:grid lg:grid-cols-2">
       <section className="relative hidden overflow-hidden bg-[#153f36] p-12 text-[#f5f3e9] lg:flex lg:flex-col xl:p-16">
-        <Link to="/landing" className="relative z-10 flex items-center gap-3 text-xl font-bold"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e6eea4] text-[#153f36]"><BookOpen size={23} /></span>Elio Einfach</Link>
+        <Link to="/landing" className="relative z-10 flex items-center gap-3 text-xl font-bold"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f3e2b8] overflow-hidden"><Mascot variant="mini" size={44} /></span>Sprachmeisterschaft</Link>
         <div className="relative z-10 my-auto max-w-lg py-20">
+          {/* Igli vẫy tay chào */}
+          <div className="mb-8 flex items-end gap-4">
+            <div className="animate-float shrink-0"><Mascot variant="wave" size={140} /></div>
+            <div className="mb-3 rounded-2xl rounded-bl-sm border border-white/15 bg-white/10 px-4 py-3 text-sm leading-relaxed text-white/90">„Willkommen zurück! Igli nhớ bạn rồi — ôn tiếp nhé!“</div>
+          </div>
           <span className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-xs tracking-widest uppercase"><Sparkles size={14} /> Dein nächster Schritt</span>
           <h1 className="font-display text-5xl font-semibold leading-tight xl:text-6xl">Mỗi ngày một chút.<br /><span className="text-[#e6eea4]">Tiếng Đức tiến xa.</span></h1>
           <p className="mt-6 max-w-sm text-base leading-relaxed text-white/70">Trở lại với bài học, những từ mới và mục tiêu của riêng bạn.</p>
@@ -65,7 +71,7 @@ export function LoginPage() {
       <section className="flex min-h-screen flex-col px-6 py-7 sm:px-12 lg:px-16">
         <Link to="/landing" className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={16} /> Về trang chủ</Link>
         <div className="mx-auto my-auto w-full max-w-[400px] py-12">
-          <div className="mb-9 flex items-center gap-2 font-semibold lg:hidden"><BookOpen className="text-accent" size={23} /> Elio Einfach</div>
+          <div className="mb-9 flex items-center gap-2 font-semibold lg:hidden"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f3e2b8] ring-1 ring-amber-700/20 overflow-hidden"><Mascot variant="mini" size={36} /></span> Sprachmeisterschaft</div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-accent">Chào mừng trở lại</p>
           <h2 className="font-display text-4xl font-semibold tracking-tight">Đăng nhập</h2>
           <p className="mb-8 mt-3 text-sm leading-relaxed text-muted-foreground">Tiếp tục hành trình tiếng Đức của bạn.</p>
@@ -81,7 +87,7 @@ export function LoginPage() {
           <p className="mt-8 text-center text-sm text-muted-foreground">Chưa có tài khoản? <Link to="/register" className="font-semibold text-accent hover:underline">Đăng ký</Link></p>
           <p className="mt-8 flex items-center justify-center gap-2 text-xs text-muted-foreground"><LockKeyhole size={13} /> Không chia sẻ mật khẩu của bạn với bất kỳ ai.</p>
         </div>
-        <p className="text-center text-xs text-muted-foreground">Elio Einfach · Học tiếng Đức theo cách của bạn</p>
+        <p className="text-center text-xs text-muted-foreground">Sprachmeisterschaft · Học tiếng Đức theo cách của bạn</p>
       </section>
     </main>
   );
