@@ -27,6 +27,7 @@ import {
   Headphones,
   Video,
   ShieldCheck,
+  GraduationCap,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -110,6 +111,7 @@ export function AppShell({ children }) {
         { path: '/skills/listening/personal', label: 'Video cá nhân', icon: Video },
         { path: '/game', label: 'Trò chơi', icon: Gamepad2 },
         { path: '/exams', label: 'Luyện thi', icon: FileCheck2 },
+        { path: '/b2', label: 'Lộ trình B2', icon: GraduationCap },
         { path: '/readiness', label: 'Sẵn sàng thi', icon: Gauge },
         { path: '/elio', label: 'AI ELIO', icon: Bot },
       ],

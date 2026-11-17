@@ -36,6 +36,7 @@ import { MePage } from '@/pages/MePage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { NotesPage } from '@/pages/NotesPage';
 import { AdminPage } from '@/pages/AdminPage';
+import { TelcB2Page } from '@/pages/TelcB2Page';
 
 // Auth Pages
 import { LoginPage } from '@/components/auth/LoginPage';
@@ -121,6 +122,7 @@ export function App() {
     if (currentPath === '/me') return <MePage />;
     if (currentPath === '/me/settings') return <SettingsPage />;
     if (currentPath === '/me/notes') return <NotesPage />;
+    if (currentPath === '/b2') return <TelcB2Page />;
 
     // Dynamic Listening Route: /skills/listening/:collectionId/:videoId
     if (currentPath.startsWith('/skills/listening/')) {
