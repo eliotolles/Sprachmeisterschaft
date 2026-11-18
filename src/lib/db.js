@@ -1,5 +1,5 @@
 import {installListeningRuntime} from './elio-listening-runtime.js';
-import { deleteLocalMediaMany } from './local-media-store.js';
+import { deleteLocalMediaMany, listLocalMedia } from './local-media-store.js';
 import {installAIAdminRuntime} from './elio-ai-admin-runtime.js';
 import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.js';
 import { formatDate, addDays, calculateStreak } from './algorithms';
@@ -1711,6 +1711,62 @@ export const db = {
       saveDatabase(state);
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return true;
+    },
+    recoverOrphanedLocalMedia: async () => {
+      // Sau khi bấm "Khôi phục gốc", metadata tập video bị thay bằng kho mẫu
+      // (đang trống) nhưng file Blob vẫn còn trong IndexedDB. Quét lại kho
+      // Blob và tạo lại tập video cho những file chưa có tập tương ứng.
+      const stored = await listLocalMedia();
+      const knownIds = new Set((state.listeningEpisodes || []).map((e) => e.localMediaId).filter(Boolean));
+      const orphans = (stored || []).filter((m) => m.id && !knownIds.has(m.id));
+      if (!orphans.length) return { recovered: 0, collectionId: null, collectionTitle: '', titles: [] };
+      const today = new Date().toLocaleDateString('vi-VN');
+      let col = (state.listeningCollections || []).find((c) => c.id === 'recovered-local-videos');
+      if (!col) {
+        col = {
+          id: 'recovered-local-videos',
+          title: `Video đã khôi phục ${today}`,
+          deTitle: `Wiederhergestellte Videos ${today}`,
+          provider: 'Video của tôi',
+          level: 'B1',
+          thumbnail: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=600&auto=format&fit=crop&q=80',
+          description: 'Các video máy tính được khôi phục lại sau khi kho nghe bị đặt lại.',
+          episodesCount: orphans.length,
+          scope: 'private',
+          created_by: db.auth.getUser()?.id || 'usr_anon',
+        };
+        state.listeningCollections.unshift(col);
+      }
+      const titles = [];
+      for (const m of orphans) {
+        const baseName = String(m.name || m.id).replace(/\.[^.]+$/, '');
+        const levelMatch = baseName.match(/\b(A1|A2|B1|B2|C1|C2)\b/i);
+        state.listeningEpisodes.push({
+          id: `ep_recovered_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          collectionId: col.id,
+          title: baseName,
+          deTitle: baseName,
+          level: levelMatch ? levelMatch[1].toUpperCase() : 'B1',
+          youtubeId: '',
+          duration: '03:00',
+          subtitles: [],
+          quiz: [],
+          scope: 'private',
+          provider: 'Video của tôi',
+          localMediaId: m.id,
+          fileName: m.name || '',
+          fileSize: m.size || 0,
+          mimeType: m.type || '',
+          created_by: db.auth.getUser()?.id || 'usr_anon',
+          created_at: new Date().toISOString(),
+        });
+        titles.push(baseName);
+      }
+      col.episodesCount = (state.listeningEpisodes || []).filter((e) => e.collectionId === col.id).length;
+      saveDatabase(state);
+      window.dispatchEvent(new CustomEvent('sprach_db_change'));
+      window.dispatchEvent(new CustomEvent('sprach_listening_change'));
+      return { recovered: orphans.length, collectionId: col.id, collectionTitle: col.title, titles };
     },
   },
 

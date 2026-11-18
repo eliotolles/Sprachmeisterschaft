@@ -217,3 +217,22 @@ export async function estimateLocalMediaStorage() {
   } catch {}
   return { usage: 0, quota: 0 };
 }
+
+/**
+ * Liệt kê tất cả video đang nằm trong kho IndexedDB (kèm Blob).
+ * Dùng để khôi phục lại tập video khi metadata trong localStorage bị mất
+ * (ví dụ sau khi bấm "Khôi phục gốc") mà file Blob vẫn còn nguyên.
+ */
+export async function listLocalMedia() {
+  const records = await runTransaction(STORE_NAME, 'readonly', (store) =>
+    requestToPromise(store.getAll())
+  );
+  return (records || []).map((r) => ({
+    id: r.id,
+    blob: r.blob,
+    name: r.name || '',
+    type: r.type || '',
+    size: r.size || 0,
+    addedAt: r.addedAt || '',
+  }));
+}

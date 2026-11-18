@@ -98,13 +98,27 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const handleResetListening = async () => {
     const ok = await showConfirmModal({
       title: 'Khôi phục video luyện nghe',
-      message: 'Khôi phục lại toàn bộ các bộ video luyện nghe gốc chuẩn Nicos Weg của hệ thống?',
+      message: 'Thao tác này sẽ XÓA toàn bộ video bạn đã import (kể cả video máy tính) và đưa kho nghe về các bộ gốc của hệ thống. Hiện hệ thống chưa có bộ gốc nào nên kho sẽ trống trơn. Bạn có chắc không?',
       confirmText: 'Khôi phục gốc',
       variant: 'warning',
     });
     if (ok) {
       db.listening.resetDefaults();
       toast.success('Đã khôi phục các bộ video gốc!');
+    }
+  };
+
+  const handleRecoverLocalVideos = async () => {
+    try {
+      const result = await db.listening.recoverOrphanedLocalMedia();
+      if (!result || !result.recovered) {
+        toast.info('Không tìm thấy video nào chưa có trong kho — các file video trong trình duyệt này đều đã có tập tương ứng.');
+        return;
+      }
+      setCollections(db.listening.getCollections());
+      toast.success(`Đã khôi phục ${result.recovered} video vào bộ "${result.collectionTitle}"!`);
+    } catch (error) {
+      toast.error('Lỗi khi khôi phục video: ' + error.message);
     }
   };
 
@@ -156,14 +170,24 @@ export function ListeningOverviewPage({ initialTab = null }) {
         actions={
           <div className="flex items-center gap-2">
             {isAdmin && (
-              <button
-                onClick={handleResetListening}
-                className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-muted-foreground font-mono text-xs flex items-center gap-1.5 shadow-sm"
-                title="Khôi phục danh sách video gốc"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Khôi phục gốc</span>
-              </button>
+              <>
+                <button
+                  onClick={handleRecoverLocalVideos}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-muted-foreground font-mono text-xs flex items-center gap-1.5 shadow-sm"
+                  title="Tìm lại các video máy tính còn trong trình duyệt nhưng chưa có trong kho (sau khi bấm Khôi phục gốc)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Khôi phục video đã mất</span>
+                </button>
+                <button
+                  onClick={handleResetListening}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-muted-foreground font-mono text-xs flex items-center gap-1.5 shadow-sm"
+                  title="Khôi phục danh sách video gốc"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Khôi phục gốc</span>
+                </button>
+              </>
             )}
             {activeScopeTab === 'personal' ? (
               <button
