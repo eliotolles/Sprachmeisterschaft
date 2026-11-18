@@ -44,6 +44,8 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const [collections, setCollections] = useState(() => db.listening.getCollections());
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState(null);
+  const editingOriginal = editingCollection ? collections.find((c) => c.id === editingCollection.id) : null;
+  const editingIsServerFolder = !!editingOriginal?.organizerId;
 
   const currentUser = db.auth.getUser();
   const isAdmin = db.auth.isAdmin();
@@ -145,6 +147,9 @@ export function ListeningOverviewPage({ initialTab = null }) {
               id: original.organizerId,
               revision: original.revision,
               name: editingCollection.title,
+              ...(original.scope !== editingCollection.scope && ['private', 'public'].includes(editingCollection.scope)
+                ? { visibility: editingCollection.scope }
+                : {}),
             });
             await elioListening()?.hydrate();
           }
@@ -307,7 +312,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 />
               </div>
 
-              {!listeningCoreActive()&&<>
+              {(!listeningCoreActive() || !editingIsServerFolder) && <>
               <div className="space-y-1">
                 <label className="font-mono text-muted-foreground uppercase text-[10px]">
                   Tên bộ (Tiếng Đức)
@@ -351,23 +356,6 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 </div>
               </div>
 
-              {isAdmin && (
-                <div className="space-y-1">
-                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
-                    Phạm vi (Scope)
-                  </label>
-                  <select
-                    value={editingCollection.scope || 'public'}
-                    onChange={(e) => setEditingCollection({ ...editingCollection, scope: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
-                  >
-                    <option value="public">🌍 Toàn hệ thống (Public)</option>
-                    <option value="private">👤 Cá nhân (Private)</option>
-                    <option value="admin_only">🔒 Nội bộ Admin</option>
-                  </select>
-                </div>
-              )}
-
               <div className="space-y-1">
                 <label className="font-mono text-muted-foreground uppercase text-[10px]">
                   Mô tả bộ video
@@ -381,7 +369,23 @@ export function ListeningOverviewPage({ initialTab = null }) {
               </div>
 
               </>}
-              {listeningCoreActive()&&<p className="font-body text-sm text-muted-foreground">Tên áp dụng cho cả bộ. Cấp độ và nội dung được giữ theo từng video; chỉnh từng tài liệu ở Sửa / Xóa nội dung import.</p>}
+              {isAdmin && (
+                <div className="space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    Phạm vi (Scope)
+                  </label>
+                  <select
+                    value={editingCollection.scope || 'public'}
+                    onChange={(e) => setEditingCollection({ ...editingCollection, scope: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground"
+                  >
+                    <option value="public">🌍 Toàn hệ thống (Public)</option>
+                    <option value="private">👤 Cá nhân (Private)</option>
+                    {!editingIsServerFolder && <option value="admin_only">🔒 Nội bộ Admin</option>}
+                  </select>
+                </div>
+              )}
+              {(listeningCoreActive() && editingIsServerFolder) && <p className="font-body text-sm text-muted-foreground">Tên áp dụng cho cả bộ. Cấp độ và nội dung được giữ theo từng video; chỉnh từng tài liệu ở Sửa / Xóa nội dung import.</p>}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
                 <button
                   type="button"

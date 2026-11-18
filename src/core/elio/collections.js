@@ -59,8 +59,10 @@ export async function moveCollectionRecord(env,user,input){
 
 export async function renameCollection(env,user,input){
  if(!input||typeof input.name!=='string'||!input.name.trim()||input.name.length>150)throw invalid();
+ if(input.visibility!==undefined&&!['private','public'].includes(input.visibility))throw invalid();
+ if(input.visibility==='public'&&!isAdmin(user))throw coreError(403,'ADMIN_REQUIRED','Chỉ Admin được tạo bộ chung.');
  const current=await readCollection(env,user,input.id,{write:true});if(input.revision!==current.revision)throw coreError(409,'COLLECTION_CONFLICT','Tên bộ vừa thay đổi; tải lại trước khi sửa.');
- const {raw,revision,...data}=current;data.name=input.name.trim();const value=JSON.stringify(data);
+ const {raw,revision,...data}=current;data.name=input.name.trim();if(input.visibility!==undefined)data.visibility=input.visibility;const value=JSON.stringify(data);
  const result=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[value,PREFIX+input.id,raw]);if(!result.rows.length)throw coreError(409,'COLLECTION_CONFLICT','Bộ vừa thay đổi; chưa ghi đè.');
  return {collection:{...data,canEdit:true,revision:await digest(value)}};
 }
