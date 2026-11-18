@@ -8,7 +8,7 @@ import { buildLevelDecks } from '@/lib/level-deck-adapter';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
 import { batchTranslateCues } from '@/lib/translator';
-import { saveLocalMedia, deleteLocalMedia, checkLocalVideoSize, formatFileSize } from '@/lib/local-media-store';
+import { saveLocalMedia, checkLocalVideoSize, formatFileSize, estimateLocalMediaStorage } from '@/lib/local-media-store';
 import { elioImport } from '@/lib/elio-import-runtime';
 import {
   detectFileType,
@@ -800,17 +800,26 @@ export function UniversalImportModal({
         }
 
         if (listeningLinkType === 'local') {
-          // Video máy tính: lưu từng Blob vào IndexedDB rồi mới tạo tập video
+          // Video máy tính: lưu từng Blob vào IndexedDB rồi mới tạo tập video.
+          // Lưu từng file riêng: file nào lỗi thì giữ lại các file đã lưu được,
+          // báo rõ file nào lỗi và vì sao — không để một file hỏng làm mất cả đợt.
           if (!localFiles.length) throw new Error('Chưa chọn video nào từ máy tính.');
-          const savedIds = [];
-          try {
-            for (let i = 0; i < localFiles.length; i++) {
-              const item = localFiles[i];
-              const episodeTitle = (item.title || '').trim() || item.file.name.replace(/\.[^.]+$/, '');
-              setProgressText(`Đang lưu video ${i + 1}/${localFiles.length}: ${episodeTitle}...`);
-              const localMediaId = `lm_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+          const totalBytes = localFiles.reduce((n, f) => n + (f.size || 0), 0);
+          const est = await estimateLocalMediaStorage();
+          if (est.quota > 0 && est.usage + totalBytes > est.quota) {
+            throw new Error(
+              `Dung lượng trình duyệt không đủ cho ${formatFileSize(totalBytes)} video này (đang dùng ${formatFileSize(est.usage)} / giới hạn ${formatFileSize(est.quota)}). Hãy import ít video mỗi lần, xóa bớt video cũ trong kho Luyện nghe, hoặc dọn chỗ trống trên ổ đĩa rồi thử lại.`
+            );
+          }
+          const savedTitles = [];
+          const failedFiles = [];
+          for (let i = 0; i < localFiles.length; i++) {
+            const item = localFiles[i];
+            const episodeTitle = (item.title || '').trim() || item.file.name.replace(/\.[^.]+$/, '');
+            setProgressText(`Đang lưu video ${i + 1}/${localFiles.length}: ${episodeTitle}...`);
+            const localMediaId = `lm_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+            try {
               await saveLocalMedia({ id: localMediaId, blob: item.file, name: item.file.name, type: item.mimeType });
-              savedIds.push(localMediaId);
               db.listening.createEpisode({
                 collectionId: col.id,
                 title: episodeTitle,
@@ -825,17 +834,21 @@ export function UniversalImportModal({
                 mimeType: item.mimeType,
                 subtitles: item.cues || [],
               });
+              savedTitles.push(episodeTitle);
+            } catch (fileErr) {
+              failedFiles.push({ title: episodeTitle, reason: fileErr?.message || 'Lỗi khi ghi video.' });
             }
-          } catch (err) {
-            // Lưu lỗi giữa chừng: dọn các Blob đã lưu trong đợt này để khỏi rác
-            for (const id of savedIds) {
-              try { await deleteLocalMedia(id); } catch {}
-            }
-            throw err;
           }
-
-          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" (${col.scope === 'public' ? 'Kho chung' : 'Cá nhân'}) — chỉ trên trình duyệt này!`);
-          setSavedDestination(`Đã lưu vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'} · chỉ lưu trên trình duyệt này, chưa lên database (file video quá lớn)`);
+          if (!savedTitles.length) {
+            throw new Error(`Không lưu được video nào. ${failedFiles[0]?.reason || 'Lỗi khi ghi video.'}`);
+          }
+          if (failedFiles.length) {
+            toast.warning(`Đã lưu ${savedTitles.length}/${localFiles.length} video vào bộ "${col.title}". Không lưu được ${failedFiles.length} video (${failedFiles.map((f) => f.title).join('; ')}): ${failedFiles[0].reason}`);
+            setSavedDestination(`Đã lưu ${savedTitles.length}/${localFiles.length} video vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'} · chỉ lưu trên trình duyệt này, chưa lên database (file video quá lớn). Không lưu được: ${failedFiles.map((f) => f.title).join('; ')}.`);
+          } else {
+            toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" (${col.scope === 'public' ? 'Kho chung' : 'Cá nhân'}) — chỉ trên trình duyệt này!`);
+            setSavedDestination(`Đã lưu vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'} · chỉ lưu trên trình duyệt này, chưa lên database (file video quá lớn)`);
+          }
         } else if (listeningLinkType === 'playlist') {
           const selectedVideos = playlistVideos.filter(v => v.selected !== false);
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');

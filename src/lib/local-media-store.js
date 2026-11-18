@@ -106,6 +106,13 @@ function describeQuotaError(err) {
       'Bộ nhớ trình duyệt đã đầy, không lưu được video này. Hãy xóa bớt video đã import trong kho Luyện nghe, hoặc dùng file nhỏ hơn rồi thử lại.'
     );
   }
+  // Ghi Blob lớn xuống đĩa thất bại: trình duyệt thường báo UnknownError /
+  // "Failed to write blobs (IOError)" khi ổ đĩa đầy hoặc hết hạn mức lưu trữ.
+  if (err && (err.name === 'UnknownError' || /failed to write blobs|ioerror/i.test(err.message || ''))) {
+    return new Error(
+      'Trình duyệt ghi video xuống ổ đĩa thất bại (ổ đĩa có thể đã đầy hoặc hết hạn mức lưu trữ). Hãy import ít video mỗi lần, xóa bớt video cũ trong kho Luyện nghe, hoặc dọn chỗ trống trên ổ đĩa rồi thử lại.'
+    );
+  }
   return err;
 }
 
