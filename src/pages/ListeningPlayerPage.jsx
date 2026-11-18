@@ -262,26 +262,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const [showVietnamese, setShowVietnamese] = useState(true);
   const [activeSubIndex, setActiveSubIndex] = useState(0);
 
-  // Cài đặt hiển thị phụ đề: lưu vào localStorage để mở lại vẫn giữ.
-  const [subPrefs, setSubPrefs] = useState(() => {
-    try {
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('sprach_subtitle_prefs') : null;
-      if (raw) {
-        const p = JSON.parse(raw) || {};
-        return {
-          fontSize: ['small', 'medium', 'large'].includes(p.fontSize) ? p.fontSize : 'medium',
-          color: p.color === 'yellow' ? 'yellow' : 'white',
-          position: p.position === 'middle' ? 'middle' : 'bottom',
-          background: p.background === 'faint' ? 'faint' : 'dark',
-        };
-      }
-    } catch {}
-    return { fontSize: 'medium', color: 'white', position: 'bottom', background: 'dark' };
-  });
-  useEffect(() => {
-    try { window.localStorage.setItem('sprach_subtitle_prefs', JSON.stringify(subPrefs)); } catch {}
-  }, [subPrefs]);
-
   // Sửa từng câu phụ đề trong danh sách lời thoại.
   const [editingSubIndex, setEditingSubIndex] = useState(null);
   const [editingSubDe, setEditingSubDe] = useState('');
@@ -721,18 +701,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     );
   }
 
-  // Lớp hiển thị phụ đề theo cài đặt của người học.
-  const subDeSizeClass = subPrefs.fontSize === 'small' ? 'text-sm md:text-base' : subPrefs.fontSize === 'large' ? 'text-lg md:text-2xl' : 'text-base md:text-xl';
-  const subViSizeClass = subPrefs.fontSize === 'small' ? 'text-xs' : subPrefs.fontSize === 'large' ? 'text-sm md:text-base' : 'text-xs md:text-sm';
-  const subDeColorClass = subPrefs.color === 'yellow' ? 'text-yellow-300' : 'text-white';
-  const subViColorClass = subPrefs.color === 'yellow' ? 'text-yellow-200' : 'text-white/90';
-  const subBgClass = subPrefs.background === 'dark' ? 'bg-black/80' : 'bg-black/45';
-  // Mặc định ở dưới video, nhô lên trên thanh controls của video máy tính
-  // (cao ~40px) để không bị che; vị trí "Giữa" thì đặt giữa khung video.
-  const subPositionClass = subPrefs.position === 'middle'
-    ? 'top-1/2 -translate-y-1/2'
-    : isLocalEpisode ? 'bottom-12' : 'bottom-10';
-
   return (
     <div className="space-y-4 animate-rise max-w-7xl mx-auto">
       {/* Top Breadcrumb Navigation */}
@@ -856,80 +824,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               <div id="youtube-player-iframe" className="w-full h-full" />
             )}
 
-            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY — luôn có nền đen đậm để đọc được trên mọi nền video sáng */}
-            {subtitles[activeSubIndex] &&
-              ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
-              <div className={`absolute ${subPositionClass} left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center z-20`}>
-                <div className={`max-w-2xl px-4 py-2 space-y-1 rounded-md ${subBgClass}`}>
-                  {showGerman && currentSub.de && (
-                    <div
-                      className={`${subDeColorClass} font-heading font-extrabold ${subDeSizeClass} tracking-wide leading-snug`}
-                      style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
-                    >
-                      {currentSub.de}
-                    </div>
-                  )}
-                  {showVietnamese && currentSub.vi && (
-                    <div
-                      className={`${subViColorClass} font-body ${subViSizeClass} font-semibold`}
-                      style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
-                    >
-                      {currentSub.vi}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Cài đặt hiển thị phụ đề — lưu vào localStorage, mở lại vẫn giữ */}
-          <div className="surface px-3 py-2 border border-border flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-mono">
-            <span className="font-semibold text-foreground">Cài đặt phụ đề:</span>
-            <label className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Cỡ chữ</span>
-              <select
-                value={subPrefs.fontSize}
-                onChange={(e) => setSubPrefs({ ...subPrefs, fontSize: e.target.value })}
-                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
-              >
-                <option value="small">Nhỏ</option>
-                <option value="medium">Vừa</option>
-                <option value="large">Lớn</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Màu chữ</span>
-              <select
-                value={subPrefs.color}
-                onChange={(e) => setSubPrefs({ ...subPrefs, color: e.target.value })}
-                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
-              >
-                <option value="white">Trắng</option>
-                <option value="yellow">Vàng</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Vị trí</span>
-              <select
-                value={subPrefs.position}
-                onChange={(e) => setSubPrefs({ ...subPrefs, position: e.target.value })}
-                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
-              >
-                <option value="bottom">Dưới</option>
-                <option value="middle">Giữa</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Nền</span>
-              <select
-                value={subPrefs.background}
-                onChange={(e) => setSubPrefs({ ...subPrefs, background: e.target.value })}
-                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
-              >
-                <option value="faint">Mờ</option>
-                <option value="dark">Đậm</option>
-              </select>
-            </label>
           </div>
 
           {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
