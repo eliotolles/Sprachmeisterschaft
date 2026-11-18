@@ -10,18 +10,12 @@ import { useRouter, Link } from '@/lib/router';
 import { SpeakButton } from '@/components/ui/SpeakButton';
 import { LookupText } from '@/components/vocabulary/WordDetail';
 import { auditDictationSentence } from '@/lib/ai-evaluator';
-import { formatVideoTime, clampSeekTime, stepVolume, resolveVideoShortcut } from '@/lib/yt-controls';
 import {
   Play,
-  Pause,
   Captions,
   RotateCcw,
   FastForward,
   Volume2,
-  Volume1,
-  VolumeX,
-  Maximize,
-  Minimize,
   Download,
   Copy,
   Eye,
@@ -413,10 +407,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         videoId: currentEpisode.youtubeId,
         playerVars: {
           autoplay: 0,
-          // Tắt nút gốc của YouTube để dùng thanh điều khiển riêng của app
-          // (tự ẩn sau 2 giây không di chuột, giống youtube.com). Video
-          // vẫn là video YouTube, chỉ thay nút bấm — không ảnh hưởng nội dung.
-          controls: 0,
+          // Nút gốc của YouTube (đã bỏ thanh điều khiển riêng của app).
+          controls: 1,
           rel: 0,
           modestbranding: 1,
           enablejsapi: 1,
@@ -428,12 +420,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           onReady: (event) => {
             if (isMounted) {
               event.target.setPlaybackRate(playbackSpeed);
-              try {
-                const d = typeof event.target.getDuration === 'function' ? event.target.getDuration() : 0;
-                if (Number.isFinite(d) && d > 0) setDuration(d);
-                if (typeof event.target.getVolume === 'function') setVolume(event.target.getVolume());
-                if (typeof event.target.isMuted === 'function') setMuted(event.target.isMuted());
-              } catch {}
               try {
                 if (typeof event.target.unloadModule === 'function') {
                   event.target.unloadModule('captions');
@@ -490,15 +476,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
       const currentTime = playerRef.current.getCurrentTime();
       if (currentTime === undefined || currentTime === null) return;
-
-      // Thanh điều khiển riêng: cập nhật vị trí phát + tổng giờ để vẽ thanh tiến trình.
-      setPlayhead(currentTime);
-      try {
-        if (typeof playerRef.current.getDuration === 'function') {
-          const d = playerRef.current.getDuration();
-          if (Number.isFinite(d) && d > 0) setDuration((prev) => (prev === d ? prev : d));
-        }
-      } catch {}
 
       const currentSubs = subtitlesRef.current || [];
       if (currentSubs.length === 0) return;
@@ -656,15 +633,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
-  const handleTogglePlayPause = () => {
-    if (!playerRef.current) return;
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
-    } else {
-      playerRef.current.playVideo();
-    }
-  };
-
   // Bấm từ trên phụ đề: tạm dừng video để popup tra từ không bị trôi
   // câu khi video chạy tiếp. Đóng popup thì anh tự bấm play lại.
   const pauseVideoForLookup = () => {
@@ -672,119 +640,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     playerRef.current.pauseVideo();
     setIsPlaying(false);
   };
-
-  // --- Thanh điều khiển video RIÊNG kiểu YouTube (chỉ video YouTube) ---
-  // Video máy tính dùng <video controls> gốc nên không đụng tới phần này.
-  const [playhead, setPlayhead] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(100);
-  const [muted, setMuted] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const videoFrameRef = useRef(null);
-  const hideControlsTimerRef = useRef(null);
-
-  // Hiện thanh điều khiển rồi hẹn ẩn sau 2 giây không tương tác.
-  // Khi đang DỪNG thì thanh ẩn nhưng nút Play lớn ở giữa vẫn hiện để bấm tiếp.
-  const showControls = () => {
-    setControlsVisible(true);
-    if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-    hideControlsTimerRef.current = setTimeout(() => setControlsVisible(false), 2000);
-  };
-  // Đổi tập video thì làm mới vị trí phát + tổng giờ + hiện lại thanh điều khiển.
-  useEffect(() => {
-    setPlayhead(0);
-    setDuration(0);
-    showControls();
-  }, [currentEpisode.id]);
-  useEffect(() => () => { if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); }, []);
-  // Đang chạy hay đang dừng thì cũng hiện lại thanh khi trạng thái đổi.
-  useEffect(() => { showControls(); }, [isPlaying]);
-  useEffect(() => {
-    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
-
-  const toggleFullscreen = () => {
-    try {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else if (videoFrameRef.current?.requestFullscreen) {
-        videoFrameRef.current.requestFullscreen();
-      }
-    } catch {}
-    showControls();
-  };
-
-  const seekToTime = (seconds) => {
-    if (!playerRef.current || typeof playerRef.current.seekTo !== 'function') return;
-    const target = duration > 0 ? Math.max(0, Math.min(duration, seconds)) : Math.max(0, seconds);
-    playerRef.current.seekTo(target, true);
-    setPlayhead(target);
-    showControls();
-  };
-
-  const handleProgressClick = (event) => {
-    if (!duration || duration <= 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    seekToTime(fraction * duration);
-  };
-
-  const applyVolume = (nextVolume, nextMuted) => {
-    const p = playerRef.current;
-    if (!p) return;
-    try {
-      if (typeof p.setVolume === 'function') p.setVolume(nextVolume);
-      if (nextMuted) { if (typeof p.mute === 'function') p.mute(); }
-      else if (typeof p.unMute === 'function') p.unMute();
-    } catch {}
-    setVolume(nextVolume);
-    setMuted(nextMuted);
-    showControls();
-  };
-
-  // Phím tắt giống YouTube, gắn vào khung video (tabIndex). Không cướp
-  // phím khi anh đang gõ chữ trong ô nhập, textarea, select hay vùng sửa được.
-  const handleVideoKeyDown = (event) => {
-    if (isLocalEpisode) return;
-    const target = event.target;
-    const tag = String(target?.tagName || '').toLowerCase();
-    const editable = !!(target?.isContentEditable || target?.closest?.('[contenteditable="true"]'));
-    const action = resolveVideoShortcut(event.key, tag, editable);
-    if (!action) return;
-    // Space trên nút bấm thì để nút tự xử lý (không bấm đúp 2 lần).
-    if (event.key === ' ' && tag === 'button') return;
-    event.preventDefault();
-    const p = playerRef.current;
-    if (!p) return;
-    const cur = typeof p.getCurrentTime === 'function' ? p.getCurrentTime() : playhead;
-    if (action === 'toggle-play') {
-      handleTogglePlayPause();
-    } else if (action === 'seek-back-5') {
-      p.seekTo(clampSeekTime(cur, -5, duration), true); setPlayhead(clampSeekTime(cur, -5, duration));
-    } else if (action === 'seek-forward-5') {
-      p.seekTo(clampSeekTime(cur, 5, duration), true); setPlayhead(clampSeekTime(cur, 5, duration));
-    } else if (action === 'seek-back-10') {
-      p.seekTo(clampSeekTime(cur, -10, duration), true); setPlayhead(clampSeekTime(cur, -10, duration));
-    } else if (action === 'seek-forward-10') {
-      p.seekTo(clampSeekTime(cur, 10, duration), true); setPlayhead(clampSeekTime(cur, 10, duration));
-    } else if (action === 'toggle-fullscreen') {
-      toggleFullscreen();
-    } else if (action === 'toggle-mute') {
-      applyVolume(volume, !muted);
-    } else if (action === 'volume-up') {
-      const next = stepVolume(volume, 5);
-      applyVolume(next, next === 0 ? muted : false);
-    } else if (action === 'volume-down') {
-      const next = stepVolume(volume, -5);
-      applyVolume(next, next === 0 ? true : muted);
-    }
-    showControls();
-  };
-
-  const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
   // Speed control
   const handleSpeedChange = (speed) => {
@@ -1021,14 +876,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         <div className="lg:col-span-7 space-y-4">
           {/* YouTube Embed Player with Floating Subtitles Overlay */}
           <div
-            ref={videoFrameRef}
-            tabIndex={isLocalEpisode ? undefined : 0}
-            role={isLocalEpisode ? undefined : 'region'}
-            aria-label={isLocalEpisode ? undefined : 'Video YouTube — bấm để focus rồi dùng phím tắt: Space/K dừng·chạy, ←/→ tua 5 giây, J/L tua 10 giây, F toàn màn hình, M tắt tiếng'}
-            onKeyDown={handleVideoKeyDown}
-            onMouseMove={() => { if (!isLocalEpisode) showControls(); }}
-            onMouseLeave={() => { if (!isLocalEpisode) showControls(); }}
-            className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm"
           >
             {isLocalEpisode ? (
               localVideoUrl ? (
@@ -1063,7 +911,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 Tắt bằng nút CC thì biến mất hoàn toàn, video sạch. */}
             {subtitleOn && subtitles[activeSubIndex] &&
               ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
-              <div className={`absolute ${isLocalEpisode ? 'bottom-12' : controlsVisible ? 'bottom-14' : 'bottom-4'} left-0 right-0 pointer-events-none flex justify-center z-20 px-4`}>
+              <div className={`absolute ${isLocalEpisode ? 'bottom-12' : 'bottom-10'} left-0 right-0 pointer-events-none flex justify-center z-20 px-4`}>
                 <div className="max-w-3xl bg-black/70 px-3 py-1.5 text-center">
                   {showGerman && currentSub.de && (
                     <div
@@ -1083,109 +931,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               </div>
             )}
 
-            {/* Nút Play lớn ở giữa video (chỉ video YouTube, chỉ khi đang dừng).
-                Thanh điều khiển có ẩn sau 2 giây thì nút này vẫn hiện để bấm tiếp. */}
-            {!isLocalEpisode && !isPlaying && (
-              <button
-                type="button"
-                onClick={() => { playerRef.current?.playVideo?.(); setIsPlaying(true); showControls(); }}
-                aria-label="Phát video"
-                title="Phát (Space / K)"
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 rounded-full bg-black/60 hover:bg-black/80 p-5 text-white transition-colors"
-              >
-                <Play className="w-10 h-10 fill-current" />
-              </button>
-            )}
-
-            {/* Thanh điều khiển RIÊNG kiểu YouTube (chỉ video YouTube):
-                Play/Pause, thanh tiến trình bấm để tua, giờ hiện tại/tổng giờ,
-                âm lượng + tắt tiếng, toàn màn hình. Tự ẩn sau 2 giây không
-                di chuột; di chuột hoặc bấm phím thì hiện lại ngay. */}
-            {!isLocalEpisode && (
-              <div
-                className={`absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-3 pb-1.5 pt-8 text-white transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              >
-                {/* Thanh tiến trình: bấm để tua */}
-                <div
-                  role="slider"
-                  aria-label="Thanh tiến trình — bấm để tua"
-                  aria-valuemin={0}
-                  aria-valuemax={Math.round(duration)}
-                  aria-valuenow={Math.round(playhead)}
-                  tabIndex={0}
-                  onClick={handleProgressClick}
-                  onKeyDown={(event) => {
-                    if (event.key === 'ArrowLeft') { event.preventDefault(); event.stopPropagation(); seekToTime(clampSeekTime(playhead, -5, duration)); }
-                    if (event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); seekToTime(clampSeekTime(playhead, 5, duration)); }
-                  }}
-                  className="group/bar relative h-4 flex items-center cursor-pointer"
-                >
-                  <div className="relative w-full h-1 group-hover/bar:h-1.5 bg-white/30 rounded-full transition-all">
-                    <div
-                      className="absolute left-0 top-0 h-full bg-red-600 rounded-full"
-                      style={{ width: `${duration > 0 ? Math.min(100, (playhead / duration) * 100) : 0}%` }}
-                    />
-                    <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-red-600 opacity-0 group-hover/bar:opacity-100 transition-opacity"
-                      style={{ left: `${duration > 0 ? Math.min(100, (playhead / duration) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => { handleTogglePlayPause(); showControls(); }}
-                    aria-label={isPlaying ? 'Tạm dừng (Space / K)' : 'Phát (Space / K)'}
-                    title={isPlaying ? 'Tạm dừng (Space / K)' : 'Phát (Space / K)'}
-                    className="tap p-2 rounded-full hover:bg-white/15 text-white"
-                  >
-                    {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
-                  </button>
-                  <div className="group/vol flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => applyVolume(volume, !muted)}
-                      aria-label={muted ? 'Bật tiếng (M)' : 'Tắt tiếng (M)'}
-                      title={muted ? 'Bật tiếng (M)' : 'Tắt tiếng (M)'}
-                      className="tap p-2 rounded-full hover:bg-white/15 text-white"
-                    >
-                      <VolumeIcon className="w-5 h-5" />
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={muted ? 0 : volume}
-                      aria-label="Âm lượng"
-                      onKeyDown={(event) => event.stopPropagation()}
-                      onChange={(event) => applyVolume(Number(event.target.value), Number(event.target.value) === 0)}
-                      className="w-0 opacity-0 group-hover/vol:w-16 group-hover/vol:opacity-100 group-focus-within/vol:w-16 group-focus-within/vol:opacity-100 transition-all accent-white cursor-pointer"
-                    />
-                  </div>
-                  <span className="text-xs font-mono text-white/90 px-1 whitespace-nowrap">
-                    {formatVideoTime(playhead)} / {formatVideoTime(duration)}
-                  </span>
-                  <span className="flex-1" />
-                  <button
-                    type="button"
-                    onClick={toggleFullscreen}
-                    aria-label={isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)'}
-                    title={isFullscreen ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)'}
-                    className="tap p-2 rounded-full hover:bg-white/15 text-white"
-                  >
-                    {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-
-          {/* Gợi ý phím tắt cho video YouTube (không áp dụng video máy tính) */}
-          {!isLocalEpisode && (
-            <p className="text-[11px] font-mono text-muted-foreground">
-              Phím tắt: Space / K dừng·chạy · ← / → tua 5 giây · J / L tua 10 giây · F toàn màn hình · M tắt tiếng · ↑ / ↓ âm lượng. Bấm vào video trước rồi mới dùng phím.
-            </p>
-          )}
 
           {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
           <div className="surface p-4 border border-border space-y-3">
