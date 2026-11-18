@@ -301,8 +301,10 @@ function saveDatabase(data) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     window.dispatchEvent(new CustomEvent('sprach_db_change'));
+    return true;
   } catch (e) {
     console.error('Failed to save database:', e);
+    return false;
   }
 }
 
@@ -1594,7 +1596,7 @@ export const db = {
     getCollectionById: (id) => (state.listeningCollections || [])?.find((c) => c.id === id),
     createCollection: (col) => {
       const newCol = {
-        id: col.id || `col_${Date.now()}`,
+        id: col.id || `col_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         title: col.title,
         deTitle: col.deTitle || col.title,
         provider: col.provider || 'Cộng đồng học tập',
@@ -1606,7 +1608,7 @@ export const db = {
         created_by: db.auth.getUser()?.id || 'usr_anon',
       };
       state.listeningCollections.unshift(newCol);
-      saveDatabase(state);
+      if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa lưu được bộ video. Hãy xóa bớt video cũ rồi thử lại.');
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return newCol;
     },
@@ -1643,21 +1645,21 @@ export const db = {
         created_at: new Date().toISOString(),
       };
       state.listeningEpisodes.push(newEp);
-      saveDatabase(state);
+      if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa lưu được video. Hãy xóa bớt video/phụ đề cũ rồi thử lại.');
       return newEp;
     },
     updateEpisode: (id, updates) => {
       state.listeningEpisodes = (state.listeningEpisodes || []).map((e) =>
         e.id === id ? { ...e, ...updates } : e
       );
-      saveDatabase(state);
+      if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa lưu được thay đổi. Hãy xóa bớt video/phụ đề cũ rồi thử lại.');
       return state.listeningEpisodes.find((e) => e.id === id);
     },
     deleteEpisode: (id) => {
       // Dọn cả file video trong IndexedDB nếu tập này là video máy tính
       const removed = (state.listeningEpisodes || []).filter((e) => e.id === id);
       state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.id !== id);
-      saveDatabase(state);
+      if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa xóa được video. Hãy thử lại.');
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
@@ -1666,7 +1668,7 @@ export const db = {
       const idx = (state.listeningCollections || []).findIndex((c) => c.id === id);
       if (idx !== -1) {
         state.listeningCollections[idx] = { ...state.listeningCollections[idx], ...updates };
-        saveDatabase(state);
+        if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa lưu được thay đổi. Hãy xóa bớt video/phụ đề cũ rồi thử lại.');
         window.dispatchEvent(new CustomEvent('sprach_db_change'));
         return state.listeningCollections[idx];
       }
@@ -1676,7 +1678,7 @@ export const db = {
       const removed = (state.listeningEpisodes || []).filter((e) => e.collectionId === id);
       state.listeningCollections = (state.listeningCollections || []).filter((c) => c.id !== id);
       state.listeningEpisodes = (state.listeningEpisodes || []).filter((e) => e.collectionId !== id);
-      saveDatabase(state);
+      if (!saveDatabase(state)) throw new Error('Bộ nhớ trình duyệt đã đầy, chưa xóa được bộ video. Hãy thử lại.');
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;

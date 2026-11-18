@@ -14,7 +14,6 @@ import {
   Pause,
   RotateCcw,
   FastForward,
-  Repeat,
   Volume2,
   Download,
   Copy,
@@ -49,7 +48,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const [,refreshCore]=useState(0);
   const [coreSaving,setCoreSaving]=useState(false);
   const coreEpoch=useRef(0),coreBusy=useRef(false);
-  useEffect(()=>{const update=()=>{coreEpoch.current++;coreBusy.current=false;setCoreSaving(false);setTypedInput('');setDictationAudit(null);setDictationChecked(false);setLearnedSubs(new Set());refreshCore(n=>n+1);};if(!coreActive)return;window.addEventListener('sprach_listening_change',update);return()=>{coreEpoch.current++;window.removeEventListener('sprach_listening_change',update);};},[coreActive,collectionId,videoId]);
+  useEffect(()=>{const update=()=>{coreEpoch.current++;coreBusy.current=false;setCoreSaving(false);refreshCore(n=>n+1);};if(!coreActive)return;window.addEventListener('sprach_listening_change',update);return()=>{coreEpoch.current++;window.removeEventListener('sprach_listening_change',update);};},[coreActive,collectionId,videoId]);
   const [editingEpisode, setEditingEpisode] = useState(null);
 
   const collection = db.listening.getCollectionById(collectionId) || {
@@ -57,10 +56,13 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     title: 'Nicos Weg — Trình độ A1',
   };
   const episodes = db.listening.getEpisodes(collectionId);
-  const currentEpisode = db.listening.getEpisodeById(videoId) || episodes.find(e => e.id === videoId) || episodes[0] || {
+  // Không dùng video giả hay tập đầu tiên khi id không khớp: link hỏng phải
+  // báo "không tìm thấy" chứ không phát nhầm video khác.
+  const resolvedEpisode = db.listening.getEpisodeById(videoId) || episodes.find(e => e.id === videoId);
+  const currentEpisode = resolvedEpisode || {
     id: videoId,
-    title: 'Folge 1: Meine Muttersprache',
-    youtubeId: '4-eDoThe6qo',
+    title: '',
+    youtubeId: '',
     subtitles: [],
   };
 
@@ -127,8 +129,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           de: c.text,
           vi: ''
         }));
-        // Lưu trước bản tiếng Đức vào database cục bộ
-        db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+        // Lưu bản tiếng Đức — phải chờ lưu xong mới báo thành công, vì video
+        // trên máy chủ mà lưu thất bại thì tải lại trang là phụ đề biến mất.
+        const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+        if (!saved) throw Error('Không lưu được phụ đề. Hãy thử lại.');
         setPreview({scope:captionScope, cues});
         toast.success(`Đã lấy ${cues.length} câu tiếng Đức. Đang tự động dịch sang tiếng Việt...`);
 
@@ -136,9 +140,16 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         try {
           const translatedCues = await batchTranslateCues(cues);
           if (captionScopeRef.current === captionScope && translatedCues && translatedCues.length > 0) {
-            db.listening.updateEpisode(currentEpisode.id, { subtitles: translatedCues });
-            setPreview({ scope: captionScope, cues: translatedCues });
-            toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
+            const hasVietnamese = translatedCues.some(c => c.vi && String(c.vi).trim());
+            try {
+              const savedVi = await db.listening.updateEpisode(currentEpisode.id, { subtitles: translatedCues });
+              if (!savedVi) throw Error('Không lưu được bản dịch lên máy chủ.');
+              setPreview({ scope: captionScope, cues: translatedCues });
+              if (hasVietnamese) toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
+              else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch được câu nào sang tiếng Việt.');
+            } catch (saveErr) {
+              toast.error(saveErr.message);
+            }
           }
         } catch (transErr) {
           console.warn('Lỗi dịch phụ đề tự động:', transErr);
@@ -159,9 +170,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     try{
       toast.info(`Đang dịch ${subtitles.length} câu sang tiếng Việt...`);
       const updated = await batchTranslateCues(subtitles);
-      db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
+      const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
+      const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
+      if (!saved) throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope: captionScope, cues: updated });
-      toast.success('Đã hoàn tất bản dịch tiếng Việt!');
+      if (hasVietnamese) toast.success('Đã hoàn tất bản dịch tiếng Việt!');
+      else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
     }catch(err){
       toast.error('Lỗi khi dịch: ' + err.message);
     }finally{
@@ -186,7 +200,19 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         toast.error('Không đọc được câu nào từ file phụ đề này.');
         return;
       }
-      db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+      if (subtitles.length) {
+        const ok = await showConfirmModal({
+          title: 'Thay phụ đề hiện tại?',
+          message: `Video này đã có ${subtitles.length} câu phụ đề. File mới sẽ thay thế toàn bộ phụ đề cũ.`,
+          confirmText: 'Thay phụ đề',
+        });
+        if (!ok) return;
+      }
+      const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+      if (!saved) {
+        toast.error('Không lưu được phụ đề. Hãy thử lại.');
+        return;
+      }
       setPreview({ scope: captionScope, cues });
       toast.success(`Đã thêm ${cues.length} câu phụ đề cho video này!`);
     } catch (err) {
@@ -201,7 +227,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   }, [currentEpisode.id, currentEpisode.youtubeId]);
 
   // Studio Mode State
-  const [activeTab, setActiveTab] = useState(()=>{const mode=new URLSearchParams(window.location.hash.split('?')[1]||'').get('mode');return ['video','dictation','shadowing','quiz'].includes(mode)?mode:'video';}); // 'video' | 'dictation' | 'shadowing' | 'quiz'
+  const [activeTab, setActiveTab] = useState(()=>{const mode=new URLSearchParams(window.location.hash.split('?')[1]||'').get('mode');return ['video','dictation'].includes(mode)?mode:'video';}); // 'video' | 'dictation'
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showGerman, setShowGerman] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(true);
@@ -217,6 +243,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const [dictationAudit, setDictationAudit] = useState(null);
   const [dictationChecked, setDictationChecked] = useState(false);
   const [learnedSubs, setLearnedSubs] = useState(new Set());
+
+  // Đổi tập video thì làm mới bài chép chính tả đang làm dở; sự kiện nền
+  // (hydrate/import/xóa ở chỗ khác) không được xóa bài đang làm.
+  useEffect(()=>{setTypedInput('');setDictationAudit(null);setDictationChecked(false);setLearnedSubs(new Set());setActiveSubIndex(0);},[collectionId,videoId]);
 
   // Refs
   const playerRef = useRef(null);
@@ -246,7 +276,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     let isMounted = true;
     // Video máy tính không dùng YouTube IFrame API (có adapter riêng bên dưới)
     if (isLocalEpisode) return;
-    if(coreActive&&!currentEpisode.youtubeId)return;
+    if (!currentEpisode.youtubeId) return;
 
     const initYouTubePlayer = () => {
       if(!isMounted)return;
@@ -265,7 +295,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       if (!playerContainer) return;
 
       playerRef.current = new window.YT.Player('youtube-player-iframe', {
-        videoId: currentEpisode.youtubeId || '4-eDoThe6qo',
+        videoId: currentEpisode.youtubeId,
         playerVars: {
           autoplay: 0,
           controls: 1,
@@ -508,8 +538,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const handleCheckDictation = async (e) => {
     e.preventDefault();
     if (!typedInput.trim()||coreBusy.current) return;
-    if(coreActive&&!currentSub.recordId)return toast.error("Bản xem thử chưa được lưu để chấm.");
-    if(coreActive){const epoch=coreEpoch.current;coreBusy.current=true;setCoreSaving(true);try{const result=await elioListening().submit(currentSub,typedInput.trim());if(epoch===coreEpoch.current){setDictationAudit(result.audit);setDictationChecked(true);if(result.audit.isExact)setLearnedSubs(prev=>new Set(prev).add(currentSub.id||activeSubIndex));}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}finally{if(epoch===coreEpoch.current){coreBusy.current=false;setCoreSaving(false);}}return;}
+    if (!subtitles.length) return toast.error('Video chưa có phụ đề nên chưa chấm được. Hãy thêm phụ đề trước.');
+    if(coreActive&&currentSub.recordId){const epoch=coreEpoch.current;coreBusy.current=true;setCoreSaving(true);try{const result=await elioListening().submit(currentSub,typedInput.trim());if(epoch===coreEpoch.current){setDictationAudit(result.audit);setDictationChecked(true);if(result.audit.isExact)setLearnedSubs(prev=>new Set(prev).add(currentSub.id||activeSubIndex));}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}finally{if(epoch===coreEpoch.current){coreBusy.current=false;setCoreSaving(false);}}return;}
 
     const audit = auditDictationSentence({
       target: currentSub.de,
@@ -528,13 +558,13 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
 
   const handleCopyTranscript = () => {
     const text = subtitles.map((s) => `${s.de} (${s.vi})`).join('\n');
+    if (!text.trim()) return toast.error('Chưa có phụ đề để sao chép.');
     navigator.clipboard.writeText(text);
     toast.success('Đã sao chép toàn bộ lời thoại vào clipboard!');
   };
 
   const handleSaveSentenceAsCard = async (sub) => {
-    if(coreActive&&!sub.recordId)return toast.error('Bản xem thử chưa được lưu vào bài nghe.');
-    if(coreActive){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
+    if(coreActive&&sub.recordId){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
     db.vocabulary.create({
       german: sub.de,
       vietnamese: sub.vi || 'Mẫu câu luyện nghe',
@@ -544,7 +574,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     toast.success('Đã lưu câu này vào Thẻ từ vựng cá nhân!');
   };
 
-  const canManage = isAdmin || currentEpisode.created_by === currentUser?.id;
+  const canManage = isAdmin || (currentEpisode.owner ?? currentEpisode.created_by) === currentUser?.id;
 
   const handleDeleteEpisode = async () => {
     const ok = await showConfirmModal({
@@ -582,6 +612,16 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     setEditingEpisode(null);
     toast.success('Đã lưu thông tin video!');
   };
+
+  if (!resolvedEpisode) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4 animate-rise">
+        <h2 className="font-display text-xl font-bold">Không tìm thấy video này</h2>
+        <p className="text-sm text-muted-foreground">Video có thể đã bị xóa hoặc link không còn đúng. Quay lại danh sách để chọn tập khác.</p>
+        <button onClick={() => navigate('/skills/listening')} className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold shadow-sm">Về danh sách tập</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-rise max-w-7xl mx-auto">
@@ -637,7 +677,6 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           {[
             { id: 'video', label: 'Xem & Luyện nghe theo câu', icon: Play },
             { id: 'dictation', label: 'Chép chính tả (Diktat)', icon: FileText },
-            { id: 'shadowing', label: 'Shadowing (Nhại giọng)', icon: Repeat },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -829,6 +868,11 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 </button>
               </div>
 
+              {subtitles.length === 0 ? (
+                <div className="p-4 rounded-sm border border-border bg-card text-sm text-muted-foreground">
+                  Video chưa có phụ đề nên chưa chép chính tả được. Hãy bấm “Thêm phụ đề” ở cột lời thoại để tải file .srt/.vtt lên.
+                </div>
+              ) : (
               <form onSubmit={handleCheckDictation} className="space-y-3">
                 <label className="block text-xs font-mono text-muted-foreground">
                   Gõ lại câu thoại tiếng Đức bạn vừa nghe được:
@@ -859,6 +903,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   </button>
                 </div>
               </form>
+              )}
 
               {/* Dictation Result Breakdown */}
               {dictationChecked && dictationAudit && (
@@ -950,7 +995,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   onClick={() => subtitleFileRef.current?.click()}
                   className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors"
                 >
-                  Thêm phụ đề
+                  {subtitles.length ? 'Thay phụ đề' : 'Thêm phụ đề'}
                 </button>
               )}
               {subtitles.length > 0 && (!subtitles[0]?.vi || !subtitles[Math.floor(subtitles.length / 2)]?.vi) && (

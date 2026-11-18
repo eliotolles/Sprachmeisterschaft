@@ -72,7 +72,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
   });
 
   const allEpisodes=useMemo(()=>collections.flatMap(collection=>db.listening.getEpisodes(collection.id).map(episode=>({...episode,collection}))),[collections]);
-  const studioModes=[{id:'quiz',title:'Bài nghe & Quiz',description:'Nghe, hiểu và trả lời câu hỏi',icon:Headphones,count:allEpisodes.filter(e=>e.quiz?.length||e.questions?.length).length},{id:'youtube',title:'YouTube',description:'Dán link, học với phụ đề',icon:Youtube,count:allEpisodes.filter(e=>e.youtubeId).length},{id:'podcast',title:'Podcast',description:'Các tập nghe do bạn hoặc Admin thêm',icon:Headphones,count:allEpisodes.filter(e=>/podcast|postcard/i.test([e.collection.title,e.collection.provider].join(' '))).length},{id:'dictation',title:'Chép chính tả',description:'Nghe từng câu, gõ và đối chiếu',icon:Edit3,count:allEpisodes.filter(e=>e.subtitles?.length).length},{id:'shadowing',title:'Shadowing',description:'Nghe mẫu, ghi âm và nghe lại',icon:Video,count:allEpisodes.length}];
+  const studioModes=[{id:'quiz',title:'Bài nghe & Quiz',description:'Nghe, hiểu và trả lời câu hỏi',icon:Headphones,count:allEpisodes.filter(e=>e.quiz?.length||e.questions?.length).length},{id:'youtube',title:'YouTube',description:'Dán link, học với phụ đề',icon:Youtube,count:allEpisodes.filter(e=>e.youtubeId||e.localMediaId).length},{id:'podcast',title:'Podcast',description:'Các tập nghe do bạn hoặc Admin thêm',icon:Headphones,count:allEpisodes.filter(e=>/podcast|postcard/i.test([e.collection.title,e.collection.provider].join(' '))).length},{id:'dictation',title:'Chép chính tả',description:'Nghe từng câu, gõ và đối chiếu',icon:Edit3,count:allEpisodes.filter(e=>e.subtitles?.length).length},{id:'shadowing',title:'Shadowing',description:'Nghe mẫu, ghi âm và nghe lại',icon:Video,count:allEpisodes.length}];
   const handleDeleteCollection = async (colId, colTitle) => {
     const ok = await showConfirmModal({
       title: 'Xóa bộ video',
@@ -112,9 +112,9 @@ export function ListeningOverviewPage({ initialTab = null }) {
     try {
       db.listening.updateCollection(editingCollection.id, { ...editingCollection });
       if (listeningCoreActive()) {
-        try {
-          const original = collections.find((c) => c.id === editingCollection.id);
-          if (original?.organizerId && elioClient.renameCollection) {
+        const original = collections.find((c) => c.id === editingCollection.id);
+        if (original?.organizerId && elioClient.renameCollection) {
+          try {
             await elioClient.renameCollection({
               id: original.organizerId,
               revision: original.revision,
@@ -124,8 +124,14 @@ export function ListeningOverviewPage({ initialTab = null }) {
                 : {}),
             });
             await elioListening()?.hydrate();
+          } catch (serverError) {
+            // Tên/phạm vi trên máy chủ chưa đổi — báo thật và giữ hộp thoại
+            // để sửa lại, không báo thành công rồi tự hoàn tác sau khi tải lại.
+            setCollections(db.listening.getCollections());
+            toast.error('Chưa đổi được trên máy chủ: ' + (serverError?.message || 'lỗi không rõ') + '. Hãy tải lại trang rồi thử lại.');
+            return;
           }
-        } catch {}
+        }
       }
       setCollections(db.listening.getCollections());
       setEditingCollection(null);

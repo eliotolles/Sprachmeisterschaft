@@ -19,7 +19,7 @@ export function groupListeningLibrary(videos,folders=[]){
   if(!group.thumbnail&&video.youtubeId)group.thumbnail='https://img.youtube.com/vi/'+video.youtubeId+'/hqdefault.jpg';
   // Episode identity stays tied to its original record/item, independently of its visual group.
   const record=encodeURIComponent(video.recordId),id=record+':'+(video.itemId===undefined?'video':typeof video.itemId+':'+encodeURIComponent(String(video.itemId)));
-  if(seen.has(id))throw Error('ID video nguồn bị trùng.');seen.add(id);
+  if(seen.has(id)){console.warn('Bỏ qua video trùng ID nguồn:',id);continue;}seen.add(id);
   episodes.push({id,collection_id:group.id,title:video.title,level:video.level,youtubeId:video.youtubeId,recordId:video.recordId,itemId:video.itemId,owner:video.owner,subtitles:video.subtitles});
  }
  for(const group of groups.values()){group.levels.sort();group.level=group.levels.join(' / ');}
