@@ -45,8 +45,6 @@ import {
   Film,
 } from 'lucide-react';
 
-} from 'lucide-react';
-
 const MODULES = [
   { id: 'vocabulary', label: 'Từ vựng', icon: BookOpen, desc: 'Excel, CSV, TXT, TSV, JSON, PDF' },
   { id: 'grammar', label: 'Ngữ pháp', icon: Layers, desc: 'Bài giảng Markdown tay hoặc tài liệu PDF/DOCX' },
