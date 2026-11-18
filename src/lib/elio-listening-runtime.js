@@ -231,16 +231,6 @@ export function installListeningRuntime(db){
    notify();
    return true;
   },
-  resetDefaults:()=>{
-   try{
-     localStorage.removeItem('sprach_deleted_listening_collections');
-     localStorage.removeItem('sprach_deleted_listening_episodes');
-   }catch{}
-   if(legacy.resetDefaults) legacy.resetDefaults();
-   hydrate().catch(()=>{});
-   notify();
-   return true;
-  }
  };
 
  for(const name of Object.keys(legacy)){

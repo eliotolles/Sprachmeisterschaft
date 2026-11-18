@@ -1903,25 +1903,6 @@ export function AdminPage() {
                 <span className="text-xs font-mono font-bold text-foreground">
                   Danh sách bộ video luyện nghe ({listeningCols.length}):
                 </span>
-                <button
-                  onClick={async () => {
-                    const ok = await showConfirmModal({
-                      title: 'Khôi phục danh sách video',
-                      message: 'Khôi phục danh sách bộ video luyện nghe Nicos Weg gốc của hệ thống?',
-                      confirmText: 'Khôi phục video',
-                      variant: 'warning',
-                    });
-                    if (ok) {
-                      db.listening.resetDefaults();
-                      setListeningCols(db.listening.getCollections());
-                      toast.success('Đã khôi phục video luyện nghe gốc!');
-                    }
-                  }}
-                  className="tap px-2.5 py-1 text-xs font-mono text-muted-foreground hover:text-foreground border border-border rounded-sm flex items-center gap-1"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Khôi phục video gốc</span>
-                </button>
               </div>
 
               <div className="overflow-x-auto">

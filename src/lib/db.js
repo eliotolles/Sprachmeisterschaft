@@ -5,7 +5,6 @@ import {installElioAuthentication,elioAuthentication} from './elio-auth-runtime.
 import { formatDate, addDays, calculateStreak } from './algorithms';
 import { mergePersonalAndSharedVocabulary, mapSharedElioCard } from './shared-vocabulary.js';
 import { keepOtherAccountElioReview } from './elio-review-ownership.js';
-import { LISTENING_COLLECTIONS, LISTENING_EPISODES } from '@/data/listening-collections';
 import { rescheduleMissedTasks } from './study-plan-generator.js';
 
 const STORAGE_KEY = 'sprachmeisterschaft_db_v1';
@@ -1705,17 +1704,12 @@ export const db = {
       deleteLocalMediaMany(removed.map((e) => e.localMediaId)).catch(() => {});
       return true;
     },
-    resetDefaults: () => {
-      state.listeningCollections = JSON.parse(JSON.stringify(LISTENING_COLLECTIONS));
-      state.listeningEpisodes = JSON.parse(JSON.stringify(LISTENING_EPISODES));
-      saveDatabase(state);
-      window.dispatchEvent(new CustomEvent('sprach_db_change'));
-      return true;
-    },
     recoverOrphanedLocalMedia: async () => {
-      // Sau khi bấm "Khôi phục gốc", metadata tập video bị thay bằng kho mẫu
-      // (đang trống) nhưng file Blob vẫn còn trong IndexedDB. Quét lại kho
-      // Blob và tạo lại tập video cho những file chưa có tập tương ứng.
+      // Khi metadata tập video bị mất (ví dụ kho nghe từng bị đặt lại về
+      // kho mẫu đang trống) nhưng file Blob vẫn còn trong IndexedDB, quét
+      // lại kho Blob và tạo lại tập video cho những file chưa có tập tương ứng.
+      // (Nút khôi phục trên giao diện đã gỡ theo yêu cầu — hàm này giữ lại
+      // làm tiện ích, không còn chỗ nào trong UI gọi tới.)
       const stored = await listLocalMedia();
       const knownIds = new Set((state.listeningEpisodes || []).map((e) => e.localMediaId).filter(Boolean));
       const orphans = (stored || []).filter((m) => m.id && !knownIds.has(m.id));
