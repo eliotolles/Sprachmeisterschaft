@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
 import { batchTranslateCues } from '@/lib/translator';
 import { saveLocalMedia, deleteLocalMedia, checkLocalVideoSize, formatFileSize } from '@/lib/local-media-store';
+import { elioImport } from '@/lib/elio-import-runtime';
 import {
   detectFileType,
   parseExcelFile,
@@ -833,8 +834,8 @@ export function UniversalImportModal({
             throw err;
           }
 
-          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" (${col.scope === 'public' ? 'Kho chung' : 'Cá nhân'}) thành công!`);
-          setSavedDestination(`Đã lưu vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'}`);
+          toast.success(`Đã lưu ${localFiles.length} video vào bộ "${col.title}" (${col.scope === 'public' ? 'Kho chung' : 'Cá nhân'}) — chỉ trên trình duyệt này!`);
+          setSavedDestination(`Đã lưu vào bộ "${col.title}" · ${col.scope === 'public' ? 'Kho video chung toàn hệ thống' : 'Video cá nhân của tôi (My Videos)'} · chỉ lưu trên trình duyệt này, chưa lên database (file video quá lớn)`);
         } else if (listeningLinkType === 'playlist') {
           const selectedVideos = playlistVideos.filter(v => v.selected !== false);
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
@@ -868,6 +869,52 @@ export function UniversalImportModal({
           });
 
           toast.success(`Đã thêm video "${episodeTitle}" vào bộ "${col.title}" thành công!`);
+        }
+
+        // Đẩy lên database (server) cho video YouTube / playlist — trước đây
+        // modal chỉ lưu ở localStorage nên import xong database vẫn trống.
+        // File máy tính (local) không đẩy lên được vì blob video quá lớn.
+        if (listeningLinkType !== 'local') {
+          if (elioImport.isActive()) {
+            try {
+              const organizerId = targetCollectionId && targetCollectionId.startsWith('folder-')
+                ? targetCollectionId.slice('folder-'.length)
+                : null;
+              let serverResult = null;
+              if (listeningLinkType === 'playlist') {
+                const selectedVideos = playlistVideos.filter((v) => v.selected !== false);
+                serverResult = await elioImport.save({
+                  contentType: 'listening',
+                  title: colTitle,
+                  level,
+                  scope,
+                  youtubeUrl,
+                  playlistItems: selectedVideos.map((v) => ({ id: v.id, title: v.title })),
+                  organizerId,
+                });
+              } else {
+                serverResult = await elioImport.save({
+                  contentType: 'listening',
+                  title: (targetCollectionId && title) ? title : colTitle,
+                  level,
+                  scope,
+                  rows: youtubeCues,
+                  youtubeUrl,
+                  organizerId,
+                });
+              }
+              // Server đã xác nhận đủ số video — đồng bộ lại để bộ server hiện lên
+              window.dispatchEvent(new CustomEvent('sprach_core_imported'));
+              setSavedDestination((prev) => (prev
+                ? `${prev} · Đã lên database (${serverResult?.savedCount ?? ''} video)`
+                : `Đã lưu lên database (${serverResult?.savedCount ?? ''} video).`));
+            } catch (serverErr) {
+              // Đã lưu local ở trên nên không mất dữ liệu — chỉ báo chưa lên database
+              toast.warning(`Đã lưu trên trình duyệt này, nhưng chưa lên được database: ${serverErr.message}`);
+            }
+          } else {
+            toast.warning('Chưa đăng nhập nên video chỉ lưu trên trình duyệt này, chưa lên database.');
+          }
         }
       }
 
