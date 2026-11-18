@@ -472,74 +472,7 @@ export async function parsePdfFile(file, onProgress) {
   };
 }
 
-/**
- * 8. Parser Phụ Đề YouTube (SRT, VTT hoặc Timestamp)
- */
-export function parseYouTubeSubtitles(text) {
-  if (!text || !text.trim()) return [];
-  const lines = text.split('\n');
-  const subs = [];
-  let curAutoTime = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line || /^\d+$/.test(line)) continue; // bỏ qua số thứ tự dòng SRT
-
-    // Trường hợp 1: SRT timestamp "00:01:20,000 --> 00:01:24,500"
-    const srtMatch = line.match(/(\d{2}):(\d{2}):(\d{2})[,.]\d+\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.]\d+/);
-    if (srtMatch) {
-      const startSec = parseInt(srtMatch[1], 10) * 3600 + parseInt(srtMatch[2], 10) * 60 + parseInt(srtMatch[3], 10);
-      const endSec = parseInt(srtMatch[4], 10) * 3600 + parseInt(srtMatch[5], 10) * 60 + parseInt(srtMatch[6], 10);
-      
-      // Đọc các dòng chữ phía sau
-      let subtitleText = '';
-      let j = i + 1;
-      while (j < lines.length && lines[j].trim() && !lines[j].includes('-->')) {
-        subtitleText += (subtitleText ? ' ' : '') + lines[j].trim();
-        j++;
-      }
-      i = j - 1;
-
-      // Tách tiếng Đức | tiếng Việt nếu có
-      const parts = subtitleText.split(/\s*\|\s*/);
-      subs.push({
-        id: `sub_${subs.length + 1}`,
-        start: startSec,
-        end: endSec > startSec ? endSec : startSec + 4,
-        de: parts[0] || '',
-        vi: parts[1] || '',
-      });
-      continue;
-    }
-
-    // Trường hợp 2: Format ngắn "0:05 - Wie lange lernen Sie schon Deutsch? | Bạn học được bao lâu rồi?"
-    const shortMatch = line.match(/^(\d+):(\d+)\s*[-:]\s*(.*?)(?:\s*\|\s*(.*))?$/);
-    if (shortMatch) {
-      const startSec = parseInt(shortMatch[1], 10) * 60 + parseInt(shortMatch[2], 10);
-      subs.push({
-        id: `sub_${subs.length + 1}`,
-        start: startSec,
-        end: startSec + 4,
-        de: shortMatch[3].trim(),
-        vi: shortMatch[4] ? shortMatch[4].trim() : '',
-      });
-      continue;
-    }
-
-    // Trường hợp 3: Dòng văn bản bình thường (tự tăng 4 giây mỗi câu)
-    const p = line.split(/\s*\|\s*/);
-    subs.push({
-      id: `sub_${subs.length + 1}`,
-      start: curAutoTime,
-      end: curAutoTime + 4,
-      de: p[0].trim(),
-      vi: p[1] ? p[1].trim() : '',
-    });
-    curAutoTime += 4;
-  }
-
-  return subs;
-}
+export { normalizeSubtitleText, parseYouTubeSubtitles } from './subtitle-parser.js';
 
 /**
  * 9. Trích xuất YouTube ID hoặc Playlist ID từ URL

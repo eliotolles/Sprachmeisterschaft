@@ -18,6 +18,7 @@ import {
   parseDocxFile,
   parsePdfFile,
   parseYouTubeSubtitles,
+  normalizeSubtitleText,
   parseGrammarInput,
   parseExamJsonInput,
   parseMultiExams,
@@ -44,33 +45,7 @@ import {
   Film,
 } from 'lucide-react';
 
-// Chuẩn hóa phụ đề SRT/VTT trước khi đưa vào parseYouTubeSubtitles:
-// - bỏ dòng đầu WEBVTT và khối NOTE của VTT
-// - đổi timestamp dạng MM:SS.mmm (hay gặp trong VTT) sang HH:MM:SS,mmm
-function normalizeSubtitleText(text) {
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  const out = [];
-  let skipNote = false;
-  for (const line of lines) {
-    const t = line.trim();
-    if (/^WEBVTT/i.test(t)) continue;
-    if (/^NOTE(\s|$)/i.test(t)) {
-      skipNote = true;
-      continue;
-    }
-    if (skipNote) {
-      if (!t) skipNote = false;
-      continue;
-    }
-    out.push(line);
-  }
-  return out
-    .join('\n')
-    .replace(
-      /^(\d{2}):(\d{2})([.,]\d+)\s*-->\s*(\d{2}):(\d{2})([.,]\d+)\s*$/gm,
-      '00:$1:$2,000 --> 00:$4:$5,000'
-    );
-}
+} from 'lucide-react';
 
 const MODULES = [
   { id: 'vocabulary', label: 'Từ vựng', icon: BookOpen, desc: 'Excel, CSV, TXT, TSV, JSON, PDF' },

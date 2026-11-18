@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
 import { getLocalMediaUrl, deleteLocalMedia } from '@/lib/local-media-store';
+import { parseYouTubeSubtitles, normalizeSubtitleText } from '@/lib/subtitle-parser';
 import { batchTranslateCues } from '@/lib/translator';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
@@ -169,6 +170,30 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
 
   // Tự động lấy phụ đề khi mở video nếu video chưa có phụ đề
+  const subtitleFileRef = useRef(null);
+  const handleSubtitleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    if (!/\.(srt|vtt)$/i.test(file.name)) {
+      toast.error('File phụ đề phải là .srt hoặc .vtt.');
+      return;
+    }
+    try {
+      const rawText = await file.text();
+      const cues = parseYouTubeSubtitles(normalizeSubtitleText(rawText));
+      if (!cues.length) {
+        toast.error('Không đọc được câu nào từ file phụ đề này.');
+        return;
+      }
+      db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
+      setPreview({ scope: captionScope, cues });
+      toast.success(`Đã thêm ${cues.length} câu phụ đề cho video này!`);
+    } catch (err) {
+      toast.error('Lỗi khi đọc file phụ đề: ' + err.message);
+    }
+  };
+
   useEffect(() => {
     if ((!currentEpisode.subtitles || !currentEpisode.subtitles.length) && currentEpisode.youtubeId) {
       fetchCaptions();
@@ -919,6 +944,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   {captionBusy ? 'Đang lấy & dịch…' : 'Lấy bản hiện lời'}
                 </button>
               )}
+              {(!currentEpisode.youtubeId || subtitles.length === 0) && (
+                <button
+                  type="button"
+                  onClick={() => subtitleFileRef.current?.click()}
+                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors"
+                >
+                  Thêm phụ đề
+                </button>
+              )}
               {subtitles.length > 0 && (!subtitles[0]?.vi || !subtitles[Math.floor(subtitles.length / 2)]?.vi) && (
                 <button
                   type="button"
@@ -940,10 +974,24 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           </div>
 
           {/* Transcript Scroll Container (Auto-highlight & auto-scroll) */}
+          <input
+            ref={subtitleFileRef}
+            type="file"
+            accept=".srt,.vtt"
+            className="hidden"
+            onChange={handleSubtitleFile}
+          />
           <div className="surface p-2 border border-border max-h-[600px] overflow-y-auto space-y-2">
             {subtitles.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-muted-foreground">
-                Chưa có phụ đề cho video này.
+              <div className="p-8 text-center space-y-3">
+                <p className="text-xs font-mono text-muted-foreground">Chưa có phụ đề cho video này.</p>
+                <button
+                  type="button"
+                  onClick={() => subtitleFileRef.current?.click()}
+                  className="tap px-3 py-1.5 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
+                >
+                  Thêm phụ đề (.srt / .vtt)
+                </button>
               </div>
             ) : (
               subtitles.map((sub, idx) => {
