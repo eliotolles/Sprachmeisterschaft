@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
 import { getLocalMediaUrl, deleteLocalMedia } from '@/lib/local-media-store';
 import { parseYouTubeSubtitles, normalizeSubtitleText } from '@/lib/subtitle-parser';
+import { clampSubtitleDrag, SUBTITLE_DRAG_THRESHOLD_PX } from '@/lib/subtitle-drag';
 import { batchTranslateCues } from '@/lib/translator';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
@@ -315,6 +316,66 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     large: { de: 'text-base md:text-lg', vi: 'text-sm md:text-base' },
   };
   const subSize = SUBTITLE_SIZES[subtitleSize] || SUBTITLE_SIZES.medium;
+
+  // Hộp phụ đề trên video kéo được bằng chuột: bấm giữ vào hộp rồi kéo,
+  // thả ra hộp ở chỗ mới, không ra ngoài khung video. Vị trí mặc định vẫn
+  // dưới, căn giữa; vị trí kéo được cộng thêm vào vị trí mặc định nên đổi
+  // câu hay bottom nhích lên/xuống cũng không reset. Đổi tập video thì về 0.
+  const [subtitlePos, setSubtitlePos] = useState({ x: 0, y: 0 });
+  const [subtitleDragging, setSubtitleDragging] = useState(false);
+  const videoFrameRef = useRef(null);
+  const subtitleBoxRef = useRef(null);
+  const subtitleDragRef = useRef(null);
+  const suppressLookupClickRef = useRef(false);
+  useEffect(() => {
+    setSubtitlePos({ x: 0, y: 0 });
+    setSubtitleDragging(false);
+    subtitleDragRef.current = null;
+    suppressLookupClickRef.current = false;
+  }, [currentEpisode.id]);
+  const handleSubtitlePointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const box = subtitleBoxRef.current;
+    const frame = videoFrameRef.current;
+    if (!box || !frame) return;
+    suppressLookupClickRef.current = false;
+    subtitleDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startPos: subtitlePos,
+      boxRect: box.getBoundingClientRect(),
+      frameRect: frame.getBoundingClientRect(),
+      dragging: false,
+    };
+    try { box.setPointerCapture(event.pointerId); } catch {}
+  };
+  const handleSubtitlePointerMove = (event) => {
+    const drag = subtitleDragRef.current;
+    if (!drag) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.dragging) {
+      if (Math.hypot(dx, dy) <= SUBTITLE_DRAG_THRESHOLD_PX) return;
+      drag.dragging = true;
+      setSubtitleDragging(true);
+      window.getSelection()?.removeAllRanges();
+    }
+    setSubtitlePos(clampSubtitleDrag(dx, dy, drag.boxRect, drag.frameRect, drag.startPos));
+  };
+  const endSubtitleDrag = () => {
+    const drag = subtitleDragRef.current;
+    subtitleDragRef.current = null;
+    if (drag?.dragging) suppressLookupClickRef.current = true;
+    setSubtitleDragging(false);
+  };
+  // Sau khi kéo, click đi kèm pointerup có thể mở nhầm popup tra từ nên
+  // chặn 1 click đó ở pha capture (chạy trước onClick của LookupText).
+  const handleSubtitleClickCapture = (event) => {
+    if (!suppressLookupClickRef.current) return;
+    suppressLookupClickRef.current = false;
+    event.stopPropagation();
+    event.preventDefault();
+  };
 
   // Menu cài đặt phụ đề (mở từ nút "Phụ đề"): bật/tắt, cỡ chữ, độ trễ.
   // Gọn trong 1 nút để thanh trên không bị bày hết ra làm hỏng giao diện.
@@ -876,6 +937,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         <div className="lg:col-span-7 space-y-4">
           {/* YouTube Embed Player with Floating Subtitles Overlay */}
           <div
+            ref={videoFrameRef}
             className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm"
           >
             {isLocalEpisode ? (
@@ -912,7 +974,17 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
             {subtitleOn && subtitles[activeSubIndex] &&
               ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
               <div className={`absolute ${isLocalEpisode ? 'bottom-12' : 'bottom-10'} left-0 right-0 pointer-events-none flex justify-center z-20 px-4`}>
-                <div className="max-w-3xl bg-black/70 px-3 py-1.5 text-center">
+                <div
+                  ref={subtitleBoxRef}
+                  className={`pointer-events-auto max-w-3xl touch-none bg-black/70 px-3 py-1.5 text-center ${subtitleDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  style={{ transform: `translate(${subtitlePos.x}px, ${subtitlePos.y}px)` }}
+                  onPointerDown={handleSubtitlePointerDown}
+                  onPointerMove={handleSubtitlePointerMove}
+                  onPointerUp={endSubtitleDrag}
+                  onPointerCancel={endSubtitleDrag}
+                  onClickCapture={handleSubtitleClickCapture}
+                  title="Kéo để di chuyển phụ đề — bấm vào một từ để tra nghĩa"
+                >
                   {showGerman && currentSub.de && (
                     <div
                       className={`pointer-events-auto text-white font-semibold leading-snug line-clamp-2 ${subSize.de}`}
