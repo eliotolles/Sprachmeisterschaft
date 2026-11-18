@@ -25,12 +25,8 @@ async function lookup(token) {
     const rows = await elioClient.vocabulary({ q: token, limit: 40 });
     word = rows.map(mapSharedElioCard).find(row => row.vietnamese && matches(row));
   }
-  if (!word) {
-    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:token}),{signal:AbortSignal.timeout(15000)});
-    if(response.ok){const external=await response.json();const vi=external.entries?.find(e=>e.language==='vi'),de=external.entries?.find(e=>e.language==='de');
-     if(vi||de)word={german:vi?.title||de.title,vietnamese:vi?.definitions.join('; ')||'',meaning_de:de?.definitions.join('; ')||'',ipa:vi?.ipa?.[0]||de?.ipa?.[0]||'',source:'external_dictionary',external_sources:external.entries.map(e=>({url:e.source,language:e.language})),level:'',topic:'Từ điển ngoài'};
-    }}catch{/* AI can still try the word if the external source is unavailable. */}
-  }
+  // Không còn nguồn ngoài (Wiktionary): từ không có trong app thì AI viết nghĩa ngay,
+  // không chờ fetch từ điển ngoài (tới 15 giây) rồi mới tới AI.
   if (!word) word={german:token,vietnamese:'',source:'ai_lookup',level:'',topic:'Tra theo ngữ cảnh'};
   if (owner === db.auth.getUser()?.id) {
     if (cache.size >= 150) cache.delete(cache.keys().next().value);
@@ -77,26 +73,24 @@ export function WordDetail({ target, onClose }) {
     return () => { current = false; };
   }, [target, retry]);
   const enriched=useRef(new Set());
-  // AI enrichment chạy cho mọi nguồn, kể cả từ điển ngoài (source external_dictionary),
-  // không chỉ từ trong app. Lỗi AI trước đây bị nuốt lặng nên từ kẹt ở "Chưa có nghĩa
-  // tiếng Việt" — giờ lỗi sẽ mở đường cho nút "Tra lại nghĩa bằng AI" (xem retryEnrich).
+  // AI enrichment: gọi AI ngay khi mở popup, không chờ nguồn ngoài nữa.
+  // Trước đây effect này fetch Wiktionary trước (tới 3 giây) rồi mới gọi AI,
+  // nên nghĩa tiếng Việt cứ "đang tra" mãi. Lỗi AI bị nuốt lặng sẽ mở đường
+  // cho nút "Tra lại nghĩa bằng AI" (xem retryEnrich).
   useEffect(()=>{
    if(!word||!db.auth.getUser()||!db.vocabulary.isCore?.())return;
    const key=normalize(word.german);if(enriched.current.has(key))return;
    const canonical={...word,...vocabularyDetails(word)};
    // Nếu từ đã có nghĩa tiếng Việt thì hiển thị ngay lập tức, không tự động bắt AI tra ngầm gây chờ đợi lâu
    if (canonical.vietnamese && canonical.vietnamese.trim()) return;
-   const fields=['vietnamese','english','ipa','example_de','example_vi'].filter(field=>!canonical[field]||Array.isArray(canonical[field])&&!canonical[field].length);
+   // Chỉ xin đúng các trường popup đang cần (nghĩa, IPA, ví dụ, đồng/trái nghĩa,
+   // cụm từ) — không xin thừa tiếng Anh — để AI viết xong nhanh hơn.
+   const fields=['vietnamese','ipa','example_de','example_vi','synonyms','antonyms','collocations'].filter(field=>!canonical[field]||Array.isArray(canonical[field])&&!canonical[field].length);
    if(!fields.length)return;enriched.current.add(key);let current=true;const account=db.auth.getUser()?.id;setEnriching(true);
    (async()=>{
-    let externalFields={},externalSources=[];
-    try{const response=await fetch('/api/dictionary/lookup?'+new URLSearchParams({word:lemma(word.german).replace(/^\(sich\)\s*/,'')}),{signal:AbortSignal.timeout(3000)});if(response.ok){const data=await response.json();const vi=data.entries?.find(e=>e.language==='vi'),de=data.entries?.find(e=>e.language==='de');if(fields.includes('ipa')&&(vi?.ipa?.[0]||de?.ipa?.[0]))externalFields.ipa=vi?.ipa?.[0]||de.ipa[0];if(fields.includes('vietnamese')&&vi?.definitions?.length)externalFields.vietnamese=vi.definitions.join('; ');externalSources=(data.entries||[]).map(e=>({url:e.source,language:e.language}));}}
-    catch{/* Keep local data and continue with explicitly labelled AI enrichment. */}
     if(!current||account!==db.auth.getUser()?.id)return;
-    if(Object.keys(externalFields).length)setWord(previous=>({...previous,...externalFields,external_sources:[...(previous.external_sources||[]),...externalSources]}));
-    const missing=fields.filter(field=>!Object.hasOwn(externalFields,field));if(!missing.length)return;
-    const result=await elioClient.enrichWord({word:word.german,context:target.sentence?.slice(0,3000)||'',fields:missing});
-    if(current&&account===db.auth.getUser()?.id)setWord(previous=>({...previous,...Object.fromEntries(Object.entries(result.fields).filter(([field])=>missing.includes(field))),ai_fields:[...(previous.ai_fields||[]),...Object.keys(result.fields)],ai_warnings:result.warnings}));
+    const result=await elioClient.enrichWord({word:word.german,context:target.sentence?.slice(0,3000)||'',fields});
+    if(current&&account===db.auth.getUser()?.id)setWord(previous=>({...previous,...Object.fromEntries(Object.entries(result.fields).filter(([field])=>fields.includes(field))),ai_fields:[...(previous.ai_fields||[]),...Object.keys(result.fields)],ai_warnings:result.warnings}));
    })().catch(()=>{ enriched.current.delete(key); /* Bỏ qua lỗi AI để người dùng không bị làm phiền — nút "Tra lại nghĩa bằng AI" sẽ cho tra lại. */}).finally(()=>{if(current)setEnriching(false);});
    return()=>{current=false;};
   },[word?.german, word?.source, enrichAttempt]);
@@ -107,7 +101,7 @@ export function WordDetail({ target, onClose }) {
     setEnrichAttempt(value => value + 1);
   }
   const owner = db.auth.getUser()?.id;
-  const canSave = db.vocabulary.isCore?.() ? ['elio_shared','external_dictionary','ai_lookup'].includes(word?.source)&&!!word?.vietnamese : Boolean(word);
+  const canSave = db.vocabulary.isCore?.() ? ['elio_shared','ai_lookup'].includes(word?.source)&&!!word?.vietnamese : Boolean(word);
   const savedAlready = !db.vocabulary.isCore?.() && word && db.vocabulary.findMany().some(row => lemma(row.german) === lemma(word.german) && normalize(row.article) === normalize(word.article));
   async function chooseDeck() {
     setBusy(true); setError('');
@@ -163,7 +157,7 @@ export function WordDetail({ target, onClose }) {
       <div className="space-y-3 p-4">
         {enriching && (!word?.vietnamese || !word.vietnamese.trim()) && (
           <p role="status" className="text-xs text-muted-foreground animate-pulse">
-            Đang tra nghĩa AI...
+            AI đang viết nghĩa…
           </p>
         )}
         {!word && !error && <p role="status">Đang tra từ…</p>}
@@ -193,8 +187,7 @@ export function WordDetail({ target, onClose }) {
               <SpeakButton text={sentence} size="sm" />
             </div>
           </section>}
-          {word.external_sources&&<p className="text-sm">Nguồn ngoài: {word.external_sources.map(source=><a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="text-accent underline mr-2">Wiktionary {source.language} · CC BY-SA</a>)}</p>}
-          {word.ai_fields?.length>0&&<p className="text-sm text-muted-foreground">AI bổ sung (cần đối chiếu): {word.ai_fields.join(', ')}. Dữ liệu nguồn không bị ghi đè.</p>}
+          {word.ai_fields?.length>0&&<p className="text-sm text-muted-foreground">AI viết nghĩa (cần đối chiếu): {word.ai_fields.join(', ')}. Dữ liệu nguồn không bị ghi đè.</p>}
           {(lexicalItems(details.synonyms).length > 0 || lexicalItems(details.antonyms).length > 0) && <section aria-label="Đồng nghĩa và trái nghĩa" className="space-y-2">
             <h3 className="text-sm font-semibold text-muted-foreground">Đồng nghĩa / Trái nghĩa</h3>
             {lexicalItems(details.synonyms).length > 0 && <div>
