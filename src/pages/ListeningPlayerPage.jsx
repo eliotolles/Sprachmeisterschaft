@@ -545,11 +545,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const handleSaveEpisode = (e) => {
     e.preventDefault();
     if (!editingEpisode) return;
-    if(coreActive)return toast.error('Sửa video chưa nối server.');
+    const isLocalVideo = !!editingEpisode.localMediaId;
+    if (coreActive && !isLocalVideo) return toast.error('Sửa video chưa nối server.');
     db.listening.updateEpisode(editingEpisode.id, {
       title: editingEpisode.title,
       deTitle: editingEpisode.deTitle,
-      youtubeId: editingEpisode.youtubeId,
+      ...(isLocalVideo ? {} : { youtubeId: editingEpisode.youtubeId }),
       level: editingEpisode.level,
       duration: editingEpisode.duration,
     });
@@ -1065,18 +1066,22 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-mono text-muted-foreground uppercase text-[10px]">
-                  YouTube Video ID hoặc URL *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingEpisode.youtubeId || ''}
-                  onChange={(e) => setEditingEpisode({ ...editingEpisode, youtubeId: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground font-mono"
-                />
-              </div>
+              {editingEpisode.localMediaId ? (
+                <p className="font-body text-sm text-muted-foreground">Video máy tính — tập này không có YouTube ID, sửa tên và cấp độ rồi lưu là được.</p>
+              ) : (
+                <div className="space-y-1">
+                  <label className="font-mono text-muted-foreground uppercase text-[10px]">
+                    YouTube Video ID hoặc URL *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingEpisode.youtubeId || ''}
+                    onChange={(e) => setEditingEpisode({ ...editingEpisode, youtubeId: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-sm border border-border bg-card text-foreground font-mono"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
