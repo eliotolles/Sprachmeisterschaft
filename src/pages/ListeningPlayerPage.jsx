@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
 import { SpeakButton } from '@/components/ui/SpeakButton';
+import { LookupText } from '@/components/vocabulary/WordDetail';
 import { auditDictationSentence } from '@/lib/ai-evaluator';
 import {
   Play,
@@ -283,6 +284,30 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   useEffect(() => {
     try { window.localStorage.setItem('sprach_subtitle_size', subtitleSize); } catch {}
   }, [subtitleSize]);
+  // Độ trễ phụ đề kiểu VLC: -10s đến +10s, bước 0,5s, mặc định 0.
+  // Phụ đề chậm hơn tiếng thì kéo sang + (hiện câu sau sớm hơn), nhanh
+  // hơn thì kéo sang -. Lưu riêng theo từng video (key gồm episode id).
+  const [subtitleOffset, setSubtitleOffset] = useState(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(`sprach_subtitle_offset:${currentEpisode.id}`) : null;
+      const value = raw === null ? 0 : Number(raw);
+      return Number.isFinite(value) ? Math.max(-10, Math.min(10, value)) : 0;
+    } catch { return 0; }
+  });
+  // Đổi tập video thì nạp lại độ trễ đã lưu của tập đó (mặc định 0).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`sprach_subtitle_offset:${currentEpisode.id}`);
+      const value = raw === null ? 0 : Number(raw);
+      setSubtitleOffset(Number.isFinite(value) ? Math.max(-10, Math.min(10, value)) : 0);
+    } catch { setSubtitleOffset(0); }
+  }, [currentEpisode.id]);
+  const changeSubtitleOffset = (value) => {
+    const clamped = Number.isFinite(value) ? Math.max(-10, Math.min(10, Math.round(value * 2) / 2)) : 0;
+    setSubtitleOffset(clamped);
+    try { window.localStorage.setItem(`sprach_subtitle_offset:${currentEpisode.id}`, String(clamped)); } catch {}
+  };
+  const formatSubtitleOffset = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}s`;
   // Cỡ chữ phụ đề trên video: Vừa (mặc định) gọn như YouTube — nhỏ hơn
   // text-base md:text-xl của hộp đen cũ đã bỏ.
   const SUBTITLE_SIZES = {
@@ -322,10 +347,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const isPlayingRef = useRef(false);
   const lastTargetEndRef = useRef(null);
   const hasPausedForIndexRef = useRef(null);
+  const subtitleOffsetRef = useRef(0);
 
   activeSubIndexRef.current = activeSubIndex;
   isPauseAfterSentenceRef.current = isPauseAfterSentence;
   isPlayingRef.current = isPlaying;
+  subtitleOffsetRef.current = subtitleOffset;
 
   const currentSub = subtitles[activeSubIndex] || {
     start: 0,
@@ -435,12 +462,18 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       const currentSubs = subtitlesRef.current || [];
       if (currentSubs.length === 0) return;
 
+      // Độ trễ phụ đề: dịch toàn bộ mốc giờ của phụ đề khi so với giờ
+      // video (giờ video + độ trễ so với cue.start/cue.end). Chỉ ảnh
+      // hưởng hiển thị phụ đề, highlight câu đang nói và auto-pause —
+      // không sửa file .srt gốc, không lưu lên database.
+      const effectiveTime = currentTime + (subtitleOffsetRef.current || 0);
+
       // A. Match current subtitle by timestamp
       let foundIndex = -1;
       for (let i = 0; i < currentSubs.length; i++) {
         const s = currentSubs[i];
         const sEnd = s.end || (currentSubs[i + 1]?.start ? currentSubs[i + 1].start : s.start + 5);
-        if (currentTime >= s.start && currentTime < sEnd) {
+        if (effectiveTime >= s.start && effectiveTime < sEnd) {
           foundIndex = i;
           break;
         }
@@ -449,7 +482,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       // If between subtitles, keep previous active or match nearest
       if (foundIndex === -1 && currentSubs.length > 0) {
         for (let i = 0; i < currentSubs.length; i++) {
-          if (currentTime >= currentSubs[i].start) {
+          if (effectiveTime >= currentSubs[i].start) {
             foundIndex = i;
           }
         }
@@ -473,7 +506,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           const targetEnd = activeSub.end || (nextSubStart ? nextSubStart : activeSub.start + 4.5);
 
           // When playhead reaches or passes sentence end and hasn't paused for this sentence yet
-          if (currentTime >= targetEnd - 0.25 && hasPausedForIndexRef.current !== activeSubIndexRef.current) {
+          if (effectiveTime >= targetEnd - 0.25 && hasPausedForIndexRef.current !== activeSubIndexRef.current) {
             hasPausedForIndexRef.current = activeSubIndexRef.current;
             playerRef.current.pauseVideo();
             setIsPlaying(false);
@@ -589,6 +622,14 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     } else {
       playerRef.current.playVideo();
     }
+  };
+
+  // Bấm từ trên phụ đề: tạm dừng video để popup tra từ không bị trôi
+  // câu khi video chạy tiếp. Đóng popup thì anh tự bấm play lại.
+  const pauseVideoForLookup = () => {
+    if (!playerRef.current || typeof playerRef.current.pauseVideo !== 'function') return;
+    playerRef.current.pauseVideo();
+    setIsPlaying(false);
   };
 
   // Speed control
@@ -862,8 +903,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               <div className={`absolute ${isLocalEpisode ? 'bottom-12' : 'bottom-10'} left-0 right-0 pointer-events-none flex justify-center z-20 px-4`}>
                 <div className="max-w-3xl bg-black/70 px-3 py-1.5 text-center">
                   {showGerman && currentSub.de && (
-                    <div className={`text-white font-semibold leading-snug line-clamp-2 ${subSize.de}`}>
-                      {currentSub.de}
+                    <div
+                      className={`pointer-events-auto text-white font-semibold leading-snug line-clamp-2 ${subSize.de}`}
+                      onClick={pauseVideoForLookup}
+                      title="Bấm vào một từ để tra nghĩa"
+                    >
+                      <LookupText key={activeSubIndex} text={currentSub.de} translation={currentSub.vi || ''} />
                     </div>
                   )}
                   {showVietnamese && currentSub.vi && (
@@ -1102,6 +1147,31 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 <option value="medium">Vừa</option>
                 <option value="large">Lớn</option>
               </select>
+              {/* Chỉnh độ trễ phụ đề kiểu VLC: -10s đến +10s, bước 0,5s.
+                  Phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. */}
+              <label className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground" title="Chỉnh độ trễ phụ đề: phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. Lưu riêng cho video này.">
+                <span className="font-semibold">Trễ</span>
+                <input
+                  type="range"
+                  min={-10}
+                  max={10}
+                  step={0.5}
+                  value={subtitleOffset}
+                  onChange={(e) => changeSubtitleOffset(Number(e.target.value))}
+                  className="w-20 md:w-24"
+                  aria-label="Độ trễ phụ đề (giây)"
+                />
+                <span className="font-bold text-foreground w-12 text-right">{formatSubtitleOffset(subtitleOffset)}</span>
+                <button
+                  type="button"
+                  onClick={() => changeSubtitleOffset(0)}
+                  disabled={subtitleOffset === 0}
+                  className="tap px-1.5 py-0.5 rounded-sm border border-border bg-card text-foreground hover:bg-muted disabled:opacity-40"
+                  title="Đặt độ trễ phụ đề về 0"
+                >
+                  ↺ 0
+                </button>
+              </label>
             </div>
 
             <div className="flex items-center gap-1.5">
