@@ -41,7 +41,10 @@ const addDeletedCollection = (col) => {
 const addDeletedEpisode = (ep) => {
   try {
     const list = getDeletedEpisodes();
-    const ids = [ep.id, ep.recordId, ep.youtubeId].filter(Boolean);
+    // Chỉ ghi youtubeId khi xóa tập trên server: để bản sao local cùng video
+    // cũng ẩn theo. Xóa bản local thì không ghi youtubeId, kẻo video trên
+    // server (cùng youtubeId) cũng bị ẩn theo.
+    const ids = [ep.id, ep.recordId, ...(ep.recordId ? [ep.youtubeId] : [])].filter(Boolean);
     for (const item of ids) {
       if (!list.includes(item)) list.push(item);
     }

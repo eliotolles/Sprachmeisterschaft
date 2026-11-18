@@ -753,6 +753,8 @@ export function UniversalImportModal({
       // 4. LƯU VIDEO HOẶC PLAYLIST LUYỆN NGHE
       else if (activeModule === 'listening') {
         let col = null;
+        let colWasNew = false;
+        const localShadowIds = [];
         if (targetCollectionId) {
           col = db.listening.getCollectionById(targetCollectionId) || listeningCollections.find(c => c.id === targetCollectionId);
         }
@@ -760,6 +762,7 @@ export function UniversalImportModal({
         const colTitle = col ? col.title : (title || (listeningLinkType === 'playlist' ? 'Bộ Playlist YouTube' : 'Video cá nhân'));
 
         if (!col) {
+          colWasNew = true;
           col = db.listening.createCollection({
             title: colTitle,
             deTitle: colTitle,
@@ -827,7 +830,7 @@ export function UniversalImportModal({
           if (selectedVideos.length === 0) throw new Error('Vui lòng chọn ít nhất 1 video từ playlist để lưu.');
 
           for (const v of selectedVideos) {
-            db.listening.createEpisode({
+            const ep = db.listening.createEpisode({
               collectionId: col.id,
               title: v.title,
               deTitle: v.title,
@@ -837,13 +840,14 @@ export function UniversalImportModal({
               category: listeningMode,
               subtitles: [],
             });
+            if (ep?.id) localShadowIds.push(ep.id);
           }
 
           toast.success(`Đã lưu thành công bộ "${col.title}" gồm ${selectedVideos.length} tập video!`);
         } else {
           const videoId = extractYouTubeId(youtubeUrl);
           const episodeTitle = (targetCollectionId && title) ? title : colTitle;
-          db.listening.createEpisode({
+          const ep = db.listening.createEpisode({
             collectionId: col.id,
             title: episodeTitle,
             deTitle: episodeTitle,
@@ -853,6 +857,7 @@ export function UniversalImportModal({
             category: listeningMode,
             subtitles: youtubeCues,
           });
+          if (ep?.id) localShadowIds.push(ep.id);
 
           toast.success(`Đã thêm video "${episodeTitle}" vào bộ "${col.title}" thành công!`);
         }
@@ -889,14 +894,40 @@ export function UniversalImportModal({
                   organizerId,
                 });
               }
-              // Server đã xác nhận đủ số video — đồng bộ lại để bộ server hiện lên
+              // Server đã xác nhận đủ số video — xóa bản local vừa tạo để khỏi
+              // hiện trùng 2 lần (bản local chỉ là dự phòng khi chưa lên
+              // được database), rồi đồng bộ lại để bộ server hiện lên.
+              for (const shadowId of localShadowIds) {
+                try { await db.listening.deleteEpisode(shadowId); } catch {}
+              }
+              if (colWasNew) {
+                try {
+                  if (db.listening.getEpisodes(col.id).length === 0) await db.listening.deleteCollection(col.id);
+                } catch {}
+              }
               window.dispatchEvent(new CustomEvent('sprach_core_imported'));
               setSavedDestination((prev) => (prev
                 ? `${prev} · Đã lên database (${serverResult?.savedCount ?? ''} video)`
                 : `Đã lưu lên database (${serverResult?.savedCount ?? ''} video).`));
             } catch (serverErr) {
-              // Đã lưu local ở trên nên không mất dữ liệu — chỉ báo chưa lên database
-              toast.warning(`Đã lưu trên trình duyệt này, nhưng chưa lên được database: ${serverErr.message}`);
+              const alreadyOnServer = /đã có trong tài khoản|đã được nhập/.test(serverErr?.message || '');
+              if (alreadyOnServer) {
+                // Video đã có trên database từ trước — xóa bản local vừa tạo
+                // để khỏi hiện trùng, rồi đồng bộ lại.
+                for (const shadowId of localShadowIds) {
+                  try { await db.listening.deleteEpisode(shadowId); } catch {}
+                }
+                if (colWasNew) {
+                  try {
+                    if (db.listening.getEpisodes(col.id).length === 0) await db.listening.deleteCollection(col.id);
+                  } catch {}
+                }
+                window.dispatchEvent(new CustomEvent('sprach_core_imported'));
+                toast.info('Video này đã có trên database từ trước nên không nhập lại.');
+              } else {
+                // Đã lưu local ở trên nên không mất dữ liệu — chỉ báo chưa lên database
+                toast.warning(`Đã lưu trên trình duyệt này, nhưng chưa lên được database: ${serverErr.message}`);
+              }
             }
           } else {
             toast.warning('Chưa đăng nhập nên video chỉ lưu trên trình duyệt này, chưa lên database.');
