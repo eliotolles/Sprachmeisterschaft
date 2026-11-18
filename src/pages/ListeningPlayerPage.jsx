@@ -322,6 +322,24 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   };
   const subSize = SUBTITLE_SIZES[subtitleSize] || SUBTITLE_SIZES.medium;
 
+  // Menu cài đặt phụ đề (mở từ nút "Phụ đề"): bật/tắt, cỡ chữ, độ trễ.
+  // Gọn trong 1 nút để thanh trên không bị bày hết ra làm hỏng giao diện.
+  const [subtitleMenuOpen, setSubtitleMenuOpen] = useState(false);
+  const subtitleMenuRef = useRef(null);
+  useEffect(() => {
+    if (!subtitleMenuOpen) return;
+    const outside = (event) => {
+      if (subtitleMenuRef.current && !subtitleMenuRef.current.contains(event.target)) setSubtitleMenuOpen(false);
+    };
+    const escape = (event) => { if (event.key === 'Escape') setSubtitleMenuOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [subtitleMenuOpen]);
+
   // Sửa từng câu phụ đề trong danh sách lời thoại.
   const [editingSubIndex, setEditingSubIndex] = useState(null);
   const [editingSubDe, setEditingSubDe] = useState('');
@@ -1370,56 +1388,96 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 <span>Dịch Việt</span>
               </button>
 
-              {/* Bật/tắt phụ đề trên video kiểu YouTube (CC) + cỡ chữ phụ đề */}
-              <button
-                type="button"
-                onClick={() => setSubtitleOn(value => !value)}
-                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
-                  subtitleOn
-                    ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'bg-card border-border text-muted-foreground'
-                }`}
-                title={subtitleOn ? 'Tắt phụ đề trên video' : 'Bật phụ đề trên video'}
-              >
-                <Captions className="w-3.5 h-3.5" />
-                <span>Phụ đề</span>
-              </button>
-              <select
-                value={subtitleSize}
-                onChange={(e) => setSubtitleSize(e.target.value)}
-                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-xs"
-                title="Cỡ chữ phụ đề trên video"
-                aria-label="Cỡ chữ phụ đề trên video"
-              >
-                <option value="small">Nhỏ</option>
-                <option value="medium">Vừa</option>
-                <option value="large">Lớn</option>
-              </select>
-              {/* Chỉnh độ trễ phụ đề kiểu VLC: -10s đến +10s, bước 0,5s.
-                  Phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. */}
-              <label className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground" title="Chỉnh độ trễ phụ đề: phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. Lưu riêng cho video này.">
-                <span className="font-semibold">Trễ</span>
-                <input
-                  type="range"
-                  min={-10}
-                  max={10}
-                  step={0.5}
-                  value={subtitleOffset}
-                  onChange={(e) => changeSubtitleOffset(Number(e.target.value))}
-                  className="w-20 md:w-24"
-                  aria-label="Độ trễ phụ đề (giây)"
-                />
-                <span className="font-bold text-foreground w-12 text-right">{formatSubtitleOffset(subtitleOffset)}</span>
+              {/* Nút "Phụ đề": bấm mở menu cài đặt phụ đề (bật/tắt, cỡ chữ,
+                  độ trễ). Các chỉnh phụ đề nằm gọn trong menu để thanh trên
+                  chỉ còn 3 nút: Tiếng Đức, Dịch Việt, Phụ đề. */}
+              <div className="relative" ref={subtitleMenuRef}>
                 <button
                   type="button"
-                  onClick={() => changeSubtitleOffset(0)}
-                  disabled={subtitleOffset === 0}
-                  className="tap px-1.5 py-0.5 rounded-sm border border-border bg-card text-foreground hover:bg-muted disabled:opacity-40"
-                  title="Đặt độ trễ phụ đề về 0"
+                  onClick={() => setSubtitleMenuOpen(value => !value)}
+                  aria-expanded={subtitleMenuOpen}
+                  aria-haspopup="true"
+                  className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
+                    subtitleOn
+                      ? 'bg-accent/10 border-accent/30 text-accent'
+                      : 'bg-card border-border text-muted-foreground'
+                  }`}
+                  title="Cài đặt phụ đề trên video"
                 >
-                  ↺ 0
+                  <Captions className="w-3.5 h-3.5" />
+                  <span>Phụ đề</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${subtitleMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
-              </label>
+                {subtitleMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-30 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card p-3 shadow-xl space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-mono font-semibold">Bật phụ đề</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={subtitleOn}
+                        aria-label="Bật hoặc tắt phụ đề trên video"
+                        onClick={() => setSubtitleOn(value => !value)}
+                        className={`tap relative w-9 h-5 shrink-0 rounded-full transition-colors ${subtitleOn ? 'bg-accent' : 'bg-muted'}`}
+                      >
+                        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${subtitleOn ? 'left-[18px]' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-mono font-semibold">Cỡ chữ</span>
+                      <div className="flex gap-1" role="group" aria-label="Cỡ chữ phụ đề trên video">
+                        {[
+                          ['small', 'Nhỏ'],
+                          ['medium', 'Vừa'],
+                          ['large', 'Lớn'],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setSubtitleSize(value)}
+                            aria-pressed={subtitleSize === value}
+                            className={`tap flex-1 px-2 py-1 rounded-sm border text-xs font-mono font-bold ${
+                              subtitleSize === value
+                                ? 'bg-accent/10 border-accent/30 text-accent'
+                                : 'bg-card border-border text-muted-foreground'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono font-semibold">Trễ phụ đề</span>
+                        <span className="flex items-center gap-1">
+                          <span className="text-xs font-mono font-bold text-foreground">{formatSubtitleOffset(subtitleOffset)}</span>
+                          <button
+                            type="button"
+                            onClick={() => changeSubtitleOffset(0)}
+                            disabled={subtitleOffset === 0}
+                            className="tap px-1.5 py-0.5 rounded-sm border border-border bg-card text-foreground text-xs hover:bg-muted disabled:opacity-40"
+                            title="Đặt độ trễ phụ đề về 0"
+                          >
+                            ↺ 0
+                          </button>
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-10}
+                        max={10}
+                        step={0.5}
+                        value={subtitleOffset}
+                        onChange={(e) => changeSubtitleOffset(Number(e.target.value))}
+                        className="w-full"
+                        aria-label="Độ trễ phụ đề (giây)"
+                      />
+                      <p className="text-[11px] text-muted-foreground">Phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. Lưu riêng cho video này.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5">
