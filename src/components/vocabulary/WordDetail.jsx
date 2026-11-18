@@ -1,4 +1,5 @@
 import {vocabularyDetails,lexicalItems} from '@/lib/vocabulary-details';
+import {wordTypeAbbr} from '@/lib/word-type';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SpeakButton } from '@/components/ui/SpeakButton';
@@ -9,6 +10,7 @@ import { mapSharedElioCard } from '@/lib/shared-vocabulary';
 
 const normalize = value => String(value ?? '').normalize('NFC').trim().toLocaleLowerCase('de');
 const lemma = value => normalize(value).replace(/^(der|die|das) /, '');
+
 const cache = new Map();
 if (typeof window !== 'undefined') window.addEventListener('sprach_auth_change', () => cache.clear());
 
@@ -43,16 +45,16 @@ export function WordDetail({ target, onClose }) {
   const [error, setError] = useState('');
   const [enriching,setEnriching]=useState(false);
   const [retry, setRetry] = useState(0);
+  const [enrichAttempt, setEnrichAttempt] = useState(0);
   const [decks, setDecks] = useState(null);
   const [deckId, setDeckId] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [mobile] = useState(() => window.matchMedia('(max-width: 640px)').matches);
   useEffect(() => {
     const node = dialog.current;
     const previous = target.anchor || document.activeElement;
-    if (mobile || !target.rect) node.showModal();
-    else node.show();
+    // Luôn mở dạng modal căn giữa trang, không định vị theo chỗ bấm nữa.
+    node.showModal();
     node.querySelector('button')?.focus({ preventScroll: true });
     const outside = event => { if (!node.contains(event.target) || event.target === node) onClose(); };
     const escape = event => { if (event.key === 'Escape') { event.preventDefault(); onClose(); } };
@@ -66,7 +68,7 @@ export function WordDetail({ target, onClose }) {
       window.removeEventListener('sprach_auth_change', onClose);
       previous?.focus?.({ preventScroll: true });
     };
-  }, [target, mobile, onClose]);
+  }, [target, onClose]);
   useEffect(() => {
     if (target.word) return;
     let current = true;
@@ -75,6 +77,9 @@ export function WordDetail({ target, onClose }) {
     return () => { current = false; };
   }, [target, retry]);
   const enriched=useRef(new Set());
+  // AI enrichment chạy cho mọi nguồn, kể cả từ điển ngoài (source external_dictionary),
+  // không chỉ từ trong app. Lỗi AI trước đây bị nuốt lặng nên từ kẹt ở "Chưa có nghĩa
+  // tiếng Việt" — giờ lỗi sẽ mở đường cho nút "Tra lại nghĩa bằng AI" (xem retryEnrich).
   useEffect(()=>{
    if(!word||!db.auth.getUser()||!db.vocabulary.isCore?.())return;
    const key=normalize(word.german);if(enriched.current.has(key))return;
@@ -92,9 +97,15 @@ export function WordDetail({ target, onClose }) {
     const missing=fields.filter(field=>!Object.hasOwn(externalFields,field));if(!missing.length)return;
     const result=await elioClient.enrichWord({word:word.german,context:target.sentence?.slice(0,3000)||'',fields:missing});
     if(current&&account===db.auth.getUser()?.id)setWord(previous=>({...previous,...Object.fromEntries(Object.entries(result.fields).filter(([field])=>missing.includes(field))),ai_fields:[...(previous.ai_fields||[]),...Object.keys(result.fields)],ai_warnings:result.warnings}));
-   })().catch(()=>{/* Bỏ qua lỗi AI để người dùng không bị làm phiền */}).finally(()=>{if(current)setEnriching(false);});
+   })().catch(()=>{ enriched.current.delete(key); /* Bỏ qua lỗi AI để người dùng không bị làm phiền — nút "Tra lại nghĩa bằng AI" sẽ cho tra lại. */}).finally(()=>{if(current)setEnriching(false);});
    return()=>{current=false;};
-  },[word?.german]);
+  },[word?.german, word?.source, enrichAttempt]);
+  // Bấm "Tra lại nghĩa bằng AI": cho phép tra lại sau khi AI lỗi (trước đây từ kẹt ở "Chưa có nghĩa tiếng Việt" vì lỗi bị nuốt lặng và không có đường thử lại).
+  function retryEnrich() {
+    if (!word) return;
+    enriched.current.delete(normalize(word.german));
+    setEnrichAttempt(value => value + 1);
+  }
   const owner = db.auth.getUser()?.id;
   const canSave = db.vocabulary.isCore?.() ? ['elio_shared','external_dictionary','ai_lookup'].includes(word?.source)&&!!word?.vietnamese : Boolean(word);
   const savedAlready = !db.vocabulary.isCore?.() && word && db.vocabulary.findMany().some(row => lemma(row.german) === lemma(word.german) && normalize(row.article) === normalize(word.article));
@@ -130,15 +141,23 @@ export function WordDetail({ target, onClose }) {
   const sentence = target.sentence || word?.example_de;
   const translation = target.translation || (!target.sentence && word?.example_vi);
   const details = vocabularyDetails(word||{});
+  const meaningDe = details.meaning_de || word?.meaning_de || '';
+  const typeAbbr = wordTypeAbbr(word, article);
   const formFields = [['Số nhiều', word?.plural], ['Ngôi du', word?.du], ['Präteritum', word?.prateritum], ['Partizip II', word?.partizip_ii], ['Trợ động từ', word?.auxiliary], ['Komparativ', word?.comparative], ['Superlativ', word?.superlative], ['Giới từ', word?.preposition], ['Cách', word?.grammatical_case]];
-  const rect = target.rect;
-  const position = mobile ? { position:'fixed', inset:'auto 0 0', margin:0, width:'100%', maxWidth:'100%' }
-    : rect ? { position:'fixed', inset:'auto', margin:0, left:Math.max(8, Math.min(rect.left, window.innerWidth - 440)), top:Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 250)), maxHeight:'calc(100dvh - ' + Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 250)) + 'px - 8px)' } : undefined;
+  // Cụm từ hay gặp: gộp phrases + collocations, khử trùng, chỉ hiện khi có dữ liệu.
+  const phraseItems = [...new Set([...lexicalItems(details.phrases), ...lexicalItems(details.collocations)].map(item => typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')).filter(Boolean))];
+  const grammarEntries = [
+    ...formFields.filter(([, value]) => typeof value === 'string' && value),
+    ...(word?.separable === true ? [['Động từ tách', 'Có']] : []),
+    ...(word?.reflexive === true ? [['Động từ phản thân', 'Có']] : []),
+    ...(phraseItems.length ? [['Cụm từ', phraseItems.join('; ')]] : []),
+    ...(details.notes ? [['Ghi chú', details.notes]] : []),
+  ];
   const [offset, length] = target.range || [-1, 0];
   return createPortal(
-    <dialog onClick={event => event.stopPropagation()} ref={dialog} style={position} aria-label="Chi tiết từ vựng" className="z-50 max-h-[85dvh] w-[min(430px,calc(100vw-16px))] overflow-auto rounded-sm border border-border bg-card text-foreground shadow-xl backdrop:bg-black/30">
+    <dialog onClick={event => event.stopPropagation()} ref={dialog} aria-label="Chi tiết từ vựng" className="z-50 m-auto max-h-[85dvh] w-[min(560px,92vw)] overflow-auto rounded-md border border-border bg-card text-foreground shadow-xl backdrop:bg-black/50">
       <header className="sticky top-0 flex items-start justify-between gap-3 border-b border-border bg-card p-4">
-        <h2 lang="de" className="font-display text-2xl font-bold break-words">{article && <span className={color}>{article} </span>}{name || target.token}</h2>
+        <h2 lang="de" className="font-display text-2xl font-bold break-words">{article && <span className={color}>{article} </span>}{name || target.token}{typeAbbr && <span className="ml-2 align-middle text-base font-semibold text-muted-foreground">{typeAbbr}</span>}</h2>
         <button type="button" onClick={onClose} aria-label="Đóng chi tiết từ" className="tap px-2 text-xl">×</button>
       </header>
       <div className="space-y-3 p-4">
@@ -155,25 +174,44 @@ export function WordDetail({ target, onClose }) {
             <SpeakButton text={word.german} slow />
             {(word.ipa || word.phonetic) && <span>IPA {word.ipa || word.phonetic}</span>}
           </div>
-          <p className="text-sm text-muted-foreground">{[word.word_type, word.level, word.topic].filter(Boolean).join(' · ')}</p>
-          <p className="text-lg font-semibold">{word.vietnamese || 'Chưa có nghĩa tiếng Việt'}</p>
-          {sentence && <div className="rounded-sm border border-border p-3">
-            <p lang="de">{offset >= 0 ? <>{sentence.slice(0, offset)}<mark>{sentence.slice(offset, offset + length)}</mark>{sentence.slice(offset + length)}</> : sentence}</p>
-            {translation && <p className="text-sm text-muted-foreground">{translation}</p>}
-            <SpeakButton text={sentence} size="sm" />
-          </div>}
+          <p className="text-sm text-muted-foreground">{[word.level, word.topic].filter(Boolean).join(' · ')}</p>
+          <section aria-label="Nghĩa tiếng Việt">
+            {word.vietnamese ? <p className="text-xl font-bold leading-snug">{word.vietnamese}</p> : <>
+              {meaningDe ? <div className="rounded-sm border border-border bg-muted/50 p-3">
+                <p className="text-xs font-semibold text-muted-foreground">Nghĩa tiếng Đức (tạm thời — đang tra nghĩa tiếng Việt)</p>
+                <p lang="de" className="mt-1">{meaningDe}</p>
+              </div> : <p className="text-lg font-semibold text-muted-foreground">Chưa có nghĩa tiếng Việt</p>}
+              {!enriching && db.auth.getUser() && db.vocabulary.isCore?.() && <button type="button" onClick={retryEnrich} className="tap mt-2 text-sm text-accent underline">Tra lại nghĩa bằng AI</button>}
+            </>}
+            {word.english && <p className="mt-1 text-sm text-muted-foreground">Tiếng Anh · {word.english}</p>}
+          </section>
+          {sentence && <section aria-label="Câu ví dụ">
+            <h3 className="mb-1 text-sm font-semibold text-muted-foreground">Ví dụ</h3>
+            <div className="rounded-sm border border-border p-3">
+              <p lang="de">{offset >= 0 ? <>{sentence.slice(0, offset)}<mark>{sentence.slice(offset, offset + length)}</mark>{sentence.slice(offset + length)}</> : sentence}</p>
+              {translation && <p className="mt-1 text-sm text-muted-foreground">{translation}</p>}
+              <SpeakButton text={sentence} size="sm" />
+            </div>
+          </section>}
           {word.external_sources&&<p className="text-sm">Nguồn ngoài: {word.external_sources.map(source=><a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="text-accent underline mr-2">Wiktionary {source.language} · CC BY-SA</a>)}</p>}
           {word.ai_fields?.length>0&&<p className="text-sm text-muted-foreground">AI bổ sung (cần đối chiếu): {word.ai_fields.join(', ')}. Dữ liệu nguồn không bị ghi đè.</p>}
-          <details open>
-            <summary className="cursor-pointer font-medium">Xem chi tiết</summary>
-            {word.english && <p>Tiếng Anh · {word.english}</p>}
-            {details.meaning_de && <p lang="de">{details.meaning_de}</p>}
-            {formFields.filter(([, value]) => typeof value === 'string' && value).map(([label, value]) => <p key={label}>{label} · {value}</p>)}
-            {word.separable === true && <p>Động từ tách</p>}
-            {word.reflexive === true && <p>Động từ phản thân</p>}
-            {details.notes && <p>{details.notes}</p>}
-            {[['Đồng nghĩa', details.synonyms], ['Trái nghĩa', details.antonyms], ['Chunk / Cụm từ đi kèm', details.phrases]].map(([label, items]) => lexicalItems(items).length > 0 && <section key={label}><h3 className="font-semibold">{label}</h3><ul>{lexicalItems(items).map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul></section>)}
-          </details>
+          {(lexicalItems(details.synonyms).length > 0 || lexicalItems(details.antonyms).length > 0) && <section aria-label="Đồng nghĩa và trái nghĩa" className="space-y-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">Đồng nghĩa / Trái nghĩa</h3>
+            {lexicalItems(details.synonyms).length > 0 && <div>
+              <p className="text-sm font-medium">Đồng nghĩa</p>
+              <ul className="list-disc pl-5 text-sm">{lexicalItems(details.synonyms).map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul>
+            </div>}
+            {lexicalItems(details.antonyms).length > 0 && <div>
+              <p className="text-sm font-medium">Trái nghĩa</p>
+              <ul className="list-disc pl-5 text-sm">{lexicalItems(details.antonyms).map((item, index) => <li key={index}>{typeof item === 'string' ? item : [item?.de, item?.vi].filter(Boolean).join(' — ')}</li>)}</ul>
+            </div>}
+          </section>}
+          {grammarEntries.length > 0 && <section aria-label="Ngữ pháp và cụm từ">
+            <h3 className="text-sm font-semibold text-muted-foreground">Ngữ pháp &amp; cụm từ</h3>
+            <dl className="mt-1 space-y-1 text-sm">
+              {grammarEntries.map(([label, value]) => <div key={label} className="flex gap-2"><dt className="shrink-0 font-medium text-muted-foreground">{label}</dt><dd>{value}</dd></div>)}
+            </dl>
+          </section>}
           {word.due_date && <p className="text-sm">Ôn tiếp ngày {word.due_date}{word.status ? ' · ' + word.status : ''}</p>}
           <div className="flex flex-wrap items-center gap-3">
             {(saved || savedAlready) ? <span role="status">Đã lưu</span> : canSave && <button type="button" disabled={busy || Boolean(word.source==='elio_shared'&&decks && !deckId)} onClick={db.vocabulary.isCore?.() && word.source==='elio_shared' && !decks ? chooseDeck : save} className="tap rounded-sm bg-accent px-3 py-2 text-accent-foreground">＋ Lưu vào Từ của tôi</button>}

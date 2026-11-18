@@ -12,6 +12,7 @@ import { auditDictationSentence } from '@/lib/ai-evaluator';
 import {
   Play,
   Pause,
+  Captions,
   RotateCcw,
   FastForward,
   Volume2,
@@ -261,6 +262,35 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const [showGerman, setShowGerman] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(true);
   const [activeSubIndex, setActiveSubIndex] = useState(0);
+
+  // Phụ đề trên video kiểu YouTube: bật/tắt (CC) + cỡ chữ, lưu localStorage.
+  // Mặc định BẬT, cỡ Vừa — gọn như YouTube, không to như hộp đen cũ đã bỏ.
+  const [subtitleOn, setSubtitleOn] = useState(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('sprach_subtitle_on') : null;
+      return raw === null ? true : raw === '1';
+    } catch { return true; }
+  });
+  const [subtitleSize, setSubtitleSize] = useState(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('sprach_subtitle_size') : null;
+      return ['small', 'medium', 'large'].includes(raw) ? raw : 'medium';
+    } catch { return 'medium'; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem('sprach_subtitle_on', subtitleOn ? '1' : '0'); } catch {}
+  }, [subtitleOn]);
+  useEffect(() => {
+    try { window.localStorage.setItem('sprach_subtitle_size', subtitleSize); } catch {}
+  }, [subtitleSize]);
+  // Cỡ chữ phụ đề trên video: Vừa (mặc định) gọn như YouTube — nhỏ hơn
+  // text-base md:text-xl của hộp đen cũ đã bỏ.
+  const SUBTITLE_SIZES = {
+    small: { de: 'text-xs md:text-sm', vi: 'text-[11px] md:text-xs' },
+    medium: { de: 'text-sm md:text-base', vi: 'text-xs md:text-sm' },
+    large: { de: 'text-base md:text-lg', vi: 'text-sm md:text-base' },
+  };
+  const subSize = SUBTITLE_SIZES[subtitleSize] || SUBTITLE_SIZES.medium;
 
   // Sửa từng câu phụ đề trong danh sách lời thoại.
   const [editingSubIndex, setEditingSubIndex] = useState(null);
@@ -824,6 +854,26 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               <div id="youtube-player-iframe" className="w-full h-full" />
             )}
 
+            {/* Phụ đề trên video kiểu YouTube: hộp đen mờ gọn, chữ trắng căn
+                giữa, tối đa 2 dòng mỗi thứ tiếng, chỉ hiện câu hiện tại.
+                Tắt bằng nút CC thì biến mất hoàn toàn, video sạch. */}
+            {subtitleOn && subtitles[activeSubIndex] &&
+              ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
+              <div className={`absolute ${isLocalEpisode ? 'bottom-12' : 'bottom-10'} left-0 right-0 pointer-events-none flex justify-center z-20 px-4`}>
+                <div className="max-w-3xl bg-black/70 px-3 py-1.5 text-center">
+                  {showGerman && currentSub.de && (
+                    <div className={`text-white font-semibold leading-snug line-clamp-2 ${subSize.de}`}>
+                      {currentSub.de}
+                    </div>
+                  )}
+                  {showVietnamese && currentSub.vi && (
+                    <div className={`text-white/90 leading-snug line-clamp-2 ${subSize.vi}`}>
+                      {currentSub.vi}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
@@ -1026,6 +1076,32 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 {showVietnamese ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                 <span>Dịch Việt</span>
               </button>
+
+              {/* Bật/tắt phụ đề trên video kiểu YouTube (CC) + cỡ chữ phụ đề */}
+              <button
+                type="button"
+                onClick={() => setSubtitleOn(value => !value)}
+                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
+                  subtitleOn
+                    ? 'bg-accent/10 border-accent/30 text-accent'
+                    : 'bg-card border-border text-muted-foreground'
+                }`}
+                title={subtitleOn ? 'Tắt phụ đề trên video' : 'Bật phụ đề trên video'}
+              >
+                <Captions className="w-3.5 h-3.5" />
+                <span>Phụ đề</span>
+              </button>
+              <select
+                value={subtitleSize}
+                onChange={(e) => setSubtitleSize(e.target.value)}
+                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-xs"
+                title="Cỡ chữ phụ đề trên video"
+                aria-label="Cỡ chữ phụ đề trên video"
+              >
+                <option value="small">Nhỏ</option>
+                <option value="medium">Vừa</option>
+                <option value="large">Lớn</option>
+              </select>
             </div>
 
             <div className="flex items-center gap-1.5">
