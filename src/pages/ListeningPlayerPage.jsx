@@ -220,6 +220,35 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
+  const startEditingSub = (idx) => {
+    const sub = subtitles[idx];
+    if (!sub) return;
+    setEditingSubIndex(idx);
+    setEditingSubDe(sub.de || '');
+    setEditingSubVi(sub.vi || '');
+  };
+
+  // Lưu 1 câu phụ đề đã sửa — dùng đúng db.listening.updateEpisode như
+  // handleSubtitleFile/translateCaptions (video trên server đã server-aware).
+  const saveEditedSub = async () => {
+    if (editingSubIndex === null || savingSub) return;
+    setSavingSub(true);
+    try {
+      const updated = subtitles.map((s, i) =>
+        i === editingSubIndex ? { ...s, de: editingSubDe.trim(), vi: editingSubVi.trim() } : s
+      );
+      const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
+      if (!saved) throw new Error('Không lưu được phụ đề. Hãy thử lại.');
+      setPreview({ scope: captionScope, cues: updated });
+      setEditingSubIndex(null);
+      toast.success('Đã lưu câu phụ đề!');
+    } catch (err) {
+      toast.error(err.message || 'Không lưu được phụ đề.');
+    } finally {
+      setSavingSub(false);
+    }
+  };
+
   useEffect(() => {
     if ((!currentEpisode.subtitles || !currentEpisode.subtitles.length) && currentEpisode.youtubeId) {
       fetchCaptions();
@@ -232,6 +261,32 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const [showGerman, setShowGerman] = useState(true);
   const [showVietnamese, setShowVietnamese] = useState(true);
   const [activeSubIndex, setActiveSubIndex] = useState(0);
+
+  // Cài đặt hiển thị phụ đề: lưu vào localStorage để mở lại vẫn giữ.
+  const [subPrefs, setSubPrefs] = useState(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('sprach_subtitle_prefs') : null;
+      if (raw) {
+        const p = JSON.parse(raw) || {};
+        return {
+          fontSize: ['small', 'medium', 'large'].includes(p.fontSize) ? p.fontSize : 'medium',
+          color: p.color === 'yellow' ? 'yellow' : 'white',
+          position: p.position === 'middle' ? 'middle' : 'bottom',
+          background: p.background === 'faint' ? 'faint' : 'dark',
+        };
+      }
+    } catch {}
+    return { fontSize: 'medium', color: 'white', position: 'bottom', background: 'dark' };
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem('sprach_subtitle_prefs', JSON.stringify(subPrefs)); } catch {}
+  }, [subPrefs]);
+
+  // Sửa từng câu phụ đề trong danh sách lời thoại.
+  const [editingSubIndex, setEditingSubIndex] = useState(null);
+  const [editingSubDe, setEditingSubDe] = useState('');
+  const [editingSubVi, setEditingSubVi] = useState('');
+  const [savingSub, setSavingSub] = useState(false);
 
   // Auto-pause each sentence mode (Requirement 2)
   const [isPauseAfterSentence, setIsPauseAfterSentence] = useState(true);
@@ -563,6 +618,49 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     toast.success('Đã sao chép toàn bộ lời thoại vào clipboard!');
   };
 
+  // Đổi giây (số, như sub.start/sub.end) sang HH:MM:SS,mmm của chuẩn SRT.
+  const formatSrtTime = (seconds) => {
+    const total = Number.isFinite(Number(seconds)) ? Math.max(0, Number(seconds)) : 0;
+    const ms = Math.round(total * 1000);
+    const h = String(Math.floor(ms / 3600000)).padStart(2, '0');
+    const m = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0');
+    const s = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0');
+    const milli = String(ms % 1000).padStart(3, '0');
+    return `${h}:${m}:${s},${milli}`;
+  };
+
+  // Tải phụ đề đang có về máy dưới dạng file .srt để mở ở ngoài (VLC...).
+  // Chỉ xuất những gì đang có trong subtitles, không tự dịch thêm.
+  const handleDownloadSrt = () => {
+    if (!subtitles.length) return toast.error('Chưa có phụ đề để tải.');
+    const blocks = subtitles.map((sub, idx) => {
+      const start = Number.isFinite(Number(sub.start)) ? Math.max(0, Number(sub.start)) : 0;
+      const end = Number.isFinite(Number(sub.end)) && Number(sub.end) > start
+        ? Number(sub.end)
+        : start + 4;
+      const lines = [];
+      String(sub.de || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((l) => lines.push(l));
+      const vi = String(sub.vi || '').trim();
+      if (vi) vi.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((l) => lines.push(l));
+      if (!lines.length) lines.push('');
+      return `${idx + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${lines.join('\n')}`;
+    });
+    // BOM UTF-8 để trình phát ngoài (VLC...) nhận đúng dấu tiếng Việt.
+    const content = `\uFEFF${blocks.join('\n\n')}\n`;
+    const base = String(currentEpisode.title || 'phu-de').trim() || 'phu-de';
+    const fileName = `${base.replace(/[\\/\\?%*:|"<>]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 80) || 'phu-de'}.srt`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Đã tải file phụ đề ${fileName} (${subtitles.length} câu)!`);
+  };
+
   const handleSaveSentenceAsCard = async (sub) => {
     if(coreActive&&sub.recordId){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
     db.vocabulary.create({
@@ -622,6 +720,18 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       </div>
     );
   }
+
+  // Lớp hiển thị phụ đề theo cài đặt của người học.
+  const subDeSizeClass = subPrefs.fontSize === 'small' ? 'text-sm md:text-base' : subPrefs.fontSize === 'large' ? 'text-lg md:text-2xl' : 'text-base md:text-xl';
+  const subViSizeClass = subPrefs.fontSize === 'small' ? 'text-xs' : subPrefs.fontSize === 'large' ? 'text-sm md:text-base' : 'text-xs md:text-sm';
+  const subDeColorClass = subPrefs.color === 'yellow' ? 'text-yellow-300' : 'text-white';
+  const subViColorClass = subPrefs.color === 'yellow' ? 'text-yellow-200' : 'text-white/90';
+  const subBgClass = subPrefs.background === 'dark' ? 'bg-black/80' : 'bg-black/45';
+  // Mặc định ở dưới video, nhô lên trên thanh controls của video máy tính
+  // (cao ~40px) để không bị che; vị trí "Giữa" thì đặt giữa khung video.
+  const subPositionClass = subPrefs.position === 'middle'
+    ? 'top-1/2 -translate-y-1/2'
+    : isLocalEpisode ? 'bottom-12' : 'bottom-10';
 
   return (
     <div className="space-y-4 animate-rise max-w-7xl mx-auto">
@@ -746,27 +856,23 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               <div id="youtube-player-iframe" className="w-full h-full" />
             )}
 
-            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY (Cinema Style - Trong suốt, không hộp đen che video) */}
+            {/* REAL-TIME ON-SCREEN SUBTITLE OVERLAY — luôn có nền đen đậm để đọc được trên mọi nền video sáng */}
             {subtitles[activeSubIndex] &&
               ((showGerman && currentSub.de?.trim()) || (showVietnamese && currentSub.vi?.trim())) && (
-              <div className="absolute bottom-3 left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center z-20">
-                <div className="max-w-2xl px-3 py-1 space-y-1">
+              <div className={`absolute ${subPositionClass} left-4 right-4 pointer-events-none flex flex-col items-center justify-center text-center z-20`}>
+                <div className={`max-w-2xl px-4 py-2 space-y-1 rounded-md ${subBgClass}`}>
                   {showGerman && currentSub.de && (
-                    <div 
-                      className="text-white font-heading font-extrabold text-base md:text-xl tracking-wide leading-snug"
-                      style={{
-                        textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.9), 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
-                      }}
+                    <div
+                      className={`${subDeColorClass} font-heading font-extrabold ${subDeSizeClass} tracking-wide leading-snug`}
+                      style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
                     >
                       {currentSub.de}
                     </div>
                   )}
                   {showVietnamese && currentSub.vi && (
-                    <div 
-                      className="text-amber-300 font-body text-xs md:text-sm font-semibold"
-                      style={{
-                        textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.9), 1px 1px 2px #000, -1px -1px 2px #000'
-                      }}
+                    <div
+                      className={`${subViColorClass} font-body ${subViSizeClass} font-semibold`}
+                      style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}
                     >
                       {currentSub.vi}
                     </div>
@@ -774,6 +880,56 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Cài đặt hiển thị phụ đề — lưu vào localStorage, mở lại vẫn giữ */}
+          <div className="surface px-3 py-2 border border-border flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-mono">
+            <span className="font-semibold text-foreground">Cài đặt phụ đề:</span>
+            <label className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Cỡ chữ</span>
+              <select
+                value={subPrefs.fontSize}
+                onChange={(e) => setSubPrefs({ ...subPrefs, fontSize: e.target.value })}
+                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
+              >
+                <option value="small">Nhỏ</option>
+                <option value="medium">Vừa</option>
+                <option value="large">Lớn</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Màu chữ</span>
+              <select
+                value={subPrefs.color}
+                onChange={(e) => setSubPrefs({ ...subPrefs, color: e.target.value })}
+                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
+              >
+                <option value="white">Trắng</option>
+                <option value="yellow">Vàng</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Vị trí</span>
+              <select
+                value={subPrefs.position}
+                onChange={(e) => setSubPrefs({ ...subPrefs, position: e.target.value })}
+                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
+              >
+                <option value="bottom">Dưới</option>
+                <option value="middle">Giữa</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Nền</span>
+              <select
+                value={subPrefs.background}
+                onChange={(e) => setSubPrefs({ ...subPrefs, background: e.target.value })}
+                className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold"
+              >
+                <option value="faint">Mờ</option>
+                <option value="dark">Đậm</option>
+              </select>
+            </label>
           </div>
 
           {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
@@ -1015,6 +1171,17 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               >
                 <Copy className="w-4 h-4" />
               </button>
+              {subtitles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDownloadSrt}
+                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors flex items-center gap-1.5"
+                  title="Tải file phụ đề .srt về máy để mở ở ngoài (VLC...)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Tải .srt</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1088,25 +1255,76 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                         >
                           <BookmarkPlus className="w-3.5 h-3.5" />
                         </button>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditingSub(idx);
+                            }}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent"
+                            title="Sửa câu phụ đề này"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* German Sentence */}
-                    {showGerman && (
-                      <div
-                        className={`font-heading text-sm leading-relaxed ${
-                          isActive ? 'font-bold text-foreground' : 'text-foreground/90'
-                        }`}
-                      >
-                        {sub.de}
+                    {editingSubIndex === idx ? (
+                      <div onClick={(e) => e.stopPropagation()} className="space-y-2 mt-1">
+                        <textarea
+                          rows={2}
+                          value={editingSubDe}
+                          onChange={(e) => setEditingSubDe(e.target.value)}
+                          placeholder="Câu tiếng Đức..."
+                          className="w-full p-2 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <textarea
+                          rows={2}
+                          value={editingSubVi}
+                          onChange={(e) => setEditingSubVi(e.target.value)}
+                          placeholder="Dịch tiếng Việt (để trống nếu chưa có)..."
+                          className="w-full p-2 text-sm rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={savingSub}
+                            onClick={(e) => { e.stopPropagation(); saveEditedSub(); }}
+                            className="tap px-3 py-1 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold disabled:opacity-50"
+                          >
+                            {savingSub ? 'Đang lưu…' : 'Lưu câu này'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setEditingSubIndex(null); }}
+                            className="tap px-3 py-1 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted"
+                          >
+                            Hủy
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    ) : (
+                      <>
+                        {/* German Sentence */}
+                        {showGerman && (
+                          <div
+                            className={`font-heading text-sm leading-relaxed ${
+                              isActive ? 'font-bold text-foreground' : 'text-foreground/90'
+                            }`}
+                          >
+                            {sub.de}
+                          </div>
+                        )}
 
-                    {/* Vietnamese Translation */}
-                    {showVietnamese && sub.vi && (
-                      <div className="font-body text-xs text-muted-foreground mt-0.5 italic">
-                        {sub.vi}
-                      </div>
+                        {/* Vietnamese Translation */}
+                        {showVietnamese && sub.vi && (
+                          <div className="font-body text-xs text-muted-foreground mt-0.5 italic">
+                            {sub.vi}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 );

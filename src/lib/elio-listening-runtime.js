@@ -26,6 +26,31 @@ const getDeletedEpisodes = () => {
   }
 };
 
+const pruneDeletedLists = (serverCollections, serverEpisodes) => {
+  // Dọn các mục ẩn đã cũ: video/bộ vẫn còn trên máy chủ thì không được ẩn
+  // nữa — nếu không, xóa rồi import lại cùng video sẽ không bao giờ hiện lên.
+  // Chỉ giữ lại các mục ẩn không còn trên server (video local đã xóa, bản
+  // sao local của video server đã xóa).
+  try {
+    const liveColIds = new Set();
+    for (const c of serverCollections || []) {
+      if (c.id) liveColIds.add(c.id);
+      (c.recordIds || []).forEach(r => liveColIds.add(r));
+      if (c.organizerId) liveColIds.add(c.organizerId);
+    }
+    const liveEpIds = new Set();
+    for (const e of serverEpisodes || []) {
+      if (e.id) liveEpIds.add(e.id);
+      if (e.recordId) liveEpIds.add(e.recordId);
+      if (e.youtubeId) liveEpIds.add(e.youtubeId);
+    }
+    const cols = getDeletedCollections().filter(id => !liveColIds.has(id));
+    const eps = getDeletedEpisodes().filter(id => !liveEpIds.has(id));
+    localStorage.setItem('sprach_deleted_listening_collections', JSON.stringify(cols));
+    localStorage.setItem('sprach_deleted_listening_episodes', JSON.stringify(eps));
+  } catch {}
+};
+
 const addDeletedCollection = (col) => {
   try {
     const list = getDeletedCollections();
@@ -100,6 +125,7 @@ export function installListeningRuntime(db){
    const [{videos},folders]=await Promise.all([core.load(),elioClient.collections()]);
    if(current!==elioClient.getUser()?.id)return;
    const result=groupListeningLibrary(videos,folders?.items||[]);
+   pruneDeletedLists(result.collections || [], result.episodes || []);
    const deletedCols = getDeletedCollections();
    const deletedEps = getDeletedEpisodes();
    collections=(result.collections||[]).filter(c => !isCollectionDeleted(c, deletedCols));
@@ -196,6 +222,20 @@ export function installListeningRuntime(db){
   },
   deleteCollection:async id=>{
    const target = collections.find(c => c.id === id || c.recordIds?.includes(id)) || legacy.getCollectionById(id);
+
+   // Xóa trên server TRƯỚC: nếu server từ chối thì không động gì ở máy này,
+   // bộ vẫn hiện như cũ thay vì báo xóa thành công rồi tự hiện lại.
+   let serverError = null;
+   if (target?.organizerId && elioClient.deleteCollection) {
+     try { await elioClient.deleteCollection({ id: target.organizerId }); } catch (e) { serverError = e; }
+   }
+   if (target?.recordIds?.length && elioClient.deleteRecord) {
+     for (const recordId of target.recordIds) {
+       try { await elioClient.deleteRecord({ recordId }); } catch (e) { serverError = e; }
+     }
+   }
+   if (serverError) throw new Error('Chưa xóa được bộ trên máy chủ: ' + (serverError?.message || 'lỗi không rõ') + '.');
+
    const targetIds = [id, target?.id, ...(target?.recordIds || []), target?.organizerId].filter(Boolean);
 
    if (target) {
@@ -212,32 +252,38 @@ export function installListeningRuntime(db){
    legacy.deleteCollection(id);
    if (target?.id && target.id !== id) legacy.deleteCollection(target.id);
 
-   // Server sync xóa record / folder
-   if (target?.organizerId && elioClient.deleteCollection) {
-     try { await elioClient.deleteCollection({ id: target.organizerId }); } catch {}
-   }
-   if (target?.recordIds?.length && elioClient.deleteRecord) {
-     for (const recordId of target.recordIds) {
-       try { await elioClient.deleteRecord({ recordId }); } catch {}
-     }
-   }
-
    notify();
    return true;
   },
   deleteEpisode:async id=>{
    const target = episodes.find(e => e.id === id || e.recordId === id) || legacy.getEpisodeById(id);
-   const targetIds = [id, target?.id, target?.recordId].filter(Boolean);
-
-   if (target) {
-     addDeletedEpisode(target);
-   } else {
+   if (!target) {
      addDeletedEpisode({ id });
+     notify();
+     return true;
    }
+
+   // Xóa trên server TRƯỚC: nếu server từ chối thì không động gì ở máy này.
+   if (target.recordId && elioClient.deleteRecord) {
+     // Playlist import = 1 record chứa nhiều tập: chỉ xóa đúng tập đó;
+     // chỉ xóa cả record khi đó là tập duy nhất còn lại.
+     const siblings = episodes.filter(e => e.recordId === target.recordId);
+     try {
+       if (target.itemId !== undefined && siblings.length > 1) {
+         await elioClient.deleteRecord({ recordId: target.recordId, itemId: target.itemId });
+       } else {
+         await elioClient.deleteRecord({ recordId: target.recordId });
+       }
+     } catch (serverErr) {
+       throw new Error('Chưa xóa được video trên máy chủ: ' + (serverErr?.message || 'lỗi không rõ') + '.');
+     }
+   }
+
+   addDeletedEpisode(target);
 
    // Chỉ gỡ đúng tập bị xóa khỏi mảng in-memory: xóa 1 tập trong playlist
    // không được làm các tập còn lại của cùng record biến mất theo.
-   const isTargetEp = (e) => e.id === target?.id || (target?.itemId === undefined && target?.recordId && e.recordId === target.recordId);
+   const isTargetEp = (e) => e.id === target.id || (target.itemId === undefined && target.recordId && e.recordId === target.recordId);
    episodes = episodes.filter(e => !isTargetEp(e));
    collections = collections.map(c => {
      if (c.episodes) {
@@ -248,17 +294,18 @@ export function installListeningRuntime(db){
 
    // Xóa trong storage cục bộ
    legacy.deleteEpisode(id);
-   if (target?.id && target.id !== id) legacy.deleteEpisode(target.id);
+   if (target.id && target.id !== id) legacy.deleteEpisode(target.id);
 
-   if (target?.recordId && elioClient.deleteRecord) {
-     // Playlist import = 1 record chứa nhiều tập: chỉ xóa đúng tập đó;
-     // chỉ xóa cả record khi đó là tập duy nhất còn lại.
-     const siblings = episodes.filter(e => e.recordId === target.recordId);
-     if (target.itemId !== undefined && siblings.length > 0) {
-       elioClient.deleteRecord({ recordId: target.recordId, itemId: target.itemId }).catch(() => {});
-     } else {
-       elioClient.deleteRecord({ recordId: target.recordId }).catch(() => {});
-     }
+   // Xóa luôn bản sao local cùng video (nếu có) để khỏi còn bản mồ côi ẩn
+   // trong kho — nếu không, import lại video này sẽ hiện trùng 2 lần.
+   if (target.youtubeId) {
+     try {
+       for (const lc of legacy.getCollections() || []) {
+         for (const le of legacy.getEpisodes(lc.id) || []) {
+           if (le.youtubeId === target.youtubeId) legacy.deleteEpisode(le.id);
+         }
+       }
+     } catch {}
    }
 
    notify();
