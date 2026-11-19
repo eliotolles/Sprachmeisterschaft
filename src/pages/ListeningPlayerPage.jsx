@@ -158,7 +158,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               setPreview({ scope: captionScope, cues: translatedCues });
               if (hasVietnamese && failed === 0) toast.success(`Đã có phụ đề song ngữ (${translatedCues.length} câu, bản dịch nhanh)! Bấm "Dịch lại bằng AI" để dịch đúng bằng DeepL.`);
               else if (hasVietnamese) toast.warning(`Đã có bản dịch nhanh (${translatedCues.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để dịch đúng.`);
-              else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch nhanh được câu nào sang tiếng Việt.');
+              else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch nhanh được câu nào sang tiếng Việt.' + (translatedCues.lastError ? ` (${translatedCues.lastError})` : ''));
             } catch (saveErr) {
               toast.error(saveErr.message);
             }
@@ -228,7 +228,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       setPreview({ scope, cues: updated });
       if(hasVietnamese&&failed===0)toast.success(`Đã có bản dịch nhanh (${updated.length} câu)! Bấm "Dịch lại bằng AI" để dịch đúng.`);
       else if(hasVietnamese)toast.warning(`Đã có bản dịch nhanh (${updated.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để dịch đúng.`);
-      else toast.warning('Chưa dịch nhanh được câu nào sang tiếng Việt. Hãy thử lại sau.');
+      else toast.warning('Chưa dịch nhanh được câu nào sang tiếng Việt. Hãy thử lại sau.' + (updated.lastError ? ` (${updated.lastError})` : ''));
     }catch(err){
       if(captionScopeRef.current===scope)toast.error('Lỗi khi dịch: ' + err.message);
     }finally{

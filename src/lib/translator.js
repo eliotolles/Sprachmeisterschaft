@@ -80,33 +80,42 @@ export async function translateLinesWithAI(lines, aiGenerate = null) {
 
 /**
  * Dịch NHANH một nhóm dòng tiếng Đức bằng Google Dịch (bản nháp).
+ * ĐÚNG CODE BUỔI CHIỀU 19/11 (lúc Google còn nhanh): nối tất cả các
+ * dòng bằng '\n' thành MỘT đoạn văn, gửi 1 request duy nhất với 1 tham
+ * số q — Google có tách câu thành nhiều đoạn thì vẫn ghép lại được bằng
+ * cách nối tất cả các đoạn dịch rồi tách lại theo '\n'. KHÔNG đếm số
+ * đoạn trả về (Google tách câu kiểu gì cũng đúng).
  * Chạy phía trình duyệt qua endpoint gtx công khai — nhanh như lúc đầu,
  * nhưng dịch từng câu, không giữ ngữ cảnh nên có thể sai (bản nháp).
- * Trả về mảng bản dịch đúng thứ tự/số lượng. Ném lỗi khi Google lỗi
- * (mạng, 429, trả sai) để phía gọi giữ nguyên `vi` cũ của nhóm đó.
+ * Chỉ ném lỗi khi Google trả HTTP lỗi (vd 429) để phía gọi ghi nhận là
+ * dịch lỗi; câu nào Google không dịch được thì trả '' (không ném lỗi
+ * cả nhóm như code trước — đó là lý do 68 câu vừa rồi dịch được 0 câu).
  * `fetchFn` là điểm chích để test (mặc định là fetch của trình duyệt).
- * Câu nguồn trống không gửi lên Google mà map lại thành rỗng.
  */
 export async function translateLinesWithGoogle(lines, fetchFn = fetch) {
   if (!Array.isArray(lines) || lines.length === 0) return [];
   const cleanLines = lines.map(l => (typeof l === 'string' ? l.trim().replace(/\r?\n/g, ' ') : ''));
-  const sendIdx = cleanLines.map((l, i) => (l ? i : -1)).filter(i => i >= 0);
-  if (sendIdx.length === 0) return cleanLines.map(() => '');
-  const params = new URLSearchParams({ client: 'gtx', sl: 'de', tl: 'vi', dt: 't' });
-  sendIdx.forEach(i => params.append('q', cleanLines[i]));
-  const res = await fetchFn(`https://translate.googleapis.com/translate_a/single?${params.toString()}`);
+  const joinedText = cleanLines.join('\n');
+  if (!joinedText.trim()) return cleanLines.map(() => '');
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=de&tl=vi&dt=t&q=${encodeURIComponent(joinedText)}`;
+  const res = await fetchFn(url);
   if (!res.ok) throw new Error(`Google Dịch lỗi ${res.status}`);
   const data = await res.json();
-  const arr = Array.isArray(data) ? data[0] : null;
-  if (!Array.isArray(arr) || arr.length !== sendIdx.length) {
-    throw new Error('Google Dịch trả về sai số lượng câu dịch');
+  // Ghép tất cả các đoạn dịch trả về (Google có thể tách 1 câu thành
+  // nhiều đoạn — nối lại rồi tách theo '\n' thì vẫn đúng từng dòng).
+  let fullTranslated = '';
+  if (Array.isArray(data) && Array.isArray(data[0])) {
+    fullTranslated = data[0].map(item => (Array.isArray(item) && typeof item[0] === 'string' ? item[0] : '')).join('');
   }
-  const full = cleanLines.map(() => '');
-  sendIdx.forEach((lineIdx, k) => {
-    const t = arr[k] && typeof arr[k][0] === 'string' ? arr[k][0] : '';
-    full[lineIdx] = t;
+  const translatedLines = fullTranslated.split('\n');
+  return cleanLines.map((original, i) => {
+    if (!original) return '';
+    if (/^\[(Musik|Music)\]$/i.test(original)) return '[Âm nhạc]';
+    if (/^\[(Applaus|Applause)\]$/i.test(original)) return '[Tiếng vỗ tay]';
+    if (/^\[(Lachen|Laughter)\]$/i.test(original)) return '[Tiếng cười]';
+    if (/^\[.+\]$/.test(original) || /^\(.+\)$/.test(original)) return original;
+    return translatedLines[i] ? translatedLines[i].trim() : '';
   });
-  return validateTranslatedLines(cleanLines, full);
 }
 
 /**
@@ -292,11 +301,12 @@ export async function batchTranslateCuesGoogle(cues, onProgress, options = {}) {
   }
   const { googleTranslate = null } = options || {};
   const results = cues.map(c => ({ ...c }));
-  const chunkSize = 20; // 20 câu mỗi nhóm, giống luồng dịch đúng
+  const chunkSize = 40; // 40 câu mỗi request (như buổi chiều) để tránh URL quá dài
   const CONCURRENCY = 3; // tối đa 3 nhóm chạy cùng lúc
   const chunkStarts = [];
   for (let i = 0; i < results.length; i += chunkSize) chunkStarts.push(i);
   let anyGoogle = false;
+  let lastError = null;
 
   const processChunk = async (start) => {
     const chunk = results.slice(start, start + chunkSize);
@@ -310,7 +320,9 @@ export async function batchTranslateCuesGoogle(cues, onProgress, options = {}) {
           : await translateLinesWithGoogle(needTranslate);
       } catch (err) {
         // Google lỗi cho nhóm này (mạng, 429...): giữ nguyên `vi` cũ,
-        // câu chưa có `vi` thì để trống — mở video sẽ tự thử lại.
+        // câu chưa có `vi` thì để trống — mở video sẽ tự thử lại. Ghi
+        // lại lý do để toast báo rõ (vd "Google Dịch lỗi 429").
+        if (!lastError) lastError = err?.message || String(err);
         console.warn('Dịch nhanh bằng Google lỗi cho nhóm này, giữ nguyên (mở video sẽ thử lại):', err);
         translated = null;
       }
@@ -350,5 +362,6 @@ export async function batchTranslateCuesGoogle(cues, onProgress, options = {}) {
 
   results.failedCount = failedCount;
   results.translationEngine = anyGoogle ? 'google' : 'none';
+  results.lastError = lastError;
   return results;
 }

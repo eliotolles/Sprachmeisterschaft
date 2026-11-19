@@ -153,25 +153,55 @@ test('chạy song song tối đa 3 nhóm cùng lúc', async () => {
   assert.equal(result.length, 100);
 });
 
-test('translateLinesWithGoogle gọi gtx, bỏ câu trống, map đúng thứ tự', async () => {
+test('translateLinesWithGoogle: 1 request nối dòng bằng \\n, Google tách đoạn vẫn đúng', async () => {
   const seenUrls = [];
   const fetchFn = async (url) => {
     seenUrls.push(url);
-    const q = new URL(url).searchParams.getAll('q');
-    return {
-      ok: true,
-      json: async () => [[...q.map((t) => [`Dịch: ${t}`, t])], null, 'de'],
-    };
+    // Đúng format buổi chiều: 1 tham số q duy nhất, các dòng nối bằng \n.
+    const q = new URL(url).searchParams.get('q');
+    const lines = q.split('\n');
+    // Giả lập Google tách dòng đầu thành 2 đoạn (như câu có "..." hay "?!").
+    const segments = [];
+    lines.forEach((line, i) => {
+      const t = `Dịch: ${line}`;
+      const nl = i < lines.length - 1 ? '\n' : '';
+      if (i === 0 && line.length > 4) {
+        const mid = Math.floor(t.length / 2);
+        segments.push([t.slice(0, mid), line.slice(0, Math.floor(line.length / 2))]);
+        segments.push([t.slice(mid) + nl, line.slice(Math.floor(line.length / 2)) + nl]);
+      } else {
+        segments.push([t + nl, line + nl]);
+      }
+    });
+    return { ok: true, json: async () => [segments, null, 'de'] };
   };
-  const result = await translateLinesWithGoogle(['Hallo', '', 'Tschüss'], fetchFn);
-  assert.deepEqual(result, ['Dịch: Hallo', '', 'Dịch: Tschüss']);
+  const result = await translateLinesWithGoogle(['Hallo Welt', '', 'Tschüss'], fetchFn);
+  assert.deepEqual(result, ['Dịch: Hallo Welt', '', 'Dịch: Tschüss']);
   assert.match(seenUrls[0], /translate\.googleapis\.com/);
   assert.match(seenUrls[0], /tl=vi/);
-  // 429 thì ném lỗi để phía gọi giữ nguyên vi cũ.
+  // Chỉ 1 tham số q duy nhất (nối dòng), không phải 1 q mỗi dòng.
+  assert.equal(new URL(seenUrls[0]).searchParams.getAll('q').length, 1);
+  // 429 thì ném lỗi để phía gọi giữ nguyên vi cũ và báo rõ lý do.
   await assert.rejects(
     () => translateLinesWithGoogle(['Hallo'], async () => ({ ok: false, status: 429, json: async () => ({}) })),
     /429/,
   );
+});
+
+test('Google không dịch được 1 câu thì câu đó để trống, các câu khác vẫn dịch (không ném lỗi cả nhóm)', async () => {
+  const fetchFn = async (url) => {
+    const q = new URL(url).searchParams.get('q');
+    const lines = q.split('\n');
+    const segments = lines.map((line, i) => {
+      const nl = i < lines.length - 1 ? '\n' : '';
+      // Dòng giữa Google không dịch được: bản dịch rỗng nhưng vẫn giữ \n.
+      if (line === 'Xyzq') return [nl, line + nl];
+      return [`Dịch: ${line}${nl}`, line + nl];
+    });
+    return { ok: true, json: async () => [segments, null, 'de'] };
+  };
+  const result = await translateLinesWithGoogle(['Hallo', 'Xyzq', 'Tschüss'], fetchFn);
+  assert.deepEqual(result, ['Dịch: Hallo', '', 'Dịch: Tschüss']);
 });
 
 test('dịch nhanh bằng Google: chỉ dịch câu chưa có vi, ghi viEngine google, lỗi thì tính failedCount', async () => {
