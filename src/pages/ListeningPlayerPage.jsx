@@ -120,6 +120,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
   const subtitlesRef = useRef(subtitles);
   subtitlesRef.current = subtitles;
+  // Số câu tiếng Đức chưa có bản dịch — nút dịch sẽ chỉ dịch nốt các câu này.
+  const missingViCount = subtitles.filter(c => !(c.vi && String(c.vi).trim()) && (c.de || c.text || '').trim()).length;
 
   const fetchCaptions=async()=>{
     if(captionBusy||!currentEpisode.youtubeId)return;
@@ -176,17 +178,20 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     if(translatingBusy||!subtitles.length)return;
     setTranslatingBusy(true);
     try{
-      toast.info(`Đang dịch lại ${subtitles.length} câu bằng AI...`);
-      // Dịch lại toàn bộ bằng AI theo ngữ cảnh (force), kể cả câu đã có
-      // bản Google Dịch cũ — bản cũ không đúng ngữ cảnh nên cần dịch lại.
-      const updated = await batchTranslateCues(subtitles, undefined, {force:true});
+      // Còn câu chưa có bản dịch thì chỉ dịch nốt các câu đó — không
+      // dịch lại từ đầu. Chỉ khi mọi câu đã có bản dịch mới dịch lại
+      // toàn bộ (để sửa bản dịch cũ không đúng ngữ cảnh).
+      const missing = subtitles.filter(c => !(c.vi && String(c.vi).trim()) && (c.de || c.text || '').trim()).length;
+      const force = missing === 0;
+      toast.info(force ? `Đang dịch lại ${subtitles.length} câu bằng AI...` : `Đang dịch nốt ${missing} câu chưa có bản dịch...`);
+      const updated = await batchTranslateCues(subtitles, undefined, {force});
       const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
       const failed = updated.failedCount || 0;
       const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
       if (!saved) throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope: captionScope, cues: updated });
-      if (hasVietnamese && failed === 0) toast.success('Đã dịch lại bằng AI!');
-      else if (hasVietnamese) toast.warning(`Đã dịch lại bằng AI, còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
+      if (hasVietnamese && failed === 0) toast.success(force ? 'Đã dịch lại bằng AI!' : 'Đã dịch xong các câu còn thiếu!');
+      else if (hasVietnamese) toast.warning(force ? `Đã dịch lại bằng AI, còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.` : `Đã dịch thêm, còn ${failed} câu chưa dịch được — bấm "Dịch nốt" để thử lại.`);
       else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
     }catch(err){
       toast.error('Lỗi khi dịch: ' + err.message);
@@ -1416,9 +1421,9 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   disabled={translatingBusy || captionBusy}
                   onClick={translateCaptions}
                   className="tap px-2.5 py-1 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
-                  title="Dịch lại toàn bộ phụ đề bằng AI theo ngữ cảnh"
+                  title="Chỉ dịch các câu chưa có bản dịch; khi mọi câu đã có bản dịch thì dịch lại toàn bộ"
                 >
-                  {translatingBusy ? 'Đang dịch…' : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt')}
+                  {translatingBusy ? 'Đang dịch…' : (missingViCount > 0 ? `Dịch nốt ${missingViCount} câu` : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt'))}
                 </button>
               )}
               <button
