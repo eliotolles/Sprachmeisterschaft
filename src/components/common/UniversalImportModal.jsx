@@ -7,6 +7,7 @@ import { SPECIALTIES } from '@/data/specialties';
 import { buildLevelDecks } from '@/lib/level-deck-adapter';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
+import { batchTranslateCuesGoogle } from '@/lib/translator';
 import { saveLocalMedia, checkLocalVideoSize, formatFileSize, estimateLocalMediaStorage } from '@/lib/local-media-store';
 import { elioImport } from '@/lib/elio-import-runtime';
 import {
@@ -436,10 +437,20 @@ export function UniversalImportModal({
                 const rawText = await item.subtitleFile.text();
                 cues = parseYouTubeSubtitles(normalizeSubtitleText(rawText));
                 if (cues.length) {
-                  // Chỉ lấy phụ đề tiếng Đức trước — không chờ dịch ở bước
-                  // import (dịch AI lâu sẽ kẹt màn import); mở video thì
-                  // AI dịch sang tiếng Việt ngay lập tức.
+                  // Dịch nhanh bản nháp bằng Google Dịch ngay lúc import
+                  // (nhanh như lúc đầu) — mở video đã có tiếng Việt; muốn
+                  // dịch đúng thì bấm "Dịch lại bằng AI" trong video.
                   cues = cues.map((c, idx) => ({ _id: `cue-${idx}`, start: c.start, end: c.end, de: c.de, vi: '' }));
+                  setProgressText(`Đang dịch nhanh phụ đề cho "${item.title}"...`);
+                  try {
+                    const translated = await batchTranslateCuesGoogle(cues);
+                    cues = translated;
+                    if (translated.failedCount > 0) {
+                      setWarningText(`"${item.title}": còn ${translated.failedCount} câu chưa dịch nhanh được — mở video sẽ tự dịch lại.`);
+                    }
+                  } catch (e) {
+                    console.warn('Dịch nhanh lúc import lỗi:', e);
+                  }
                 } else {
                   setWarningText(
                     `Không đọc được câu thoại nào từ file phụ đề "${item.subtitleName}". Video vẫn lưu được, bạn có thể bổ sung phụ đề sau.`
@@ -595,11 +606,24 @@ export function UniversalImportModal({
                 de: c.text,
                 vi: '',
               }));
-              // Chỉ lấy phụ đề tiếng Đức trước — không chờ dịch ở bước
-              // import (dịch AI lâu sẽ kẹt màn import); mở video thì
-              // AI dịch sang tiếng Việt ngay lập tức.
             } else {
               setWarningText(transcriptRes.reason || 'Video chưa có phụ đề tiếng Đức tự động. Bạn vẫn có thể lưu video và bổ sung sau.');
+            }
+          }
+
+          // Dịch nhanh bản nháp bằng Google Dịch ngay lúc import
+          // (nhanh như lúc đầu) — mở video đã có tiếng Việt; muốn dịch
+          // đúng thì bấm "Dịch lại bằng AI" trong video.
+          if (cues.length) {
+            setProgressText('Đang dịch nhanh phụ đề sang tiếng Việt...');
+            try {
+              const translated = await batchTranslateCuesGoogle(cues);
+              cues = translated;
+              if (translated.failedCount > 0) {
+                setWarningText(`Còn ${translated.failedCount} câu chưa dịch nhanh được — mở video sẽ tự dịch lại, hoặc bấm "Dịch lại bằng AI" để dịch đúng.`);
+              }
+            } catch (e) {
+              console.warn('Dịch nhanh lúc import lỗi:', e);
             }
           }
 

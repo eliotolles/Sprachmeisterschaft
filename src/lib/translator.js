@@ -1,12 +1,18 @@
 /**
- * Công cụ dịch phụ đề tiếng Đức sang tiếng Việt theo ngữ cảnh.
- * Thứ tự engine: DeepL TRƯỚC (nhanh, dịch theo ngữ cảnh, chạy phía
- * server nên máy người dùng không nặng thêm), hết hạn mức 1.000.000 ký
- * tự (một lần, không cộng lại mỗi tháng) thì tự chuyển sang AI và Ở LẠI
- * AI — không tự mở lại DeepL tháng sau. AI là purpose
- * 'subtitle_translation', dịch từng đoạn 20 câu liên tiếp để giữ ngữ
- * cảnh hội thoại/bài giảng, dịch tự nhiên như lời nói.
- * KHÔNG dùng Google Dịch nữa (anh Elio: Google dịch sai hết).
+ * Công cụ dịch phụ đề tiếng Đức sang tiếng Việt.
+ * HAI LUỒNG (anh Elio 20/11, vì DeepL chậm hơn AI anh hay dùng):
+ * 1) Dịch NHANH (bản nháp) bằng Google Dịch — lúc import/lấy phụ đề
+ *    và khi mở video: nhanh như lúc đầu, vào video đã có tiếng Việt.
+ *    Google dịch từng câu, không giữ ngữ cảnh nên có thể sai.
+ * 2) Dịch ĐÚNG (khi bấm "Dịch lại bằng AI") — DeepL TRƯỚC (dịch theo
+ *    ngữ cảnh, chạy phía server nên máy người dùng không nặng thêm),
+ *    hết hạn mức 1.000.000 ký tự (một lần, không cộng lại mỗi tháng)
+ *    thì tự chuyển sang AI và Ở LẠI AI. AI là purpose
+ *    'subtitle_translation', dịch từng đoạn 20 câu liên tiếp để giữ ngữ
+ *    cảnh hội thoại/bài giảng, dịch tự nhiên như lời nói.
+ * Mỗi câu đã dịch ghi `viEngine` = 'google' | 'deepl' | 'ai' để nút
+ * "dịch đúng" biết câu nào chỉ có bản nháp (cần dịch lại đúng) và câu
+ * nào đã có bản dịch đúng (giữ nguyên, không dịch lại từ đầu).
  * Engine nào lỗi hoặc trả sai cho một nhóm thì nhóm đó giữ nguyên `vi`
  * cũ (câu chưa có `vi` thì để trống), ghi nhận vào `failedCount` trên
  * mảng trả về, và dịch tiếp các nhóm còn lại — không dừng cả bài vì
@@ -70,6 +76,37 @@ export async function translateLinesWithAI(lines, aiGenerate = null) {
 
   const raw = Array.isArray(value) ? value : value?.translations;
   return validateTranslatedLines(cleanLines, raw);
+}
+
+/**
+ * Dịch NHANH một nhóm dòng tiếng Đức bằng Google Dịch (bản nháp).
+ * Chạy phía trình duyệt qua endpoint gtx công khai — nhanh như lúc đầu,
+ * nhưng dịch từng câu, không giữ ngữ cảnh nên có thể sai (bản nháp).
+ * Trả về mảng bản dịch đúng thứ tự/số lượng. Ném lỗi khi Google lỗi
+ * (mạng, 429, trả sai) để phía gọi giữ nguyên `vi` cũ của nhóm đó.
+ * `fetchFn` là điểm chích để test (mặc định là fetch của trình duyệt).
+ * Câu nguồn trống không gửi lên Google mà map lại thành rỗng.
+ */
+export async function translateLinesWithGoogle(lines, fetchFn = fetch) {
+  if (!Array.isArray(lines) || lines.length === 0) return [];
+  const cleanLines = lines.map(l => (typeof l === 'string' ? l.trim().replace(/\r?\n/g, ' ') : ''));
+  const sendIdx = cleanLines.map((l, i) => (l ? i : -1)).filter(i => i >= 0);
+  if (sendIdx.length === 0) return cleanLines.map(() => '');
+  const params = new URLSearchParams({ client: 'gtx', sl: 'de', tl: 'vi', dt: 't' });
+  sendIdx.forEach(i => params.append('q', cleanLines[i]));
+  const res = await fetchFn(`https://translate.googleapis.com/translate_a/single?${params.toString()}`);
+  if (!res.ok) throw new Error(`Google Dịch lỗi ${res.status}`);
+  const data = await res.json();
+  const arr = Array.isArray(data) ? data[0] : null;
+  if (!Array.isArray(arr) || arr.length !== sendIdx.length) {
+    throw new Error('Google Dịch trả về sai số lượng câu dịch');
+  }
+  const full = cleanLines.map(() => '');
+  sendIdx.forEach((lineIdx, k) => {
+    const t = arr[k] && typeof arr[k][0] === 'string' ? arr[k][0] : '';
+    full[lineIdx] = t;
+  });
+  return validateTranslatedLines(cleanLines, full);
 }
 
 /**
@@ -197,6 +234,7 @@ export async function batchTranslateCues(cues, onProgress, options = {}) {
         const needsIt = force || !results[idx].vi || !String(results[idx].vi).trim();
         if (needsIt && translated && translated[j]) {
           results[idx].vi = translated[j];
+          results[idx].viEngine = engine;
         }
         // Câu cần dịch mà nhóm này cả hai engine đều lỗi
         // (translated === null) thì tính là lỗi dù vẫn giữ `vi` cũ —
@@ -230,5 +268,87 @@ export async function batchTranslateCues(cues, onProgress, options = {}) {
 
   results.failedCount = failedCount;
   results.translationEngine = enginesUsed.size === 0 ? 'none' : enginesUsed.size === 1 ? [...enginesUsed][0] : 'mixed';
+  return results;
+}
+
+/**
+ * Dịch NHANH toàn bộ mảng cues sang tiếng Việt bằng Google Dịch (bản
+ * nháp) — dùng lúc import/lấy phụ đề và khi mở video, để vào video đã
+ * có tiếng Việt ngay (nhanh như lúc đầu). Chỉ dịch câu chưa có `vi`;
+ * câu nào Google lỗi thì giữ trống, ghi vào `failedCount`, mở video sẽ
+ * tự thử lại. Muốn dịch ĐÚNG thì bấm "Dịch lại bằng AI" (DeepL→AI).
+ * options.googleTranslate: hàm chích để test (nhận mảng dòng, trả về
+ * mảng bản dịch); null = dùng endpoint Google gtx mặc định.
+ * CHẠY SONG SONG: tối đa 3 nhóm 20 câu cùng lúc, như luồng dịch đúng.
+ * Trả về mảng cues đã dịch, gắn `failedCount` và `translationEngine`
+ * = 'google' | 'none'. Câu nào dịch được ghi `viEngine = 'google'`.
+ */
+export async function batchTranslateCuesGoogle(cues, onProgress, options = {}) {
+  if (!Array.isArray(cues) || cues.length === 0) {
+    const empty = [];
+    empty.failedCount = 0;
+    empty.translationEngine = 'none';
+    return empty;
+  }
+  const { googleTranslate = null } = options || {};
+  const results = cues.map(c => ({ ...c }));
+  const chunkSize = 20; // 20 câu mỗi nhóm, giống luồng dịch đúng
+  const CONCURRENCY = 3; // tối đa 3 nhóm chạy cùng lúc
+  const chunkStarts = [];
+  for (let i = 0; i < results.length; i += chunkSize) chunkStarts.push(i);
+  let anyGoogle = false;
+
+  const processChunk = async (start) => {
+    const chunk = results.slice(start, start + chunkSize);
+    const needTranslate = chunk.map(c => (!c.vi || !String(c.vi).trim() ? (c.de || c.text || '') : ''));
+    let failedHere = 0;
+    if (needTranslate.some(t => t.trim())) {
+      let translated = null;
+      try {
+        translated = googleTranslate
+          ? await googleTranslate(needTranslate)
+          : await translateLinesWithGoogle(needTranslate);
+      } catch (err) {
+        // Google lỗi cho nhóm này (mạng, 429...): giữ nguyên `vi` cũ,
+        // câu chưa có `vi` thì để trống — mở video sẽ tự thử lại.
+        console.warn('Dịch nhanh bằng Google lỗi cho nhóm này, giữ nguyên (mở video sẽ thử lại):', err);
+        translated = null;
+      }
+      for (let j = 0; j < chunk.length; j++) {
+        const idx = start + j;
+        const needsIt = !results[idx].vi || !String(results[idx].vi).trim();
+        if (needsIt && translated && translated[j]) {
+          results[idx].vi = translated[j];
+          results[idx].viEngine = 'google';
+          anyGoogle = true;
+        }
+        const source = (chunk[j].de || chunk[j].text || '').trim();
+        if (needsIt && source && (translated === null || !results[idx].vi || !String(results[idx].vi).trim())) {
+          failedHere++;
+        }
+      }
+    }
+    return failedHere;
+  };
+
+  let failedCount = 0;
+  let completedCues = 0;
+  let next = 0;
+  const worker = async () => {
+    while (next < chunkStarts.length) {
+      const start = chunkStarts[next++];
+      failedCount += await processChunk(start);
+      completedCues += Math.min(chunkSize, results.length - start);
+      if (typeof onProgress === 'function') {
+        onProgress(Math.min(completedCues, results.length), results.length);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, chunkStarts.length) }, () => worker()),
+  );
+
+  results.failedCount = failedCount;
+  results.translationEngine = anyGoogle ? 'google' : 'none';
   return results;
 }

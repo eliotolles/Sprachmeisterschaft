@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { batchTranslateCues, translateLinesWithAI } from '../src/lib/translator.js';
+import { batchTranslateCues, batchTranslateCuesGoogle, translateLinesWithAI, translateLinesWithGoogle } from '../src/lib/translator.js';
 
 const cues = (n) =>
   Array.from({ length: n }, (_, i) => ({
@@ -153,27 +153,69 @@ test('chạy song song tối đa 3 nhóm cùng lúc', async () => {
   assert.equal(result.length, 100);
 });
 
-test('không còn gọi Google Dịch: fetch không bao giờ được gọi, kể cả khi AI lỗi', async () => {
-  const prev = globalThis.fetch;
-  let fetchCalls = 0;
-  globalThis.fetch = async () => { fetchCalls++; throw new Error('fetch không được gọi'); };
-  try {
-    const ok = await batchTranslateCues(cues(2), undefined, {
-      aiGenerate: async () => ({ translations: ['Xin chào', 'Tạm biệt'] }),
-    });
-    assert.deepEqual(ok.map((c) => c.vi), ['Xin chào', 'Tạm biệt']);
-    const failed = await batchTranslateCues(cues(2), undefined, {
-      aiGenerate: async () => { throw new Error('AI lỗi'); },
-    });
-    assert.deepEqual(failed.map((c) => c.vi), ['', '']);
-    assert.equal(failed.failedCount, 2);
-    assert.equal(fetchCalls, 0);
-    const empty = await batchTranslateCues([]);
-    assert.deepEqual([...empty], []);
-    assert.equal(empty.failedCount, 0);
-  } finally {
-    globalThis.fetch = prev;
-  }
+test('translateLinesWithGoogle gọi gtx, bỏ câu trống, map đúng thứ tự', async () => {
+  const seenUrls = [];
+  const fetchFn = async (url) => {
+    seenUrls.push(url);
+    const q = new URL(url).searchParams.getAll('q');
+    return {
+      ok: true,
+      json: async () => [[...q.map((t) => [`Dịch: ${t}`, t])], null, 'de'],
+    };
+  };
+  const result = await translateLinesWithGoogle(['Hallo', '', 'Tschüss'], fetchFn);
+  assert.deepEqual(result, ['Dịch: Hallo', '', 'Dịch: Tschüss']);
+  assert.match(seenUrls[0], /translate\.googleapis\.com/);
+  assert.match(seenUrls[0], /tl=vi/);
+  // 429 thì ném lỗi để phía gọi giữ nguyên vi cũ.
+  await assert.rejects(
+    () => translateLinesWithGoogle(['Hallo'], async () => ({ ok: false, status: 429, json: async () => ({}) })),
+    /429/,
+  );
+});
+
+test('dịch nhanh bằng Google: chỉ dịch câu chưa có vi, ghi viEngine google, lỗi thì tính failedCount', async () => {
+  const googleTranslate = async (lines) => lines.map((l) => (l ? `GG: ${l}` : ''));
+  const input = [
+    { start: 0, end: 1, de: 'Hallo', vi: 'Chào cũ' },
+    { start: 1, end: 2, de: 'Wie geht es dir?', vi: '' },
+    { start: 2, end: 3, de: 'Tschüss', vi: '' },
+  ];
+  const result = await batchTranslateCuesGoogle(input, undefined, { googleTranslate });
+  assert.equal(result[0].vi, 'Chào cũ'); // giữ nguyên, không dịch lại
+  assert.equal(result[0].viEngine, undefined);
+  assert.equal(result[1].vi, 'GG: Wie geht es dir?');
+  assert.equal(result[1].viEngine, 'google');
+  assert.equal(result[2].vi, 'GG: Tschüss');
+  assert.equal(result.translationEngine, 'google');
+  assert.equal(result.failedCount, 0);
+
+  const failed = await batchTranslateCuesGoogle(cues(2), undefined, {
+    googleTranslate: async () => { throw new Error('Google 429'); },
+  });
+  assert.deepEqual(failed.map((c) => c.vi), ['', '']);
+  assert.equal(failed.failedCount, 2);
+  assert.equal(failed.translationEngine, 'none');
+
+  const empty = await batchTranslateCuesGoogle([]);
+  assert.deepEqual([...empty], []);
+  assert.equal(empty.failedCount, 0);
+});
+
+test('đường dịch đúng ghi viEngine để nút "dịch đúng" biết câu nào đã đúng', async () => {
+  const deeplTranslate = async ({ texts }) => ({ translations: texts.map((t) => `DeepL: ${t}`) });
+  const result = await batchTranslateCues(cues(2), undefined, {
+    deeplTranslate,
+    aiGenerate: async () => { throw new Error('AI không được gọi'); },
+  });
+  assert.deepEqual(result.map((c) => c.viEngine), ['deepl', 'deepl']);
+
+  // DeepL lỗi thì AI làm, ghi 'ai'.
+  const result2 = await batchTranslateCues(cues(2), undefined, {
+    deeplTranslate: async () => { throw new Error('DeepL lỗi'); },
+    aiGenerate: async () => ({ translations: ['Xin chào', 'Tạm biệt'] }),
+  });
+  assert.deepEqual(result2.map((c) => c.viEngine), ['ai', 'ai']);
 });
 
 test('translateLinesWithAI chấp nhận cả mảng trần và object translations', async () => {

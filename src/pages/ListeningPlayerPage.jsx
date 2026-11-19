@@ -3,7 +3,7 @@ import { getYouTubeTranscript } from '@/lib/youtube-transcript-extractor';
 import { getLocalMediaUrl, deleteLocalMedia } from '@/lib/local-media-store';
 import { parseYouTubeSubtitles, normalizeSubtitleText } from '@/lib/subtitle-parser';
 import { clampSubtitleDrag, SUBTITLE_DRAG_THRESHOLD_PX } from '@/lib/subtitle-drag';
-import { batchTranslateCues } from '@/lib/translator';
+import { batchTranslateCues, batchTranslateCuesGoogle } from '@/lib/translator';
 import {elioClient} from '@/lib/elio-auth-runtime';
 import { db } from '@/lib/db';
 import {elioListening,listeningCoreActive} from '@/lib/elio-listening-runtime';
@@ -120,8 +120,9 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
   const subtitlesRef = useRef(subtitles);
   subtitlesRef.current = subtitles;
-  // Số câu tiếng Đức chưa có bản dịch — nút dịch sẽ chỉ dịch nốt các câu này.
-  const missingViCount = subtitles.filter(c => !(c.vi && String(c.vi).trim()) && (c.de || c.text || '').trim()).length;
+  // Số câu chưa có bản dịch ĐÚNG (chỉ có bản Google nháp hoặc chưa có
+  // vi) — nút "Dịch lại bằng AI" sẽ chỉ dịch đúng các câu này.
+  const missingAccurateCount = subtitles.filter(c => c.viEngine !== 'deepl' && c.viEngine !== 'ai' && (c.de || c.text || '').trim()).length;
 
   const fetchCaptions=async()=>{
     if(captionBusy||!currentEpisode.youtubeId)return;
@@ -142,11 +143,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: cues });
         if (!saved) throw Error('Không lưu được phụ đề. Hãy thử lại.');
         setPreview({scope:captionScope, cues});
-        toast.success(`Đã lấy ${cues.length} câu tiếng Đức. Đang tự động dịch sang tiếng Việt...`);
+        toast.success(`Đã lấy ${cues.length} câu tiếng Đức. Đang dịch nhanh sang tiếng Việt...`);
 
-        // Tự động dịch song ngữ Đức - Việt (chỉ AI, không Google Dịch)
+        // Dịch nhanh bản nháp bằng Google Dịch (nhanh như lúc đầu) —
+        // muốn dịch đúng thì bấm "Dịch lại bằng AI" (DeepL trước rồi tới AI).
         try {
-          const translatedCues = await batchTranslateCues(cues);
+          const translatedCues = await batchTranslateCuesGoogle(cues);
           if (captionScopeRef.current === captionScope && translatedCues && translatedCues.length > 0) {
             const hasVietnamese = translatedCues.some(c => c.vi && String(c.vi).trim());
             const failed = translatedCues.failedCount || 0;
@@ -154,15 +156,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               const savedVi = await db.listening.updateEpisode(currentEpisode.id, { subtitles: translatedCues });
               if (!savedVi) throw Error('Không lưu được bản dịch lên máy chủ.');
               setPreview({ scope: captionScope, cues: translatedCues });
-              if (hasVietnamese && failed === 0) toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
-              else if (hasVietnamese) toast.warning(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
-              else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch được câu nào sang tiếng Việt.');
+              if (hasVietnamese && failed === 0) toast.success(`Đã có phụ đề song ngữ (${translatedCues.length} câu, bản dịch nhanh)! Bấm "Dịch lại bằng AI" để dịch đúng bằng DeepL.`);
+              else if (hasVietnamese) toast.warning(`Đã có bản dịch nhanh (${translatedCues.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để dịch đúng.`);
+              else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch nhanh được câu nào sang tiếng Việt.');
             } catch (saveErr) {
               toast.error(saveErr.message);
             }
           }
         } catch (transErr) {
-          console.warn('Lỗi dịch phụ đề tự động:', transErr);
+          console.warn('Lỗi dịch nhanh phụ đề:', transErr);
         }
       } else {
         throw Error(result?.reason || 'Chưa lấy được phụ đề tự động cho video này.');
@@ -178,21 +180,24 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     if(translatingBusy||!subtitles.length)return;
     setTranslatingBusy(true);
     try{
-      // Còn câu chưa có bản dịch thì chỉ dịch nốt các câu đó — không
-      // dịch lại từ đầu. Chỉ khi mọi câu đã có bản dịch mới dịch lại
-      // toàn bộ (để sửa bản dịch cũ không đúng ngữ cảnh).
-      const missing = subtitles.filter(c => !(c.vi && String(c.vi).trim()) && (c.de || c.text || '').trim()).length;
-      const force = missing === 0;
-      toast.info(force ? `Đang dịch lại ${subtitles.length} câu bằng AI...` : `Đang dịch nốt ${missing} câu chưa có bản dịch...`);
-      const updated = await batchTranslateCues(subtitles, undefined, {force});
+      // Nút "dịch đúng": DeepL làm việc trước rồi tới mấy AI kia — nhưng
+      // chỉ dịch các câu chưa có bản dịch ĐÚNG (bản Google nháp hoặc
+      // chưa có vi). Câu nào DeepL/AI đã dịch đúng rồi thì giữ nguyên,
+      // không dịch lại từ đầu. Chỉ khi mọi câu đã có bản dịch đúng mới
+      // dịch lại toàn bộ (để sửa bản dịch đúng cũ bị sai).
+      const needsAccurate = subtitles.filter(c => c.viEngine !== 'deepl' && c.viEngine !== 'ai' && (c.de || c.text || '').trim()).length;
+      const force = needsAccurate === 0;
+      const toTranslate = force ? subtitles : subtitles.map(c => (c.viEngine === 'deepl' || c.viEngine === 'ai') ? c : { ...c, vi: '' });
+      toast.info(force ? `Đang dịch lại ${subtitles.length} câu bằng DeepL/AI...` : `Đang dịch đúng ${needsAccurate} câu bằng DeepL/AI...`);
+      const updated = await batchTranslateCues(toTranslate, undefined, {force});
       const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
       const failed = updated.failedCount || 0;
       const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
       if (!saved) throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope: captionScope, cues: updated });
-      if (hasVietnamese && failed === 0) toast.success(force ? 'Đã dịch lại bằng AI!' : 'Đã dịch xong các câu còn thiếu!');
-      else if (hasVietnamese) toast.warning(force ? `Đã dịch lại bằng AI, còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.` : `Đã dịch thêm, còn ${failed} câu chưa dịch được — bấm "Dịch nốt" để thử lại.`);
-      else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
+      if (hasVietnamese && failed === 0) toast.success(force ? 'Đã dịch đúng lại toàn bộ bằng DeepL/AI!' : 'Đã dịch đúng các câu còn thiếu!');
+      else if (hasVietnamese) toast.warning(force ? `Đã dịch đúng lại bằng DeepL/AI, còn ${failed} câu chưa dịch được — bấm lại để dịch nốt.` : `Đã dịch đúng thêm, còn ${failed} câu chưa dịch được — bấm lại để dịch nốt.`);
+      else toast.warning('Chưa dịch đúng được câu nào. Hãy thử lại sau.');
     }catch(err){
       toast.error('Lỗi khi dịch: ' + err.message);
     }finally{
@@ -200,10 +205,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
-  // Tự động dịch các câu tiếng Đức chưa có `vi` ngay khi mở video —
-  // không chờ người dùng bấm nút. Phụ đề tiếng Đức hiện trước, bản
-  // dịch tiếng Việt điền dần rồi lưu lên máy chủ. Dùng cho cả luồng
-  // DeepL (nhanh) lẫn luồng AI (khi DeepL hết hạn mức).
+  // Tự động dịch NHANH các câu tiếng Đức chưa có `vi` ngay khi mở video
+  // bằng Google Dịch (bản nháp, nhanh như lúc đầu) — không chờ người
+  // dùng bấm nút. Muốn dịch đúng thì bấm "Dịch lại bằng AI" (DeepL
+  // làm việc trước rồi tới mấy AI kia).
   const translateMissingCaptions=async(cuesOverride)=>{
     const scope=captionScopeRef.current;
     if(translatingBusy||autoTranslateScopeRef.current===scope)return;
@@ -213,17 +218,17 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     autoTranslateScopeRef.current=scope;
     setTranslatingBusy(true);
     try{
-      toast.info('Đang tự động dịch phụ đề sang tiếng Việt...');
-      const updated = await batchTranslateCues(current);
+      toast.info('Đang dịch nhanh phụ đề sang tiếng Việt...');
+      const updated = await batchTranslateCuesGoogle(current);
       if(captionScopeRef.current!==scope)return;
       const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
       const failed = updated.failedCount || 0;
       const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
       if(!saved)throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope, cues: updated });
-      if(hasVietnamese&&failed===0)toast.success(`Đã dịch xong phụ đề song ngữ (${updated.length} câu)!`);
-      else if(hasVietnamese)toast.warning(`Đã dịch xong phụ đề song ngữ (${updated.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
-      else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
+      if(hasVietnamese&&failed===0)toast.success(`Đã có bản dịch nhanh (${updated.length} câu)! Bấm "Dịch lại bằng AI" để dịch đúng.`);
+      else if(hasVietnamese)toast.warning(`Đã có bản dịch nhanh (${updated.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để dịch đúng.`);
+      else toast.warning('Chưa dịch nhanh được câu nào sang tiếng Việt. Hãy thử lại sau.');
     }catch(err){
       if(captionScopeRef.current===scope)toast.error('Lỗi khi dịch: ' + err.message);
     }finally{
@@ -1421,9 +1426,9 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   disabled={translatingBusy || captionBusy}
                   onClick={translateCaptions}
                   className="tap px-2.5 py-1 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
-                  title="Chỉ dịch các câu chưa có bản dịch; khi mọi câu đã có bản dịch thì dịch lại toàn bộ"
+                  title="Dịch đúng bằng DeepL rồi tới AI — chỉ dịch câu chưa có bản dịch đúng; khi mọi câu đã đúng thì dịch lại toàn bộ"
                 >
-                  {translatingBusy ? 'Đang dịch…' : (missingViCount > 0 ? `Dịch nốt ${missingViCount} câu` : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt'))}
+                  {translatingBusy ? 'Đang dịch…' : (missingAccurateCount > 0 ? `Dịch đúng ${missingAccurateCount} câu` : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt'))}
                 </button>
               )}
               <button
