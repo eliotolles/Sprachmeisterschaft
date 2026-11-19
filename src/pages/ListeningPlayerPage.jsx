@@ -172,13 +172,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     if(translatingBusy||!subtitles.length)return;
     setTranslatingBusy(true);
     try{
-      toast.info(`Đang dịch ${subtitles.length} câu sang tiếng Việt...`);
-      const updated = await batchTranslateCues(subtitles);
+      toast.info(`Đang dịch lại ${subtitles.length} câu bằng AI...`);
+      // Dịch lại toàn bộ bằng AI theo ngữ cảnh (force), kể cả câu đã có
+      // bản Google Dịch cũ — bản cũ không đúng ngữ cảnh nên cần dịch lại.
+      const updated = await batchTranslateCues(subtitles, undefined, {force:true});
       const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
       const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
       if (!saved) throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope: captionScope, cues: updated });
-      if (hasVietnamese) toast.success('Đã hoàn tất bản dịch tiếng Việt!');
+      if (hasVietnamese) toast.success('Đã dịch lại bằng AI!');
       else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
     }catch(err){
       toast.error('Lỗi khi dịch: ' + err.message);
@@ -1364,14 +1366,15 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   {subtitles.length ? 'Thay phụ đề' : 'Thêm phụ đề'}
                 </button>
               )}
-              {subtitles.length > 0 && (!subtitles[0]?.vi || !subtitles[Math.floor(subtitles.length / 2)]?.vi) && (
+              {subtitles.length > 0 && (
                 <button
                   type="button"
                   disabled={translatingBusy || captionBusy}
                   onClick={translateCaptions}
                   className="tap px-2.5 py-1 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
+                  title="Dịch lại toàn bộ phụ đề bằng AI theo ngữ cảnh"
                 >
-                  {translatingBusy ? 'Đang dịch…' : 'Dịch tiếng Việt'}
+                  {translatingBusy ? 'Đang dịch…' : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt')}
                 </button>
               )}
               <button

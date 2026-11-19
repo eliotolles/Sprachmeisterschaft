@@ -1,6 +1,6 @@
 import {recommendLiveModels} from './model-suggestions.js';
 // Existing Admin contract backed by encrypted server configs; keys stay out of caches.
-const purposes=['ocr_image','writing_grading','exam_evaluation','elio_chat','interview','grammar_deep','audio_subtitles','speaking_eval'];
+const purposes=['ocr_image','writing_grading','exam_evaluation','elio_chat','interview','grammar_deep','audio_subtitles','speaking_eval','subtitle_translation'];
 export function createAIAdminBinding({client,legacy,isActive,notify=()=>{}}){
  const defaults={FREE_ONLY:true,FREE_FIRST_SORT:true,ALLOW_PAID_MODELS:false,AUTO_PAID_FALLBACK:false,REQUIRE_ADMIN_APPROVAL_FOR_PAID:true};
  let owner=null,configs=[],catalogs=new Map(),routing=null,writes=Promise.resolve();

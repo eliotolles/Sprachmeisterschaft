@@ -1,7 +1,7 @@
 import {coreError,query} from './database.js';import {digest} from './passwords.js';import {decryptSecret} from './secret-box.js';import {discoverModels,validModelId} from './ai-providers.js';import {modelCooldown} from './ai-cooldowns.js';
 const KEY='sprach:ai-routing';
 const DEMOTE_RESTORE_MS=3600000;
-export const AI_PURPOSES=['ocr_image','writing_grading','exam_evaluation','elio_chat','interview','grammar_deep','audio_subtitles','speaking_eval'];
+export const AI_PURPOSES=['ocr_image','writing_grading','exam_evaluation','elio_chat','interview','grammar_deep','audio_subtitles','speaking_eval','subtitle_translation'];
 export const AI_POLICIES={FREE_ONLY:true,FREE_FIRST_SORT:true,ALLOW_PAID_MODELS:false,AUTO_PAID_FALLBACK:false,REQUIRE_ADMIN_APPROVAL_FOR_PAID:true};
 const admin=user=>{if(!['admin','super_admin'].includes(user.role))throw coreError(403,'ADMIN_REQUIRED','Chỉ Admin được điều phối AI.');};
 export async function readAIRouting(env){const row=(await query(env,'SELECT value FROM ee_config WHERE key=?',[KEY])).rows[0];let d;try{d=row?JSON.parse(row.value):{rules:{},policies:{}};if(!d.rules||typeof d.rules!=='object'||Array.isArray(d.rules)||!d.policies||typeof d.policies!=='object'||Array.isArray(d.policies)||Object.keys(d.policies).some(k=>!Object.hasOwn(AI_POLICIES,k)||typeof d.policies[k]!=='boolean')||Object.keys(d.rules).some(k=>!AI_PURPOSES.includes(k)))throw Error();}catch{throw coreError(409,'AI_ROUTING_INVALID','Điều phối cũ chưa đọc được; không ghi đè.');}return {rules:d.rules,policies:{...AI_POLICIES,...d.policies},revision:row?await digest(row.value):null,raw:row?.value};}
