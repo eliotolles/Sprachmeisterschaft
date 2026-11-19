@@ -38,6 +38,8 @@ import {
   Edit3,
   Trash2,
   X,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
@@ -333,6 +335,28 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     subtitleDragRef.current = null;
     suppressLookupClickRef.current = false;
   }, [currentEpisode.id]);
+
+  // Toàn màn hình CỦA APP: phóng to CẢ khung bao (video + hộp phụ đề) để
+  // phụ đề không biến mất như khi bấm nút toàn màn hình gốc của YouTube
+  // (trình duyệt chỉ phóng to đúng cái iframe) hay của thẻ <video> máy
+  // tính (chỉ phóng to đúng thẻ video). Thoát bằng nút này hoặc phím Esc.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const update = () => setIsFullscreen(document.fullscreenElement === videoFrameRef.current);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+  const toggleFullscreen = () => {
+    const frame = videoFrameRef.current;
+    if (!frame) return;
+    if (document.fullscreenElement === frame) {
+      const exit = document.exitFullscreen?.();
+      if (exit && typeof exit.catch === 'function') exit.catch(() => {});
+    } else {
+      const request = frame.requestFullscreen?.();
+      if (request && typeof request.catch === 'function') request.catch(() => {});
+    }
+  };
   const handleSubtitlePointerDown = (event) => {
     if (event.button !== undefined && event.button !== 0) return;
     const box = subtitleBoxRef.current;
@@ -697,6 +721,14 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   // Bấm từ trên phụ đề: tạm dừng video để popup tra từ không bị trôi
   // câu khi video chạy tiếp. Đóng popup thì anh tự bấm play lại.
   const pauseVideoForLookup = () => {
+    // Thoát toàn màn hình trước khi mở popup: popup tra từ render bằng
+    // portal ra body, nằm ngoài khung toàn màn hình nên sẽ bị ẩn nếu
+    // không thoát — bấm từ lúc toàn màn hình mà popup không hiện thì
+    // tưởng là tra từ hỏng.
+    if (document.fullscreenElement) {
+      const exit = document.exitFullscreen?.();
+      if (exit && typeof exit.catch === 'function') exit.catch(() => {});
+    }
     if (!playerRef.current || typeof playerRef.current.pauseVideo !== 'function') return;
     playerRef.current.pauseVideo();
     setIsPlaying(false);
@@ -1040,19 +1072,33 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                 </button>
               </div>
 
-              {/* Speed selector */}
-              <div className="flex items-center gap-2 text-xs font-mono">
-                <span className="text-muted-foreground">Tốc độ đọc:</span>
-                <select
-                  value={playbackSpeed}
-                  onChange={(e) => handleSpeedChange(Number(e.target.value))}
-                  className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
+              {/* Speed selector + Toàn màn hình của app */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  <span className="text-muted-foreground">Tốc độ đọc:</span>
+                  <select
+                    value={playbackSpeed}
+                    onChange={(e) => handleSpeedChange(Number(e.target.value))}
+                    className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
+                  >
+                    <option value={0.75}>0.75x (Chậm)</option>
+                    <option value={0.9}>0.9x (Hơi chậm)</option>
+                    <option value={1}>1.0x (Chuẩn)</option>
+                    <option value={1.25}>1.25x (Nhanh)</option>
+                  </select>
+                </div>
+
+                {/* Phóng to cả khung bao (video + phụ đề) nên phụ đề còn
+                    nguyên; nút toàn màn hình gốc của YouTube / thẻ video
+                    chỉ phóng to đúng video nên phụ đề sẽ mất. */}
+                <button
+                  onClick={toggleFullscreen}
+                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted flex items-center gap-1.5"
+                  title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình — giữ nguyên phụ đề'}
                 >
-                  <option value={0.75}>0.75x (Chậm)</option>
-                  <option value={0.9}>0.9x (Hơi chậm)</option>
-                  <option value={1}>1.0x (Chuẩn)</option>
-                  <option value={1.25}>1.25x (Nhanh)</option>
-                </select>
+                  {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                  <span>{isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'}</span>
+                </button>
               </div>
             </div>
 
