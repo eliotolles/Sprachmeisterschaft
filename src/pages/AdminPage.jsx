@@ -1,4 +1,5 @@
 import {elioAIAdmin} from '@/lib/elio-ai-admin-runtime';
+import {elioClient} from '@/lib/elio-auth-runtime';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, isSystemAdminEmail } from '@/lib/db';
 import { useRouter } from '@/lib/router';
@@ -152,6 +153,12 @@ export function AdminPage() {
     return cached ? { totalCount: cached.count, freeCount: cached.freeCount, syncedAt: cached.lastSyncedAt } : null;
   });
   const [aiPolicies, setAiPolicies] = useState(() => db.aiConfig?.getPolicies?.() || DEFAULT_AI_POLICY);
+
+  // DeepL — dịch phụ đề (khóa lưu mã hóa phía server, không hiển thị lại)
+  const [deeplKeyInput, setDeeplKeyInput] = useState('');
+  const [deeplStatus, setDeeplStatus] = useState(null);
+  const [deeplLoading, setDeeplLoading] = useState(false);
+  const [deeplSaving, setDeeplSaving] = useState(false);
 
   // Model Catalog Modal State
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
@@ -478,6 +485,47 @@ export function AdminPage() {
     toast.success(`Đã cập nhật chính sách AI: ${key} = ${val ? 'BẬT' : 'TẮT'}`);
     }catch(error){toast.error(error.message);}
   };
+
+  // DeepL — dịch phụ đề: DeepL trước, hết hạn mức tự chuyển sang AI.
+  const loadDeepLStatus = async () => {
+    if (!elioAIAdmin()?.isActive()) return;
+    setDeeplLoading(true);
+    try {
+      const status = await elioClient.deepLStatus();
+      setDeeplStatus(status);
+    } catch (error) {
+      setDeeplStatus({ configured: false, exhausted: false, characterCount: null, characterLimit: null, error: error.message });
+    } finally {
+      setDeeplLoading(false);
+    }
+  };
+
+  const handleSaveDeepLKey = async (e) => {
+    e.preventDefault();
+    if (!deeplKeyInput.trim()) {
+      toast.error('Vui lòng dán mã API Key DeepL!');
+      return;
+    }
+    setDeeplSaving(true);
+    try {
+      const status = await elioClient.saveDeepLKey(deeplKeyInput.trim());
+      setDeeplStatus(status);
+      setDeeplKeyInput('');
+      toast.success(
+        status.exhausted
+          ? 'Đã lưu khóa DeepL nhưng khóa này đã hết hạn mức — phụ đề đang dịch bằng AI.'
+          : 'Đã lưu khóa DeepL. Phụ đề sẽ dịch bằng DeepL trước, hết hạn mức tự chuyển sang AI.',
+      );
+    } catch (error) {
+      toast.error(error.message || 'Không lưu được khóa DeepL.');
+    } finally {
+      setDeeplSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai') loadDeepLStatus();
+  }, [activeTab]);
 
   const handleSyncConfigModels = async (cfg) => {
     toast.loading(`Đang đồng bộ model mới từ ${cfg.provider.toUpperCase()}...`, { id: `sync-${cfg.id}` });
@@ -1353,6 +1401,76 @@ export function AdminPage() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+
+          {/* DeepL — Dịch phụ đề: DeepL trước, hết hạn mức tự chuyển sang AI */}
+          <div className="surface p-6 border border-border space-y-4">
+            <div>
+              <div className="eyebrow mb-1">DỊCH PHỤ ĐỀ · DEEPL API DEVELOPER (MIỄN PHÍ)</div>
+              <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
+                <Globe className="w-5 h-5 text-sky-600" />
+                <span>DeepL — Dịch phụ đề Đức–Việt</span>
+              </h3>
+              <p className="font-body text-xs text-muted-foreground mt-0.5">
+                Phụ đề dịch bằng DeepL trước (nhanh, đúng ngữ cảnh, chạy phía server nên máy không nặng thêm). Gói Developer miễn phí cho 1.000.000 ký tự một lần duy nhất, không cộng lại mỗi tháng — hết hạn mức thì tự chuyển sang AI và ở lại AI.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-sm bg-muted/20 border border-border space-y-3">
+              <div className="font-mono text-xs flex flex-wrap items-center gap-2">
+                {deeplLoading ? (
+                  <span className="text-muted-foreground">Đang kiểm tra trạng thái DeepL…</span>
+                ) : deeplStatus?.configured ? (
+                  <>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[11px] font-bold ${deeplStatus.exhausted ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800' : 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'}`}>
+                      <span className={`w-2 h-2 rounded-full ${deeplStatus.exhausted ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                      {deeplStatus.exhausted ? 'Đã hết hạn mức — đang dùng AI' : 'DeepL đang hoạt động'}
+                    </span>
+                    {typeof deeplStatus.characterCount === 'number' && typeof deeplStatus.characterLimit === 'number' && (
+                      <span className="text-muted-foreground">
+                        Đã dùng {deeplStatus.characterCount.toLocaleString('vi-VN')} / {deeplStatus.characterLimit.toLocaleString('vi-VN')} ký tự
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Chưa có khóa DeepL — phụ đề đang dịch bằng AI.</span>
+                )}
+                <button
+                  type="button"
+                  onClick={loadDeepLStatus}
+                  disabled={deeplLoading}
+                  className="tap ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-border text-[11px] font-bold hover:bg-muted/40 disabled:opacity-50"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Kiểm tra lại</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveDeepLKey} autoComplete="off" className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={deeplKeyInput}
+                  onChange={(e) => setDeeplKeyInput(e.target.value)}
+                  placeholder="Dán mã API Key DeepL vào đây…"
+                  className="flex-1 px-3 py-2 rounded-sm border border-border bg-background font-mono text-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={deeplSaving}
+                  className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground font-mono text-xs font-semibold shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>{deeplSaving ? 'Đang lưu…' : 'Lưu khóa DeepL'}</span>
+                </button>
+              </form>
+              <p className="font-body text-[11px] text-muted-foreground leading-relaxed">
+                Khóa được mã hóa phía server, không hiển thị lại sau khi lưu. Lấy khóa tại{' '}
+                <a href="https://www.deepl.com/your-account/keys" target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+                  deepl.com/your-account/keys
+                </a>{' '}
+                (gói Developer miễn phí). Khóa mới sẽ xóa cờ hết hạn mức cũ.
+              </p>
             </div>
           </div>
 

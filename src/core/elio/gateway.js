@@ -19,6 +19,7 @@ import { digest, passwordHash, passwordMatches, randomToken } from './passwords.
 import { readVocabulary, reviewVocabulary, REVIEW_KEY } from './vocabulary.js';
 import { listGrammar, readGrammarLesson, importGrammar, submitGrammar, GRAMMAR_ATTEMPT_KEY } from './grammar.js';
 import {listAIConfigs,addAIConfig,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI,generateGermanSpeech,testAIConfig} from './ai.js';
+import {translateWithDeepL,getDeepLStatus,saveDeepLKey} from './deepl.js';
 import {gradeWriting,translateWriting,WRITING_KEY} from './writing.js';
 import {speakingReply,gradeSpeaking,transcribeGerman,SPEAKING_KEY} from './speaking.js';
 
@@ -230,6 +231,13 @@ export async function handleElioCore(request, env) {
       const result=await generateAI(env,user,await body(request,16000000));
       return json(result,result.truncated?202:200);
     }
+    // DeepL dịch phụ đề trước, hết hạn mức tự chuyển sang AI (xem deepl.js).
+    if (path === '/api/core/translate/deepl' && request.method === 'POST') {
+      await throttle(env,'core-deepl:'+user.id,30,60000);
+      return json(await translateWithDeepL(env,user,await body(request,200000)));
+    }
+    if (path === '/api/core/admin/deepl/status' && request.method === 'GET') return json(await getDeepLStatus(env,user));
+    if (path === '/api/core/admin/deepl/key' && request.method === 'POST') return json(await saveDeepLKey(env,user,await body(request,2000)));
     if (path === '/api/core/grammar' && request.method === 'GET') return json(await listGrammar(env, user, url));
     if (path === '/api/core/grammar/lesson' && request.method === 'GET') {
       return json(await readGrammarLesson(env, user, url.searchParams.get('collection'), url.searchParams.get('id'),url.searchParams.get('organizer')));

@@ -140,16 +140,18 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
         setPreview({scope:captionScope, cues});
         toast.success(`Đã lấy ${cues.length} câu tiếng Đức. Đang tự động dịch sang tiếng Việt...`);
 
-        // Tự động dịch song ngữ Đức - Việt
+        // Tự động dịch song ngữ Đức - Việt (chỉ AI, không Google Dịch)
         try {
           const translatedCues = await batchTranslateCues(cues);
           if (captionScopeRef.current === captionScope && translatedCues && translatedCues.length > 0) {
             const hasVietnamese = translatedCues.some(c => c.vi && String(c.vi).trim());
+            const failed = translatedCues.failedCount || 0;
             try {
               const savedVi = await db.listening.updateEpisode(currentEpisode.id, { subtitles: translatedCues });
               if (!savedVi) throw Error('Không lưu được bản dịch lên máy chủ.');
               setPreview({ scope: captionScope, cues: translatedCues });
-              if (hasVietnamese) toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
+              if (hasVietnamese && failed === 0) toast.success(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)!`);
+              else if (hasVietnamese) toast.warning(`Đã hoàn tất phụ đề song ngữ Đức - Việt (${translatedCues.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
               else toast.warning('Đã lấy phụ đề tiếng Đức nhưng chưa dịch được câu nào sang tiếng Việt.');
             } catch (saveErr) {
               toast.error(saveErr.message);
@@ -177,10 +179,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       // bản Google Dịch cũ — bản cũ không đúng ngữ cảnh nên cần dịch lại.
       const updated = await batchTranslateCues(subtitles, undefined, {force:true});
       const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
+      const failed = updated.failedCount || 0;
       const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
       if (!saved) throw Error('Không lưu được bản dịch. Hãy thử lại.');
       setPreview({ scope: captionScope, cues: updated });
-      if (hasVietnamese) toast.success('Đã dịch lại bằng AI!');
+      if (hasVietnamese && failed === 0) toast.success('Đã dịch lại bằng AI!');
+      else if (hasVietnamese) toast.warning(`Đã dịch lại bằng AI, còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
       else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
     }catch(err){
       toast.error('Lỗi khi dịch: ' + err.message);

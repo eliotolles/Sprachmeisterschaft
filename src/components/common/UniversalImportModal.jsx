@@ -443,6 +443,11 @@ export function UniversalImportModal({
                     cues = await batchTranslateCues(
                       cues.map((c, idx) => ({ _id: `cue-${idx}`, start: c.start, end: c.end, de: c.de, vi: '' }))
                     );
+                    if ((cues.failedCount || 0) > 0) {
+                      setWarningText(
+                        `Đã dịch phụ đề cho "${item.title}" bằng AI, còn ${cues.failedCount} câu chưa dịch được — mở video rồi bấm "Dịch lại bằng AI" để thử lại.`
+                      );
+                    }
                   } catch (e) {
                     console.warn('Lỗi dịch phụ đề video máy tính:', e);
                   }
@@ -602,10 +607,15 @@ export function UniversalImportModal({
                 vi: '',
               }));
 
-              // Tự động dịch sang tiếng Việt
+              // Tự động dịch sang tiếng Việt (chỉ AI, không Google Dịch)
               try {
                 setProgressText('Đang tự động dịch sang tiếng Việt...');
                 cues = await batchTranslateCues(cues);
+                if ((cues.failedCount || 0) > 0) {
+                  setWarningText(
+                    `Đã dịch phụ đề bằng AI, còn ${cues.failedCount} câu chưa dịch được — mở video rồi bấm "Dịch lại bằng AI" để thử lại.`
+                  );
+                }
               } catch (e) {
                 console.warn('Lỗi dịch sang tiếng Việt khi import:', e);
               }

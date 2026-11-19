@@ -164,6 +164,10 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async updateAIConfig(config){requireUser();return request('/admin/ai/configs',{method:'PATCH',data:config,deadlineMs:60000});},
     async aiModels(id){requireUser();return request('/admin/ai/models',{method:'POST',data:{id},deadlineMs:60000});},
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
+    // DeepL dịch phụ đề (server giữ khóa, trình duyệt không bao giờ thấy khóa).
+    async translateDeepL(data){requireUser();return request('/translate/deepl',{method:'POST',data,deadlineMs:120000});},
+    async deepLStatus(){requireUser();return request('/admin/deepl/status');},
+    async saveDeepLKey(key){requireUser();return request('/admin/deepl/key',{method:'POST',data:{key},deadlineMs:65000});},
     async editVocabulary(data){requireUser();return request('/vocabulary/edit',{method:'POST',data});},
     async vocabularyDeck(id){requireUser();return request('/vocabulary/deck?'+new URLSearchParams({id}));},
     async saveSharedWord(data){requireUser();return request('/vocabulary/save',{method:'POST',data});},
