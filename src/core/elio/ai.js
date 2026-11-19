@@ -1,6 +1,6 @@
 import {cachedModelCatalog,invalidateModelCatalog} from './ai-model-cache.js';
 import {readAICooldowns,modelCooldown,coolAIModel} from './ai-cooldowns.js';
-import {readAIRouting,AI_PURPOSES} from './ai-routing.js';
+import {readAIRouting,AI_PURPOSES,demotePoolConfig,maybeRestoreDemoted} from './ai-routing.js';
 import {coreError,query} from './database.js';
 import {encryptSecret,decryptSecret} from './secret-box.js';
 import {PROVIDERS,validModelId,discoverModels,providerGenerate,providerSpeech,providerTranscribe} from './ai-providers.js';
@@ -79,6 +79,7 @@ export async function generateAI(env,user,input,{validate}={}){
   if(continuation){rows=rows.filter(row=>row.id===continuation.config);if(rows.length)for(const id of [rows[0].model,rows[0].backupModel].filter(Boolean))if(await digest(id+'|'+rows[0].secret)===continuation.fingerprint)continuationModel=id;if(!continuationModel)throw coreError(409,'AI_CONFIG_CHANGED','Cấu hình AI đã đổi; nội dung cũ vẫn được giữ.');}
   if(!rows.length)throw coreError(503,'AI_NOT_CONFIGURED','Admin chưa cấu hình provider AI phía server.');
   const interactive=['elio_chat','interview'].includes(input.purpose)&&requested==='text',deadlineAt=Date.now()+(interactive?60000:120000),cooldowns=await readAICooldowns(env,rows.slice(0,10));let attempted=false;
+  if(input.purpose&&AI_PURPOSES.includes(input.purpose)){try{await maybeRestoreDemoted(env,input.purpose,cooldowns);}catch{/* Restore is best-effort; the current call still uses the pool read above. */}}
   for(const row of rows.slice(0,10)){
     if(Date.now()>=deadlineAt)break;
     if([row.model,row.backupModel].filter(Boolean).every(m=>modelCooldown(cooldowns,row.id,m)))continue;
@@ -99,7 +100,7 @@ export async function generateAI(env,user,input,{validate}={}){
         if(result.truncated)return {...result,configId:row.id,continuation:await makeContinuation(env,user,{...row,model:id},input,result.text)};
         let value=result.text;if(input.jsonMode!==false){try{value=JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{continue;}}
         if(validate)value=validate(value);return {...result,value,configId:row.id,timing};
-      }catch(error){if([401,403,404].includes(error.providerStatus))await invalidateModelCatalog(env,row.provider,key);try{if((await coolAIModel(env,row.id,id,error))?.keyWide)break;}catch{/* Do not replace the real provider failure with a cooldown-storage error. */}}
+      }catch(error){if([401,403,404].includes(error.providerStatus))await invalidateModelCatalog(env,row.provider,key);let keyWide=false;try{keyWide=!!(await coolAIModel(env,row.id,id,error))?.keyWide;}catch{/* Do not replace the real provider failure with a cooldown-storage error. */}if(error.providerStatus===429){try{await demotePoolConfig(env,input.purpose,row.id);}catch{/* Demote is best-effort; the in-call fallback to the next pool config still runs. */}}if(keyWide)break;}
     }
   }
   throw coreError(503,'AI_UNAVAILABLE','Các provider đang lỗi, hết quota hoặc trả dữ liệu chưa hợp lệ. Chưa tạo điểm/chữa bài giả.');

@@ -2,6 +2,8 @@ import test from 'node:test';import assert from 'node:assert/strict';import {Dat
 import {encryptSecret,decryptSecret} from '../src/core/elio/secret-box.js';
 import {discoverModels,providerGenerate} from '../src/core/elio/ai-providers.js';
 import {addAIConfig,listAIConfigs,modelsForConfig,updateAIConfig,discoverForAdmin,generateAI} from '../src/core/elio/ai.js';
+import {coolAIModel} from '../src/core/elio/ai-cooldowns.js';
+import {updateAIRouting} from '../src/core/elio/ai-routing.js';
 const owner={id:'owner',role:'super_admin'},student={id:'student',role:'user'};
 function fixture(){const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE ee_config(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
  const env={AI_ENCRYPTION_KEY:'only-a-long-test-fixture-not-a-live-secret',TEST_CORE_DB:async(sql,args=[])=>{const s=db.prepare(sql);if(/^SELECT/i.test(sql)||/RETURNING/.test(sql))return {rows:s.all(...args),changes:0};return {rows:[],changes:Number(s.run(...args).changes)};}};return {db,env};}
@@ -81,9 +83,29 @@ test('Admin connection diagnostic actually generates JSON and never returns prov
  try{await assert.rejects(testAIConfig(env,student,{provider:'groq',key:'fixture-key',model:'fresh-model'}),e=>e.status===403);const result=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});assert.equal(result.success,true);assert.equal(result.testedScope,'json-generation');assert.equal(generations,1);assert(!JSON.stringify(result).includes('fixture-key'));globalThis.fetch=async()=>new Response('private-key-in-upstream-error',{status:500});const failure=await testAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});assert.equal(failure.providerStatus,500);assert(!JSON.stringify(failure).includes('private-key'));
  }finally{db.close();globalThis.fetch=original;}
 });
-test('provider rate limits cool down a model for 30 seconds and expired cooldowns allow retry',async()=>{
+test('provider rate limits cool down a model for 15 minutes and expired cooldowns allow retry',async()=>{
  const {db,env}=fixture(),original=globalThis.fetch;let busy=true,generations=0,catalogs=0;globalThis.fetch=async(url)=>{if(String(url).endsWith('/models')){catalogs++;return Response.json(catalog());}generations++;return busy?new Response('private quota detail',{status:429}):Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});};
- try{await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));const before=catalogs;await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));assert.equal(generations,1);assert.equal(catalogs,before);const metadata=(await listAIConfigs(env,owner)).items[0];assert.equal(metadata.cooldown.status,429);assert(metadata.cooldown.until>Date.now());assert(!JSON.stringify(metadata).includes('private quota detail'));const row=db.prepare("SELECT key,value FROM ee_config WHERE key GLOB 'sprach:ai-cooldown:*'").get(),value=JSON.parse(row.value);value.until=Date.now()-1;db.prepare('UPDATE ee_config SET value=? WHERE key=?').run(JSON.stringify(value),row.key);busy=false;assert.equal((await generateAI(env,student,{systemPrompt:'S',userPrompt:'U'})).value.ok,true);assert.equal(generations,2);
+ try{await addAIConfig(env,owner,{provider:'groq',key:'fixture-key',model:'fresh-model'});await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));const before=catalogs;await assert.rejects(generateAI(env,student,{systemPrompt:'S',userPrompt:'U'}));assert.equal(generations,1);assert.equal(catalogs,before);const metadata=(await listAIConfigs(env,owner)).items[0];assert.equal(metadata.cooldown.status,429);assert(metadata.cooldown.until-Date.now()>14*60*1000);assert(metadata.cooldown.until-Date.now()<=15*60*1000);assert(!JSON.stringify(metadata).includes('private quota detail'));const row=db.prepare("SELECT key,value FROM ee_config WHERE key GLOB 'sprach:ai-cooldown:*'").get(),value=JSON.parse(row.value);value.until=Date.now()-1;db.prepare('UPDATE ee_config SET value=? WHERE key=?').run(JSON.stringify(value),row.key);busy=false;assert.equal((await generateAI(env,student,{systemPrompt:'S',userPrompt:'U'})).value.ok,true);assert.equal(generations,2);
+ }finally{db.close();globalThis.fetch=original;}
+});
+test('quota failures cool down for fifteen minutes while other provider failures stay at thirty seconds',async()=>{
+ const {db,env}=fixture();
+ try{const quota=await coolAIModel(env,'cfg-quota','model-a',{code:'AI_PROVIDER',providerStatus:429});assert.equal(quota.keyWide,true);assert(quota.until-Date.now()>14*60*1000&&quota.until-Date.now()<=15*60*1000);
+  const other=await coolAIModel(env,'cfg-other','model-b',{code:'AI_PROVIDER',providerStatus:503});assert.equal(other.keyWide,false);assert(other.until-Date.now()>20000&&other.until-Date.now()<=30000);
+  const timeout=await coolAIModel(env,'cfg-timeout','model-c',{code:'AI_TIMEOUT'});assert(timeout.until-Date.now()>20000&&timeout.until-Date.now()<=30000);
+ }finally{db.close();}
+});
+test('a quota failure demotes the config to the end of the pool so the next call tries the healthy config first',async()=>{
+ const {db,env}=fixture(),original=globalThis.fetch,calls=[];
+ globalThis.fetch=async(url,options)=>{if(String(url).endsWith('/models'))return Response.json(catalog());const auth=options.headers.Authorization;calls.push(auth);return auth==='Bearer fixture-key-a'?new Response('private quota detail',{status:429}):Response.json({choices:[{message:{content:'{"ok":true}'},finish_reason:'stop'}]});};
+ try{const a=await addAIConfig(env,owner,{provider:'groq',key:'fixture-key-a',model:'fresh-model',priority:1}),b=await addAIConfig(env,owner,{provider:'groq',key:'fixture-key-b',model:'fresh-model',priority:2});
+  await updateAIRouting(env,owner,{revision:null,taskId:'elio_chat',pool:[a.config.id,b.config.id]});
+  const input={systemPrompt:'S',userPrompt:'U',purpose:'elio_chat'};
+  assert.equal((await generateAI(env,student,input)).value.ok,true);assert.deepEqual(calls,['Bearer fixture-key-a','Bearer fixture-key-b']);
+  const routing=JSON.parse(db.prepare("SELECT value FROM ee_config WHERE key='sprach:ai-routing'").get().value);
+  assert.deepEqual(routing.rules.elio_chat.pool,[b.config.id,a.config.id]);assert.equal(routing.rules.elio_chat.demoted.configId,a.config.id);
+  const row=db.prepare("SELECT key,value FROM ee_config WHERE key GLOB 'sprach:ai-cooldown:*'").get(),value=JSON.parse(row.value);value.until=Date.now()-1;db.prepare('UPDATE ee_config SET value=? WHERE key=?').run(JSON.stringify(value),row.key);
+  calls.length=0;assert.equal((await generateAI(env,student,input)).value.ok,true);assert.deepEqual(calls,['Bearer fixture-key-b']);
  }finally{db.close();globalThis.fetch=original;}
 });
 
