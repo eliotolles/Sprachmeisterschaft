@@ -12,8 +12,19 @@ test('same-titled sets stay separate by scope so a private upload never leaks in
  assert.deepEqual(groups.find(g=>g.id==='shared-1').episodes.map(e=>e.id),['ep-shared']);
  assert.deepEqual(groups.find(g=>g.id==='mine-1').episodes.map(e=>e.id),['ep-mine']);
 });
-test('all ten games have usable source-backed rounds; personal mode never silently adds foundation content',()=>{
- assert.equal(GAME_TYPES.length,10);for(const [type]of GAME_TYPES){const deck=buildGameDeck(type,gameWords(STARTER_WORDS));assert(deck.length>0,type);for(const q of deck){assert(q.answer);if(q.options)assert(q.options.includes(q.answer));}}
+test('all games have usable source-backed rounds; personal mode never silently adds foundation content',()=>{
+ assert.equal(GAME_TYPES.length,14);
+ // 'situations' là trang xem mẫu câu, không phải một lượt chơi có bộ câu hỏi.
+ assert.deepEqual(buildGameDeck('situations',gameWords(STARTER_WORDS)),[]);
+ for(const [type]of GAME_TYPES){
+  if(type==='situations')continue;
+  const deck=buildGameDeck(type,gameWords(STARTER_WORDS));assert(deck.length>0,type);for(const q of deck){assert(q.answer);if(q.options)assert(q.options.includes(q.answer));}
+ }
+ // Trò tình huống giao tiếp: 10 câu/lượt, lấy từ kho 60 mẫu câu.
+ for(const type of ['situation','situation-mcq','situation-order']){
+  const deck=buildGameDeck(type,[]);assert.equal(deck.length,10,type);
+  for(const q of deck){assert(q.answer);if(q.options)assert(q.options.includes(q.answer));if(q.tokens)assert.deepEqual([...q.tokens].map(normalizeGameAnswer).sort(),normalizeGameAnswer(q.answer).split(' ').map(normalizeGameAnswer).sort());}
+ }
  for(const type of ['participle','auxiliary','structure','order'])assert.deepEqual(buildGameDeck(type,[],{personal:true}),[]);
  assert.equal(gameWords([{german:'die Tür',vietnamese:'cửa'},{de:'Tür',vi:'cửa'}]).length,1);assert.equal(normalizeGameAnswer('  Straße! '),'straße');assert.notEqual(normalizeGameAnswer('schon'),normalizeGameAnswer('schön'));
 });
