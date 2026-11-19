@@ -115,6 +115,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   const captionScope=JSON.stringify([currentUser?.id,collectionId,currentEpisode.id,currentEpisode.youtubeId,currentEpisode.localMediaId]);
   const captionScopeRef=useRef(captionScope);
   captionScopeRef.current=captionScope;
+  // Scope đang chạy dịch tự động (để mở video 2 lần liên tiếp không dịch trùng).
+  const autoTranslateScopeRef=useRef(null);
   const subtitles = preview?.scope===captionScope ? preview.cues : (currentEpisode.subtitles && currentEpisode.subtitles.length ? currentEpisode.subtitles : []);
   const subtitlesRef = useRef(subtitles);
   subtitlesRef.current = subtitles;
@@ -193,6 +195,38 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     }
   };
 
+  // Tự động dịch các câu tiếng Đức chưa có `vi` ngay khi mở video —
+  // không chờ người dùng bấm nút. Phụ đề tiếng Đức hiện trước, bản
+  // dịch tiếng Việt điền dần rồi lưu lên máy chủ. Dùng cho cả luồng
+  // DeepL (nhanh) lẫn luồng AI (khi DeepL hết hạn mức).
+  const translateMissingCaptions=async(cuesOverride)=>{
+    const scope=captionScopeRef.current;
+    if(translatingBusy||autoTranslateScopeRef.current===scope)return;
+    const current=cuesOverride||subtitlesRef.current;
+    if(!current.length)return;
+    if(!current.some(c=>!(c.vi&&String(c.vi).trim())&&(c.de||c.text||'').trim()))return;
+    autoTranslateScopeRef.current=scope;
+    setTranslatingBusy(true);
+    try{
+      toast.info('Đang tự động dịch phụ đề sang tiếng Việt...');
+      const updated = await batchTranslateCues(current);
+      if(captionScopeRef.current!==scope)return;
+      const hasVietnamese = updated.some(c => c.vi && String(c.vi).trim());
+      const failed = updated.failedCount || 0;
+      const saved = await db.listening.updateEpisode(currentEpisode.id, { subtitles: updated });
+      if(!saved)throw Error('Không lưu được bản dịch. Hãy thử lại.');
+      setPreview({ scope, cues: updated });
+      if(hasVietnamese&&failed===0)toast.success(`Đã dịch xong phụ đề song ngữ (${updated.length} câu)!`);
+      else if(hasVietnamese)toast.warning(`Đã dịch xong phụ đề song ngữ (${updated.length} câu)! Còn ${failed} câu chưa dịch được — bấm "Dịch lại bằng AI" để thử lại.`);
+      else toast.warning('Chưa dịch được câu nào sang tiếng Việt. Hãy thử lại sau.');
+    }catch(err){
+      if(captionScopeRef.current===scope)toast.error('Lỗi khi dịch: ' + err.message);
+    }finally{
+      if(autoTranslateScopeRef.current===scope)autoTranslateScopeRef.current=null;
+      setTranslatingBusy(false);
+    }
+  };
+
   // Tự động lấy phụ đề khi mở video nếu video chưa có phụ đề
   const subtitleFileRef = useRef(null);
   const handleSubtitleFile = async (e) => {
@@ -225,6 +259,8 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       }
       setPreview({ scope: captionScope, cues });
       toast.success(`Đã thêm ${cues.length} câu phụ đề cho video này!`);
+      // Phụ đề mới chưa có bản dịch thì dịch ngay, không chờ bấm nút.
+      translateMissingCaptions(cues);
     } catch (err) {
       toast.error('Lỗi khi đọc file phụ đề: ' + err.message);
     }
@@ -262,6 +298,10 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   useEffect(() => {
     if ((!currentEpisode.subtitles || !currentEpisode.subtitles.length) && currentEpisode.youtubeId) {
       fetchCaptions();
+    } else if (currentEpisode.subtitles?.length) {
+      // Video đã có phụ đề tiếng Đức mà thiếu bản dịch thì dịch ngay
+      // khi mở video, không chờ người dùng bấm nút.
+      translateMissingCaptions();
     }
   }, [currentEpisode.id, currentEpisode.youtubeId]);
 

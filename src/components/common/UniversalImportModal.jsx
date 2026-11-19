@@ -7,7 +7,6 @@ import { SPECIALTIES } from '@/data/specialties';
 import { buildLevelDecks } from '@/lib/level-deck-adapter';
 import { toast } from 'sonner';
 import { getYouTubeTranscript, extractYouTubeId } from '@/lib/youtube-transcript-extractor';
-import { batchTranslateCues } from '@/lib/translator';
 import { saveLocalMedia, checkLocalVideoSize, formatFileSize, estimateLocalMediaStorage } from '@/lib/local-media-store';
 import { elioImport } from '@/lib/elio-import-runtime';
 import {
@@ -437,20 +436,10 @@ export function UniversalImportModal({
                 const rawText = await item.subtitleFile.text();
                 cues = parseYouTubeSubtitles(normalizeSubtitleText(rawText));
                 if (cues.length) {
-                  // Tự động dịch sang tiếng Việt như luồng YouTube
-                  try {
-                    setProgressText(`Đang dịch phụ đề cho "${item.title}" sang tiếng Việt...`);
-                    cues = await batchTranslateCues(
-                      cues.map((c, idx) => ({ _id: `cue-${idx}`, start: c.start, end: c.end, de: c.de, vi: '' }))
-                    );
-                    if ((cues.failedCount || 0) > 0) {
-                      setWarningText(
-                        `Đã dịch phụ đề cho "${item.title}" bằng AI, còn ${cues.failedCount} câu chưa dịch được — mở video rồi bấm "Dịch lại bằng AI" để thử lại.`
-                      );
-                    }
-                  } catch (e) {
-                    console.warn('Lỗi dịch phụ đề video máy tính:', e);
-                  }
+                  // Chỉ lấy phụ đề tiếng Đức trước — không chờ dịch ở bước
+                  // import (dịch AI lâu sẽ kẹt màn import); mở video thì
+                  // AI dịch sang tiếng Việt ngay lập tức.
+                  cues = cues.map((c, idx) => ({ _id: `cue-${idx}`, start: c.start, end: c.end, de: c.de, vi: '' }));
                 } else {
                   setWarningText(
                     `Không đọc được câu thoại nào từ file phụ đề "${item.subtitleName}". Video vẫn lưu được, bạn có thể bổ sung phụ đề sau.`
@@ -606,19 +595,9 @@ export function UniversalImportModal({
                 de: c.text,
                 vi: '',
               }));
-
-              // Tự động dịch sang tiếng Việt (chỉ AI, không Google Dịch)
-              try {
-                setProgressText('Đang tự động dịch sang tiếng Việt...');
-                cues = await batchTranslateCues(cues);
-                if ((cues.failedCount || 0) > 0) {
-                  setWarningText(
-                    `Đã dịch phụ đề bằng AI, còn ${cues.failedCount} câu chưa dịch được — mở video rồi bấm "Dịch lại bằng AI" để thử lại.`
-                  );
-                }
-              } catch (e) {
-                console.warn('Lỗi dịch sang tiếng Việt khi import:', e);
-              }
+              // Chỉ lấy phụ đề tiếng Đức trước — không chờ dịch ở bước
+              // import (dịch AI lâu sẽ kẹt màn import); mở video thì
+              // AI dịch sang tiếng Việt ngay lập tức.
             } else {
               setWarningText(transcriptRes.reason || 'Video chưa có phụ đề tiếng Đức tự động. Bạn vẫn có thể lưu video và bổ sung sau.');
             }
