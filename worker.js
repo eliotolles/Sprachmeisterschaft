@@ -2,6 +2,7 @@ import { handleDictionaryLookup } from './src/lib/external-dictionary.js';
 import { handleParticipleLookup } from './src/lib/participle-dictionary.js';
 import { listStagedElioVocabulary } from './src/lib/turso-content-api.js';
 import { handleElioCore } from './src/core/elio/gateway.js';
+import { runAIHealthCheck } from './src/core/elio/ai.js';
 // ====================================================================
 // SPRACHMEISTERSCHAFT — CLOUDFLARE WORKER EDGE RUNTIME
 // Edge API Gateway for Secure Dynamic AI Model Discovery & Assets Serving
@@ -93,6 +94,19 @@ export default {
       });
     }
     return response;
+  },
+
+  // Lịch kiểm tra sức khỏe AI (Cloudflare Cron Trigger, xem [triggers]
+  // trong wrangler.toml / wrangler.json): 6 giờ/lần, tự thử tất cả config
+  // AI, tự tắt con hỏng 3 lần liên tiếp, tự bật lại khi hồi. Chạy nền
+  // bằng ctx.waitUntil, không chặn request nào.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      runAIHealthCheck(env).then(
+        (summary) => console.log('AI health check done', JSON.stringify(summary)),
+        (error) => console.error('AI health check failed', error),
+      ),
+    );
   },
 };
 

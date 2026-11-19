@@ -210,3 +210,96 @@ export async function testAIConfig(env,user,data){
   }
   return result;
 }
+// ====================================================================
+// KIỂM TRA SỨC KHỎE AI ĐỊNH KỲ (chạy từ Cloudflare Cron Trigger)
+// Không có user, không qua throttle của endpoint thủ công: gọi thẳng
+// probeModel nội bộ, đúng cách thử của testAIConfig.
+// - Chỉ đếm lỗi của MODEL CHÍNH. Backup hỏng một mình không tắt config
+//   (vd backup "stealth/crouton-alpha" đã chết nhưng model chính vẫn tốt).
+// - Model chính hỏng 3 lần liên tiếp thì tự tắt (enabled=false) và ghi
+//   autoDisabledAt; lần kiểm tra sau vẫn thử cả config đang bị tự tắt,
+//   thử thành công thì tự bật lại. Config admin tắt bằng tay (không có
+//   autoDisabledAt) thì không tự bật lại và cũng không được thử.
+// - Số lần hỏng lưu riêng ở key sprach:ai-health:<configId>, không nhét
+//   vào row config (row đó đang bị khóa CAS bởi updateAIConfig).
+// ====================================================================
+const HEALTH_PREFIX='sprach:ai-health:';
+export const HEALTH_FAIL_THRESHOLD=3;
+const HEALTH_PROBE_DEADLINE_MS=30000;
+const HEALTH_MAX_CONCURRENT=3;
+async function readAIHealth(env,ids){
+  const result=new Map();
+  for(let at=0;at<ids.length;at+=200){
+    const keys=ids.slice(at,at+200).map(id=>HEALTH_PREFIX+id);
+    const found=(await query(env,'SELECT key,value FROM ee_config WHERE key IN ('+keys.map(()=>'?').join(',')+')',keys)).rows;
+    for(const row of found){try{const value=JSON.parse(row.value);if(value&&typeof value==='object')result.set(row.key.slice(HEALTH_PREFIX.length),value);}catch{}}
+  }
+  return result;
+}
+async function writeAIHealth(env,id,record){
+  await query(env,"INSERT INTO ee_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[HEALTH_PREFIX+id,JSON.stringify(record)]);
+}
+// Thử một config đúng như testAIConfig: catalog một lần rồi thử model
+// chính + backupModel, ghi kết quả cùng shape (checkedAt, latencyMs).
+async function probeConfigForHealth(env,row,started){
+  let result,backupTestResult;
+  try{
+    const key=await decryptSecret(env,row.secret);
+    const deadlineAt=started+HEALTH_PROBE_DEADLINE_MS;
+    const catalog=await discoverModels(row.provider,key,{deadlineAt});
+    const run=async model=>{
+      let probe;
+      try{probe=await probeModel(env,{...row,model},key,false,deadlineAt,catalog);}
+      catch(error){probe=probeFailure(error);}
+      return {...probe,model,checkedAt:started,latencyMs:Date.now()-started};
+    };
+    [result,backupTestResult]=await Promise.all([
+      run(row.model),
+      row.backupModel&&row.backupModel!==row.model?run(row.backupModel):null,
+    ]);
+  }catch(error){result=probeFailure(error);}
+  if(!result.checkedAt)result={...result,model:row.model,checkedAt:started,latencyMs:Date.now()-started};
+  return {result,backupTestResult:backupTestResult||null};
+}
+export async function runAIHealthCheck(env){
+  const started=Date.now();
+  const rows=await configs(env);
+  const health=await readAIHealth(env,rows.map(r=>r.id));
+  const targets=rows.filter(r=>!r.archived&&(r.enabled||health.get(r.id)?.autoDisabledAt));
+  const summary={checked:0,disabled:[],reEnabled:[],failed:[],results:[]};
+  for(let at=0;at<targets.length;at+=HEALTH_MAX_CONCURRENT){
+    const chunk=targets.slice(at,at+HEALTH_MAX_CONCURRENT);
+    const probed=await Promise.all(chunk.map(async row=>{
+      const {result,backupTestResult}=await probeConfigForHealth(env,row,started);
+      return {row,result,backupTestResult};
+    }));
+    for(const {row,result,backupTestResult} of probed){
+      summary.checked++;
+      summary.results.push({id:row.id,success:!!result.success,code:result.code||null});
+      const prev=health.get(row.id)||{};
+      const mainOk=!!result.success;
+      const nextHealth={failures:mainOk?0:(Number.isFinite(prev.failures)?prev.failures+1:1),lastCheck:started,lastCode:result.code||null};
+      let nextEnabled=row.enabled;
+      if(mainOk){
+        if(prev.autoDisabledAt){nextEnabled=true;summary.reEnabled.push(row.id);}
+      }else{
+        summary.failed.push(row.id);
+        if(nextHealth.failures>=HEALTH_FAIL_THRESHOLD&&row.enabled){
+          nextEnabled=false;
+          nextHealth.autoDisabledAt=started;
+          nextHealth.autoDisabledReason=result.message||result.code||'health-check';
+          summary.disabled.push(row.id);
+        }else if(prev.autoDisabledAt){
+          nextHealth.autoDisabledAt=prev.autoDisabledAt;
+          nextHealth.autoDisabledReason=prev.autoDisabledReason;
+        }
+      }
+      const nextRow={...row,testResult:result,backupTestResult};
+      if(nextEnabled!==row.enabled)nextRow.enabled=nextEnabled;
+      const saved=await query(env,'UPDATE ee_config SET value=? WHERE key=? AND value=? RETURNING key',[JSON.stringify(nextRow),PREFIX+row.id,JSON.stringify(row)]);
+      if(!saved.rows.length)continue;
+      await writeAIHealth(env,row.id,nextHealth).catch(()=>{});
+    }
+  }
+  return summary;
+}
