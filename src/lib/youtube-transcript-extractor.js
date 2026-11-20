@@ -58,27 +58,37 @@ export async function getYouTubeTranscript(videoUrlOrId, lang = 'de') {
     console.warn('FreeTranscriptAPI call error:', err);
   }
 
-  // 2. THỬ GỌI BACKEND NỘI BỘ NẾU CÓ (/api/listening/captions)
+  // 2. GỌI BACKEND CỦA APP (/api/core/listening/transcript) — server có
+  // backend transcript riêng, không phụ thuộc dịch vụ miễn phí ngoài.
+  // (Đường cũ /api/listening/captions không tồn tại nên không bao giờ chạy.)
   try {
-    const apiRes = await fetch('/api/listening/captions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: videoId }),
-      signal: AbortSignal.timeout(15000)
-    });
-    if (apiRes.ok) {
-      const data = await apiRes.json();
+    const { elioClient } = await import('@/lib/elio-auth-runtime');
+    if (elioClient.getUser()) {
+      const data = await elioClient.listeningTranscript({ videoId });
       if (data && data.available && Array.isArray(data.cues) && data.cues.length > 0) {
-        return {
-          available: true,
-          videoId,
-          language: data.language || lang,
-          source: data.source || 'youtube',
-          cues: data.cues
-        };
+        const cues = data.cues
+          .filter(c => typeof c?.text === 'string' && c.text.trim())
+          .map(c => ({
+            start: Math.round(Number(c.start) * 1000) / 1000,
+            end: Math.round(Number(c.end) * 1000) / 1000,
+            text: c.text.trim()
+          }))
+          .sort((a, b) => a.start - b.start);
+        if (cues.length > 0) {
+          return {
+            available: true,
+            videoId,
+            language: data.language || lang,
+            source: data.source || 'youtube',
+            via: 'server',
+            cues
+          };
+        }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Server transcript call error:', err);
+  }
 
   // 3. THỬ QUA PROXY CORS DỰ PHÒNG (Cho trường hợp Direct YouTube timedtext)
   try {
@@ -134,7 +144,7 @@ export async function getYouTubeTranscript(videoUrlOrId, lang = 'de') {
 
   return {
     available: false,
-    reason: 'Video này không có phụ đề tiếng Đức công khai hoặc YouTube đang tạm thời hạn chế truy cập. Bạn có thể tự dán văn bản phụ đề nếu có.',
+    reason: 'Không lấy được phụ đề tiếng Đức tự động lúc này (YouTube đang hạn chế truy cập). Bạn có thể tải file .srt của bài lên thay thế.',
     cues: []
   };
 }

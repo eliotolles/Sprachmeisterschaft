@@ -166,6 +166,8 @@ export function createElioClient({ fetcher = (...args) => fetch(...args), timeou
     async generateAI(input,options){requireUser();return continueJob('/ai',input,options);},
     // DeepL dịch phụ đề (server giữ khóa, trình duyệt không bao giờ thấy khóa).
     async translateDeepL(data){requireUser();return request('/translate/deepl',{method:'POST',data,deadlineMs:120000});},
+    // Lấy phụ đề YouTube qua server (backend transcript của app).
+    async listeningTranscript(data){requireUser();return request('/listening/transcript',{method:'POST',data,deadlineMs:65000});},
     async deepLStatus(){requireUser();return request('/admin/deepl/status');},
     async saveDeepLKey(key){requireUser();return request('/admin/deepl/key',{method:'POST',data:{key},deadlineMs:65000});},
     async editVocabulary(data){requireUser();return request('/vocabulary/edit',{method:'POST',data});},
