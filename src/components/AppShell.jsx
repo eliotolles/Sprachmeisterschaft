@@ -25,7 +25,6 @@ import {
   Compass,
   BookOpen,
   Headphones,
-  Video,
   ShieldCheck,
   GraduationCap,
   PanelLeftClose,
@@ -108,7 +107,6 @@ export function AppShell({ children }) {
       items: [
         { path: '/skills', label: 'Kỹ năng', icon: Sparkles },
         { path: '/skills/listening', label: 'Luyện nghe', icon: Headphones },
-        { path: '/skills/listening/personal', label: 'Video cá nhân', icon: Video },
         { path: '/game', label: 'Trò chơi', icon: Gamepad2 },
         { path: '/exams', label: 'Luyện thi', icon: FileCheck2 },
         { path: '/b2', label: 'Lộ trình B2', icon: GraduationCap },
