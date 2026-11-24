@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { db } from '@/lib/db';
 import { progressCoreActive } from '@/lib/elio-progress-runtime';
 import { progressStreak } from '@/core/elio/progress-binding';
@@ -54,6 +55,13 @@ export function HomePage() {
   const { navigate, currentPath } = useRouter();
   const [profile, setProfile] = useState(() => db.learnerProfile.get());
   const [cards, setCards] = useState(() => coreActive ? (db.vocabulary.isCore?.() ? db.vocabulary.findMany() : []) : db.vocabulary.findMany());
+  // Số liệu thẻ tải bất đồng bộ ở chế độ core: chưa tải xong thì không hiển thị
+  // số 0 (sai) — giữ trạng thái "đang tải" tới khi có số thật.
+  const [cardsLoaded, setCardsLoaded] = useState(() => !coreActive || cards.length > 0);
+  const handleCardsLoaded = useCallback((value) => {
+    setCards(value);
+    setCardsLoaded(true);
+  }, []);
   const [logs, setLogs] = useState(() => coreActive ? [] : db.studyLogs.findMany());
   const [sessions, setSessions] = useState(() => coreActive ? [] : db.skillSessions.findMany());
   const [exams, setExams] = useState(() => coreActive ? [] : db.examResults.findMany());
@@ -65,7 +73,7 @@ export function HomePage() {
     try { return loadTelcB2Progress(db.auth.getUser()?.id || null); } catch { return loadTelcB2Progress(null); }
   });
 
-  useCoreProgress(db, { cards: setCards, logs: setLogs, sessions: setSessions, exams: setExams });
+  useCoreProgress(db, { cards: handleCardsLoaded, logs: setLogs, sessions: setSessions, exams: setExams });
 
   // Dashboard tối: bật dark mode khi ở trang chính, trả lại đúng cài đặt của người dùng khi rời trang.
   useEffect(() => {
@@ -178,10 +186,10 @@ export function HomePage() {
   };
 
   const heroStats = [
-    { label: 'Chuỗi học', value: `${streak} ngày`, icon: Flame },
-    { label: 'Thẻ đến hạn', value: `${dueCards.length} thẻ`, icon: RotateCw },
+    { label: 'Chuỗi học', value: cardsLoaded ? `${streak} ngày` : '…', icon: Flame },
+    { label: 'Thẻ đến hạn', value: cardsLoaded ? `${dueCards.length} thẻ` : '…', icon: RotateCw },
     { label: 'Lộ trình B2', value: `Tag ${b2Day}/60`, icon: Calendar },
-    { label: 'Sẵn sàng thi', value: `${readiness.total}%`, icon: Target },
+    { label: 'Sẵn sàng thi', value: cardsLoaded ? `${readiness.total}%` : '…', icon: Target },
   ];
 
   return (
@@ -222,7 +230,7 @@ export function HomePage() {
                 className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg shadow-sm inline-flex items-center gap-2"
               >
                 <RotateCw className="w-4 h-4" />
-                <span>Ôn {dueCards.length} thẻ đến hạn</span>
+                <span>{cardsLoaded ? `Ôn ${dueCards.length} thẻ đến hạn` : 'Đang tải số thẻ…'}</span>
               </Link>
               <Link
                 to="/b2"
@@ -520,7 +528,7 @@ export function HomePage() {
                     1. Ôn thẻ từ vựng SRS
                   </div>
                   <div className="text-[11px] text-muted-foreground font-body">
-                    {dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
+                    {!cardsLoaded ? 'Đang tải…' : dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
                   </div>
                 </div>
               </Link>
@@ -593,13 +601,17 @@ export function HomePage() {
         <section className="dash-glass p-5 flex flex-col">
           <div className="eyebrow">Từ vựng · Wortschatz</div>
           <h2 className="font-display text-xl font-bold text-foreground mt-0.5">
-            {dueCards.length} thẻ đến hạn
+            {cardsLoaded ? `${dueCards.length} thẻ đến hạn` : 'Đang tải…'}
           </h2>
           <p className="font-body text-xs text-muted-foreground mt-1">
-            Tổng {cards.length} thẻ · {readiness.vocab.mastered} từ đã thuộc vững · {readiness.vocab.learned} đã học
+            {cardsLoaded
+              ? `Tổng ${cards.length} thẻ · ${readiness.vocab.mastered} từ đã thuộc vững · ${readiness.vocab.learned} đã học`
+              : 'Đang tải số liệu từ vựng…'}
           </p>
           <div className="space-y-2.5 mt-4 flex-1">
-            {dueWords.length > 0 ? dueWords.map((c) => (
+            {!cardsLoaded ? (
+              <div className="text-sm text-muted-foreground">Đang tải thẻ đến hạn…</div>
+            ) : dueWords.length > 0 ? dueWords.map((c) => (
               <div key={c.id || `${c.article || ''}-${c.german}`} className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
                 <div className="font-heading font-semibold text-sm text-foreground">
                   {c.article ? `${c.article} ` : ''}{c.german}
@@ -753,33 +765,38 @@ export function HomePage() {
       {/* Khoảng trống cho dock cố định */}
       <div aria-hidden className="h-20 md:h-24" />
 
-      {/* Dock module (desktop) */}
-      <nav aria-label="Module chính" className="dash-dock dash-glass fixed bottom-4 left-0 right-0 mx-auto w-max max-w-[calc(100vw-2rem)] z-40 hidden md:flex items-end gap-1 px-3 py-2">
-        {dockItems.map((item) => {
-          const Icon = item.icon;
-          const active = isDockActive(item);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => navigate(item.path)}
-              title={item.label}
-              aria-label={item.label}
-              aria-current={active ? 'page' : undefined}
-              className={`dash-dock-item relative flex flex-col items-center justify-center w-12 h-12 rounded-xl ${
-                active
-                  ? 'bg-accent text-accent-foreground shadow-lg'
-                  : 'text-foreground/75 hover:bg-white/10 hover:text-foreground'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="dash-tip absolute -top-9 left-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-lg">
-                {item.label}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Dock module (desktop) — portal ra body để position:fixed neo theo
+          viewport, không bị .animate-rise của main/HomePage (transform
+          translateY(0) giữ lại) giữ nó ở cuối nội dung trang. */}
+      {createPortal(
+        <nav aria-label="Module chính" className="dash-dock dash-glass fixed bottom-4 left-0 right-0 mx-auto w-max max-w-[calc(100vw-2rem)] z-40 hidden md:flex items-end gap-1 px-3 py-2">
+          {dockItems.map((item) => {
+            const Icon = item.icon;
+            const active = isDockActive(item);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.path)}
+                title={item.label}
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+                className={`dash-dock-item relative flex flex-col items-center justify-center w-12 h-12 rounded-xl ${
+                  active
+                    ? 'bg-accent text-accent-foreground shadow-lg'
+                    : 'text-foreground/75 hover:bg-white/10 hover:text-foreground'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="dash-tip absolute -top-9 left-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-lg">
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>,
+        document.body
+      )}
     </div>
   );
 }

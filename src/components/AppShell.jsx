@@ -166,7 +166,7 @@ export function AppShell({ children }) {
       {/* Desktop Sidebar Static Placeholder: Guarantees Zero Layout Shift for Page Content */}
       <div
         className={`hidden md:block shrink-0 transition-[width] duration-200 ease-in-out ${
-          isCollapsed ? 'w-16' : 'w-60 lg:w-64'
+          isCollapsed ? 'w-16' : 'w-64'
         }`}
       />
 
@@ -176,10 +176,10 @@ export function AppShell({ children }) {
         onMouseLeave={handleMouseLeave}
         className={`hidden md:flex flex-col border-r border-border bg-card/95 backdrop-blur-md fixed top-0 left-0 h-screen overflow-y-auto overflow-x-hidden shrink-0 select-none transition-[width,box-shadow] duration-200 ease-in-out ${
           isCollapsed && isHovered
-            ? 'w-60 lg:w-64 shadow-2xl z-50 ring-1 ring-border/80'
+            ? 'w-64 shadow-2xl z-50 ring-1 ring-border/80'
             : isCollapsed
             ? 'w-16 z-30'
-            : 'w-60 lg:w-64 z-30'
+            : 'w-64 z-30'
         }`}
       >
         {/* Brand / Logo + Collapse Toggle Button */}
@@ -191,7 +191,7 @@ export function AppShell({ children }) {
                   <span className="w-2 h-2 rounded-full bg-accent" />
                   <span className="eyebrow text-accent">Sprachplattform</span>
                 </div>
-                <h1 className="font-display text-xl font-bold tracking-tight text-foreground group-hover:text-accent transition-colors leading-none truncate">
+                <h1 className="font-display text-lg font-bold tracking-tight text-foreground group-hover:text-accent transition-colors leading-none truncate">
                   Sprachmeisterschaft
                 </h1>
                 <p className="font-heading text-xs text-muted-foreground mt-0.5">
@@ -322,28 +322,28 @@ export function AppShell({ children }) {
             <div className="flex items-center justify-between pt-1 text-xs font-mono text-muted-foreground">
               <Link
                 to="/landing"
-                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors"
+                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors shrink-0"
                 title="Xem Trang bìa giới thiệu"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>Trang bìa</span>
+                <span className="whitespace-nowrap">Trang bìa</span>
               </Link>
               <Link
                 to="/me/settings"
-                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors"
+                className="hover:text-foreground inline-flex items-center gap-1 p-1 hover:bg-muted rounded-sm transition-colors shrink-0"
                 title="Cài đặt cá nhân"
               >
                 <Settings className="w-3.5 h-3.5" />
-                <span>Cài đặt</span>
+                <span className="whitespace-nowrap">Cài đặt</span>
               </Link>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="hover:text-rose-600 inline-flex items-center gap-1 p-1 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-sm transition-colors text-rose-500"
+                className="hover:text-rose-600 inline-flex items-center gap-1 p-1 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-sm transition-colors text-rose-500 shrink-0"
                 title="Đăng xuất"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Thoát</span>
+                <span className="whitespace-nowrap">Thoát</span>
               </button>
             </div>
           ) : (
