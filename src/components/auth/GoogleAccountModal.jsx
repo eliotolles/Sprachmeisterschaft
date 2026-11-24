@@ -190,7 +190,7 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
               <p className="text-[15px] sm:text-[16px] text-[#c4c7c5]">
                 Tiếp tục tới{' '}
                 <span className="text-[#a8c7fa] hover:text-[#d3e3fd] hover:underline cursor-pointer font-medium">
-                  learnattack.de
+                  Sprachmeisterschaft
                 </span>
               </p>
             </div>
@@ -305,7 +305,7 @@ export function GoogleAccountModal({ isOpen, onClose, onSuccess }) {
         {/* Footer điều khoản */}
         <div className="mt-8 pt-6 border-t border-[#2d2e31] flex flex-col sm:flex-row items-center justify-between gap-4 text-[12px] sm:text-[13px] text-[#8e918f]">
           <p>
-            Trước khi sử dụng learnattack.de, bạn có thể xem{' '}
+            Trước khi sử dụng Sprachmeisterschaft, bạn có thể xem{' '}
             <a href="#" className="text-[#a8c7fa] hover:underline font-medium">
               Chính sách quyền riêng tư
             </a>{' '}
