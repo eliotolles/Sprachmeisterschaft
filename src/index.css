@@ -256,3 +256,68 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+/* ---- Dashboard trang chính (HomePage redesign): kính mờ + dock module ---- */
+.dash-glass {
+  background: linear-gradient(160deg, hsl(var(--card) / 0.72), hsl(var(--card) / 0.45));
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid hsl(var(--border) / 0.55);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.45);
+  border-radius: 1rem;
+}
+
+.dash-dock {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.dash-dock:hover {
+  transform: translateY(-6px);
+}
+.dash-dock-item {
+  transition: transform 0.18s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.dash-dock-item:hover,
+.dash-dock-item:focus-visible {
+  transform: translateY(-10px) scale(1.22);
+}
+.dash-dock-item .dash-tip {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+.dash-dock-item:hover .dash-tip,
+.dash-dock-item:focus-visible .dash-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@keyframes dash-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.dash-float {
+  animation: dash-float 5s ease-in-out infinite;
+}
+
+/* Điện thoại: bỏ hẳn backdrop-filter (webview hay sập vì blur trực tiếp),
+   dùng nền đặc hơn để vẫn giữ vẻ kính mờ; tắt hiệu ứng nổi vô hạn. */
+@media (max-width: 680px) {
+  .dash-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: hsl(var(--card) / 0.94);
+  }
+  .dash-float {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-float {
+    animation: none;
+  }
+  .dash-dock-item {
+    transition: none;
+  }
+}

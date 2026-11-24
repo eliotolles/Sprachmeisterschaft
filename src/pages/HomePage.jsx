@@ -1,49 +1,93 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/db';
-import {progressCoreActive} from '@/lib/elio-progress-runtime';
-import {progressStreak} from '@/core/elio/progress-binding';
-import {useCoreProgress} from '@/lib/use-core-progress';
+import { progressCoreActive } from '@/lib/elio-progress-runtime';
+import { progressStreak } from '@/core/elio/progress-binding';
+import { useCoreProgress } from '@/lib/use-core-progress';
 import { useRouter, Link } from '@/lib/router';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { StatCard } from '@/components/ui/StatCard';
 import { ProgressRing } from '@/components/ui/ProgressRing';
-import { computeReadiness, calculateStreak, formatDate, addDays } from '@/lib/algorithms';
+import { computeReadiness, calculateStreak, formatDate } from '@/lib/algorithms';
 import { WORDS, STARTER_TOPICS } from '@/data/vocabulary';
+import { DAYS } from '@/data/telc-b2/data-plan';
+import { PLAN_START } from '@/data/telc-b2/data-content';
+import { GRAMMAR_TOPICS_FULL, grammarTopicForDay } from '@/data/telc-b2/data-grammar';
+import { loadTelcB2Progress } from '@/lib/telc-b2-progress';
 import {
   RotateCw,
   Flame,
   Calendar,
   CheckCircle2,
   Sparkles,
-  FileCheck2,
   Bot,
   ArrowRight,
   BookMarked,
   BookOpen,
+  Headphones,
+  Play,
+  Home,
+  Library,
+  GraduationCap,
+  TrendingUp,
+  Wrench,
+  Settings,
+  Gamepad2,
+  BarChart3,
+  Clock,
+  Target,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export function HomePage() {
-  const coreActive=progressCoreActive();
-  const { navigate } = useRouter();
-  const [profile, setProfile] = useState(() => db.learnerProfile.get());
-  const [cards, setCards] = useState(() => coreActive?(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]):db.vocabulary.findMany());
-  const [logs, setLogs] = useState(() => coreActive?[]:db.studyLogs.findMany());
-  const [sessions, setSessions] = useState(() => coreActive?[]:db.skillSessions.findMany());
-  const [exams, setExams] = useState(() => coreActive?[]:db.examResults.findMany());
-  const [studyPlan, setStudyPlan] = useState(() => db.studyPlan?.get());
+// Ngày bắt đầu lộ trình telc B2 (16/11/2026) — tính "ngày hôm nay" của lộ trình 60 ngày.
+const PLAN_START_DATE = (() => {
+  const [y, m, d] = PLAN_START.split('-').map(Number);
+  return new Date(y, m - 1, d);
+})();
 
-  useCoreProgress(db,{cards:setCards,logs:setLogs,sessions:setSessions,exams:setExams});
+function currentB2Day() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.floor((today - PLAN_START_DATE) / 86400000) + 1;
+  return Math.min(60, Math.max(1, diff));
+}
+
+export function HomePage() {
+  const coreActive = progressCoreActive();
+  const { navigate, currentPath } = useRouter();
+  const [profile, setProfile] = useState(() => db.learnerProfile.get());
+  const [cards, setCards] = useState(() => coreActive ? (db.vocabulary.isCore?.() ? db.vocabulary.findMany() : []) : db.vocabulary.findMany());
+  const [logs, setLogs] = useState(() => coreActive ? [] : db.studyLogs.findMany());
+  const [sessions, setSessions] = useState(() => coreActive ? [] : db.skillSessions.findMany());
+  const [exams, setExams] = useState(() => coreActive ? [] : db.examResults.findMany());
+  const [studyPlan, setStudyPlan] = useState(() => db.studyPlan?.get());
+  const [collections, setCollections] = useState(() => {
+    try { return db.listening.getCollections(); } catch { return []; }
+  });
+  const [b2Progress, setB2Progress] = useState(() => {
+    try { return loadTelcB2Progress(db.auth.getUser()?.id || null); } catch { return loadTelcB2Progress(null); }
+  });
+
+  useCoreProgress(db, { cards: setCards, logs: setLogs, sessions: setSessions, exams: setExams });
+
+  // Dashboard tối: bật dark mode khi ở trang chính, trả lại đúng cài đặt của người dùng khi rời trang.
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    root.classList.add('dark');
+    return () => {
+      if (!wasDark && localStorage.getItem('sprach_theme') !== 'dark') root.classList.remove('dark');
+    };
+  }, []);
 
   useEffect(() => {
     const handleDbChange = () => {
       setProfile(db.learnerProfile.get());
-      if(progressCoreActive()){setCards(db.vocabulary.isCore?.()?db.vocabulary.findMany():[]);return;}
+      if (progressCoreActive()) { setCards(db.vocabulary.isCore?.() ? db.vocabulary.findMany() : []); return; }
       setCards(db.vocabulary.findMany());
       setLogs(db.studyLogs.findMany());
       setSessions(db.skillSessions.findMany());
       setExams(db.examResults.findMany());
       setStudyPlan(db.studyPlan?.get());
+      try { setCollections(db.listening.getCollections()); } catch { /* giữ nguyên danh sách cũ */ }
+      try { setB2Progress(loadTelcB2Progress(db.auth.getUser()?.id || null)); } catch { /* giữ nguyên tiến độ cũ */ }
     };
     window.addEventListener('sprach_db_change', handleDbChange);
     window.addEventListener('sprach_auth_change', handleDbChange);
@@ -70,7 +114,7 @@ export function HomePage() {
   const dueCards = cards.filter((c) => !c.due_date || c.due_date <= today);
 
   // Streak
-  const streak = coreActive?progressStreak(logs,today):calculateStreak(logs);
+  const streak = coreActive ? progressStreak(logs, today) : calculateStreak(logs);
 
   // Exam Countdown (D-xx)
   const examDate = profile.exam_date ? new Date(profile.exam_date) : new Date(Date.now() + 45 * 86400000);
@@ -78,6 +122,52 @@ export function HomePage() {
 
   // Readiness
   const readiness = computeReadiness(cards, sessions, exams, profile.target_level || 'B1');
+
+  // Lộ trình telc B2 hôm nay (dữ liệu thật từ data-plan / tiến độ đã lưu)
+  const b2Day = currentB2Day();
+  const todayPlan = DAYS[Math.min(b2Day, DAYS.length) - 1] || DAYS[0];
+  const grammarToday = grammarTopicForDay(b2Day) || GRAMMAR_TOPICS_FULL[GRAMMAR_TOPICS_FULL.length - 1];
+  const completedDaysCount = (b2Progress.completedDays || []).length;
+  const latestScore = (b2Progress.scores || []).length > 0 ? b2Progress.scores[b2Progress.scores.length - 1] : null;
+  const latestDiagnostic = (b2Progress.diagnostics || []).length > 0 ? b2Progress.diagnostics[b2Progress.diagnostics.length - 1] : null;
+
+  // Bài nghe mới nhất (dữ liệu thật từ thư viện nghe)
+  const allEpisodes = useMemo(() => {
+    try {
+      return collections.flatMap((collection) =>
+        db.listening.getEpisodes(collection.id).map((episode) => ({ ...episode, collection }))
+      );
+    } catch { return []; }
+  }, [collections]);
+  const latestEpisode = useMemo(() => {
+    if (!allEpisodes.length) return null;
+    const sorted = [...allEpisodes].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return sorted[0];
+  }, [allEpisodes]);
+
+  const dueWords = dueCards.slice(0, 3);
+
+  // Dock module — bấm là nhảy tới nội dung thật của module đó.
+  const hoerenPath = latestEpisode
+    ? `/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`
+    : '/skills/listening';
+  const dockItems = [
+    { id: 'start', label: 'Start', icon: Home, path: '/' },
+    { id: 'bibliothek', label: 'Bibliothek', icon: Library, path: '/skills/listening' },
+    { id: 'hoeren', label: 'Hören', icon: Headphones, path: hoerenPath },
+    { id: 'wortschatz', label: 'Wortschatz', icon: BookMarked, path: '/vocabulary' },
+    { id: 'grammatik', label: 'Grammatik', icon: BookOpen, path: '/b2' },
+    { id: 'b2', label: 'Lộ trình B2', icon: GraduationCap, path: '/b2' },
+    { id: 'statistik', label: 'Statistik', icon: TrendingUp, path: '/progress' },
+    { id: 'tools', label: 'Công cụ', icon: Wrench, path: '/skills/listening/personal' },
+    { id: 'settings', label: 'Einstellungen', icon: Settings, path: '/me/settings' },
+  ];
+  const isDockActive = (item) => {
+    if (item.id === 'start') return currentPath === '/' || currentPath === '';
+    if (item.id === 'bibliothek') return currentPath === '/skills/listening';
+    if (item.id === 'hoeren') return currentPath.startsWith('/skills/listening/') && currentPath.split('/').length > 3;
+    return currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path));
+  };
 
   // Starter Deck loader if empty
   const handleLoadStarterDeck = () => {
@@ -87,314 +177,558 @@ export function HomePage() {
     toast.success(`Đã nạp thành công ${added.length} từ vựng mẫu vào bộ thẻ của bạn!`);
   };
 
+  const heroStats = [
+    { label: 'Chuỗi học', value: `${streak} ngày`, icon: Flame },
+    { label: 'Thẻ đến hạn', value: `${dueCards.length} thẻ`, icon: RotateCw },
+    { label: 'Lộ trình B2', value: `Tag ${b2Day}/60`, icon: Calendar },
+    { label: 'Sẵn sàng thi', value: `${readiness.total}%`, icon: Target },
+  ];
+
   return (
-    <div className="space-y-8 animate-rise">
-      {/* Header */}
-      <PageHeader
-        eyebrow="TỔNG QUAN HỌC TẬP"
-        title={`${greeting}, ${profile.display_name || 'Học viên'}!`}
-        deTitle="Heute"
-        subtitle={`Kế hoạch ôn tập và mục tiêu chứng chỉ ${profile.target_level || 'B1'} của bạn hôm nay.`}
-        actions={
-          <Link
-            to="/review"
-            className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm inline-flex items-center gap-2"
-          >
-            <RotateCw className="w-4 h-4" />
-            <span>Ôn {dueCards.length} thẻ đến hạn</span>
-          </Link>
-        }
-      />
+    <div className="space-y-5 md:space-y-6 animate-rise">
+      {/* Hero: chào + Capi + số liệu tổng quan */}
+      <section className="dash-glass relative overflow-hidden p-5 md:p-7">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(620px circle at 85% 0%, rgba(217, 84, 50, 0.30), transparent 65%)' }}
+        />
+        <div className="relative flex flex-col md:flex-row gap-5 md:gap-6 items-center">
+          <div className="flex-1 min-w-0 w-full">
+            <div className="eyebrow">Sprachmeisterschaft · Dashboard</div>
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground mt-1">
+              {greeting}, {profile.display_name || 'Học viên'}!
+            </h1>
+            <p className="font-body text-sm text-muted-foreground mt-1">
+              {greetingVi} · Mục tiêu {profile.target_level || 'B1'} · Kỳ thi còn D-{diffDays} ngày · Hôm nay là Tag {b2Day} của lộ trình telc B2.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
+              {heroStats.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.label} className="rounded-lg border border-border/60 bg-white/[0.04] px-3 py-2.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                      <Icon className="w-3.5 h-3.5 text-accent" />
+                      <span>{s.label}</span>
+                    </div>
+                    <div className="font-display text-lg md:text-xl font-bold text-foreground mt-0.5">{s.value}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2.5 mt-5">
+              <Link
+                to="/review"
+                className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg shadow-sm inline-flex items-center gap-2"
+              >
+                <RotateCw className="w-4 h-4" />
+                <span>Ôn {dueCards.length} thẻ đến hạn</span>
+              </Link>
+              <Link
+                to="/b2"
+                className="tap px-4 py-2 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-sm font-medium rounded-lg inline-flex items-center gap-2"
+              >
+                <GraduationCap className="w-4 h-4 text-accent" />
+                <span>Lộ trình B2 · Tag {b2Day}</span>
+              </Link>
+            </div>
+          </div>
+          <div className="shrink-0 text-center">
+            <img
+              src="/mascot/capi.svg"
+              alt="Capi — linh vật capybara của Sprachmeisterschaft"
+              className="dash-float h-44 w-44 md:h-56 md:w-56 rounded-2xl object-cover border border-border/60 shadow-xl"
+            />
+            <div className="mt-2 text-xs font-mono text-muted-foreground">
+              Capi · linh vật học cùng bạn
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {/* 4 Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatCard
-          label="Thẻ đến hạn hôm nay"
-          value={dueCards.length}
-          hint={dueCards.length > 0 ? 'Cần ôn tập để giữ trí nhớ SM-2' : 'Đã hoàn thành hết thẻ hôm nay!'}
-          icon={RotateCw}
-          badge={dueCards.length > 0 ? 'Cần ôn' : 'Xong'}
-        />
-        <StatCard
-          label="Chuỗi học liên tiếp"
-          value={`${streak} ngày`}
-          hint="Học đều đặn mỗi ngày để duy trì streak"
-          icon={Flame}
-          badge="Streak"
-        />
-        <StatCard
-          label="Đếm ngược ngày thi"
-          value={`D-${diffDays}`}
-          hint={`Kỳ thi mục tiêu ${profile.target_level || 'B1'}`}
-          icon={Calendar}
-          badge={profile.target_level || 'B1'}
-        />
-        <StatCard
-          label="Tổng từ trong bộ thẻ"
-          value={cards.length}
-          hint={`${readiness.vocab.mastered} từ đã thuộc vững`}
-          icon={BookMarked}
-          badge={`${readiness.vocab.learned} đã học`}
-        />
-      </div>
+      {/* Hàng 2: bài nghe + kế hoạch B2 hôm nay | sẵn sàng thi */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 space-y-5">
+          {/* Bài nghe tiếp theo */}
+          <section className="dash-glass p-5 md:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow">Luyện nghe · Hören</div>
+                <h2 className="font-display text-xl font-bold text-foreground mt-0.5">Bài nghe tiếp theo</h2>
+              </div>
+              <Link to="/skills/listening" className="tap text-xs font-mono text-accent hover:underline inline-flex items-center gap-1 shrink-0">
+                <span>Thư viện nghe</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+            {latestEpisode ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-4">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`)}
+                  className="tap w-14 h-14 shrink-0 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center shadow-lg"
+                  title="Mở trình nghe"
+                >
+                  <Play className="w-6 h-6 ml-0.5" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="font-heading font-semibold text-foreground truncate">
+                    {latestEpisode.deTitle || latestEpisode.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {latestEpisode.collection?.title || 'Luyện nghe'}
+                    {latestEpisode.level ? ` · ${latestEpisode.level}` : ''}
+                    {latestEpisode.duration ? ` · ${latestEpisode.duration}` : ''}
+                    {latestEpisode.subtitles?.length ? ` · ${latestEpisode.subtitles.length} câu phụ đề` : ''}
+                    {latestEpisode.quiz?.length ? ` · ${latestEpisode.quiz.length} câu quiz` : ''}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`)}
+                      className="tap px-3.5 py-1.5 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-medium rounded-lg inline-flex items-center gap-1.5"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>Nghe ngay</span>
+                    </button>
+                    <Link
+                      to="/skills/listening"
+                      className="tap px-3.5 py-1.5 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-xs font-medium rounded-lg inline-flex items-center gap-1.5"
+                    >
+                      <Headphones className="w-3.5 h-3.5 text-accent" />
+                      <span>Chọn bài khác</span>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-muted-foreground">
+                Chưa có bài nghe nào trong thư viện.
+                <Link to="/skills/listening" className="text-accent hover:underline ml-1">
+                  Nhập video YouTube hoặc video máy tính để bắt đầu →
+                </Link>
+              </div>
+            )}
+          </section>
 
-      {/* Lộ trình telc B2 */}
-      <Link to="/b2" className="surface p-5 flex items-center gap-4 hover:border-accent/60 transition-colors">
-        <img src="/mascot/red-panda-mini.png" alt="Pandi" className="h-14 w-14 shrink-0 rounded-full object-cover border border-border" />
-        <span className="min-w-0 flex-1">
-          <span className="block eyebrow">Lộ trình telc B2 · 60 ngày</span>
-          <span className="block font-display text-xl font-bold text-foreground">Học telc B2 theo lộ trình — Pandi đồng hành</span>
-          <span className="block text-sm text-muted-foreground mt-0.5">Đề chẩn đoán Ngày 1 · 600 cụm từ có đồng nghĩa · Ngữ pháp B2 + nền B1 · Khung viết &amp; nói · Bảng điểm thi thử</span>
-        </span>
-        <ArrowRight className="w-5 h-5 shrink-0 text-accent" />
-      </Link>
+          {/* Kế hoạch B2 hôm nay */}
+          <section className="dash-glass p-5 md:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="eyebrow">Lộ trình telc B2 · Tag {b2Day}/60</div>
+                <h2 className="font-display text-xl font-bold text-foreground mt-0.5">{todayPlan.focus}</h2>
+              </div>
+              <Link to="/b2" className="tap text-xs font-mono text-accent hover:underline inline-flex items-center gap-1 shrink-0">
+                <span>Mở lộ trình</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+            <p className="font-body text-sm text-muted-foreground leading-relaxed mt-2 line-clamp-3">
+              {todayPlan.task}
+            </p>
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground mb-1.5">
+                <span>Đã hoàn thành {completedDaysCount}/60 ngày</span>
+                <span>{Math.round((completedDaysCount / 60) * 100)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-accent transition-all"
+                  style={{ width: `${Math.round((completedDaysCount / 60) * 100)}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {[14, 30, 60].map((m) => (
+                  <span
+                    key={m}
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
+                      b2Day >= m
+                        ? 'bg-accent/15 border-accent/40 text-accent'
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    {b2Day >= m ? '✓ ' : ''}Tag {m}
+                  </span>
+                ))}
+                <span className="text-[11px] font-mono text-muted-foreground ml-auto">
+                  Ngữ pháp tuần này: {grammarToday.name.split('—')[0].trim()}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
 
-      {/* Main Banner: Readiness + 4 Daily Quests */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Readiness Card */}
-        <div className="surface p-6 flex flex-col justify-between">
+        {/* Chỉ số sẵn sàng thi */}
+        <section className="dash-glass p-5 md:p-6 flex flex-col justify-between">
           <div>
-            <div className="eyebrow mb-1">Chỉ số sẵn sàng thi</div>
-            <h2 className="font-display text-2xl font-bold text-foreground">
-              Prüfungsreife
-            </h2>
-            <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
+            <div className="eyebrow">Chỉ số sẵn sàng thi</div>
+            <h2 className="font-display text-2xl font-bold text-foreground mt-0.5">Prüfungsreife</h2>
+            <p className="font-body text-xs text-muted-foreground mt-1">
               Đo lường tổng hợp từ 3 trụ cột: Vốn từ ({readiness.vocab.score}%), Kỹ năng ({readiness.skills.score}%), Đề thi ({readiness.exams.score}%).
             </p>
           </div>
-
-          <div className="flex flex-col items-center justify-center my-3">
+          <div className="flex flex-col items-center justify-center my-4">
             <ProgressRing progress={readiness.total} size={130} strokeWidth={10} label="Sẵn sàng" />
           </div>
-
-          <div className="pt-3 border-t border-border flex items-center justify-between text-xs">
+          <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs">
             <span className="font-mono text-muted-foreground">Mục tiêu: {profile.target_level || 'B1'}</span>
             <Link to="/readiness" className="font-mono text-accent hover:underline inline-flex items-center gap-1">
               <span>Xem chi tiết</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-        </div>
+        </section>
+      </div>
 
-        {/* 4 Daily Tasks */}
-        <div className="surface p-6 lg:col-span-2 flex flex-col justify-between">
-          {studyPlan && Array.isArray(studyPlan.dailyTasks) && studyPlan.dailyTasks.length > 0 ? (
-            (() => {
-              const todayStr = formatDate();
-              const planTasksForToday = studyPlan.dailyTasks.filter((t) => t.date === todayStr && !t.isRestDay);
-              const activeRoadmapTasks = planTasksForToday.length > 0
-                ? planTasksForToday
-                : studyPlan.dailyTasks.filter((t) => !t.completed && !t.isRestDay).slice(0, 4);
+      {/* Nhiệm vụ trọng tâm hôm nay (giữ nguyên logic lộ trình cá nhân) */}
+      <section className="dash-glass p-5 md:p-6">
+        {studyPlan && Array.isArray(studyPlan.dailyTasks) && studyPlan.dailyTasks.length > 0 ? (
+          (() => {
+            const todayStr = formatDate();
+            const planTasksForToday = studyPlan.dailyTasks.filter((t) => t.date === todayStr && !t.isRestDay);
+            const activeRoadmapTasks = planTasksForToday.length > 0
+              ? planTasksForToday
+              : studyPlan.dailyTasks.filter((t) => !t.completed && !t.isRestDay).slice(0, 4);
 
-              const missedCount = studyPlan.dailyTasks.filter(
-                (t) => !t.completed && !t.isRestDay && t.date < todayStr
-              ).length;
+            const missedCount = studyPlan.dailyTasks.filter(
+              (t) => !t.completed && !t.isRestDay && t.date < todayStr
+            ).length;
 
-              const handleTogglePlanTask = (taskId, e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                db.studyPlan.toggleTask(taskId);
-              };
+            const handleTogglePlanTask = (taskId, e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              db.studyPlan.toggleTask(taskId);
+            };
 
-              const handleReschedulePlan = () => {
-                const updated = db.studyPlan.reschedule();
-                if (updated) {
-                  toast.success('Đã điều chỉnh dồn lịch học thông minh sang các ngày tiếp theo!');
-                }
-              };
+            const handleReschedulePlan = () => {
+              const updated = db.studyPlan.reschedule();
+              if (updated) {
+                toast.success('Đã điều chỉnh dồn lịch học thông minh sang các ngày tiếp theo!');
+              }
+            };
 
-              return (
-                <>
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
-                      <div className="eyebrow">
-                        Lộ trình {studyPlan.meta?.examName || 'Chứng chỉ'} ({studyPlan.meta?.targetLevel || profile.target_level})
-                      </div>
-                      {missedCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleReschedulePlan}
-                          className="tap text-[11px] font-mono text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded flex items-center gap-1.5"
-                        >
-                          <RotateCw className="w-3 h-3" />
-                          <span>Có {missedCount} bài lỡ hẹn • Điều chỉnh dồn lịch</span>
-                        </button>
-                      )}
+            return (
+              <>
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+                    <div className="eyebrow">
+                      Lộ trình {studyPlan.meta?.examName || 'Chứng chỉ'} ({studyPlan.meta?.targetLevel || profile.target_level})
                     </div>
-                    <h2 className="font-display text-2xl font-bold text-foreground">
-                      Nhiệm vụ trọng tâm hôm nay
-                    </h2>
-                    <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
-                      Theo lộ trình cá nhân hóa ({studyPlan.meta?.dailyMinutes || 45} phút/ngày). Đánh dấu hoàn thành để cập nhật tiến độ.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
-                    {activeRoadmapTasks.map((t, idx) => (
-                      <div
-                        key={t.id || idx}
-                        className={`p-3.5 rounded-sm border transition-all flex items-start gap-3 justify-between ${
-                          t.completed
-                            ? 'border-emerald-500/40 bg-emerald-500/5'
-                            : 'border-border bg-card/60 hover:bg-muted/30'
-                        }`}
+                    {missedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleReschedulePlan}
+                        className="tap text-[11px] font-mono text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded flex items-center gap-1.5"
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => handleTogglePlanTask(t.id, e)}
-                          className="mt-0.5 shrink-0 text-muted-foreground hover:text-emerald-600 transition-colors"
-                          title={t.completed ? 'Đánh dấu chưa xong' : 'Đánh dấu đã hoàn thành'}
-                        >
-                          {t.completed ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/60 hover:border-accent" />
-                          )}
-                        </button>
+                        <RotateCw className="w-3 h-3" />
+                        <span>Có {missedCount} bài lỡ hẹn • Điều chỉnh dồn lịch</span>
+                      </button>
+                    )}
+                  </div>
+                  <h2 className="font-display text-2xl font-bold text-foreground">
+                    Nhiệm vụ trọng tâm hôm nay
+                  </h2>
+                  <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
+                    Theo lộ trình cá nhân hóa ({studyPlan.meta?.dailyMinutes || 45} phút/ngày). Đánh dấu hoàn thành để cập nhật tiến độ.
+                  </p>
+                </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 text-[10px] font-mono mb-0.5">
-                            <span className="px-1.5 py-0.2 rounded bg-accent/10 text-accent font-bold uppercase">
-                              {t.skill}
-                            </span>
-                            <span className="text-muted-foreground">{t.durationMinutes} phút</span>
-                          </div>
-                          <div
-                            className={`text-xs font-heading font-semibold line-clamp-2 ${
-                              t.completed ? 'line-through text-muted-foreground' : 'text-foreground'
-                            }`}
-                          >
-                            {t.title}
-                          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
+                  {activeRoadmapTasks.map((t, idx) => (
+                    <div
+                      key={t.id || idx}
+                      className={`p-3.5 rounded-lg border transition-all flex items-start gap-3 justify-between ${
+                        t.completed
+                          ? 'border-emerald-500/40 bg-emerald-500/5'
+                          : 'border-border/60 bg-white/[0.03] hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => handleTogglePlanTask(t.id, e)}
+                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-emerald-600 transition-colors"
+                        title={t.completed ? 'Đánh dấu chưa xong' : 'Đánh dấu đã hoàn thành'}
+                      >
+                        {t.completed ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/60 hover:border-accent" />
+                        )}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono mb-0.5">
+                          <span className="px-1.5 py-0.2 rounded bg-accent/10 text-accent font-bold uppercase">
+                            {t.skill}
+                          </span>
+                          <span className="text-muted-foreground">{t.durationMinutes} phút</span>
                         </div>
-
-                        <Link
-                          to={t.targetPath || '/skills'}
-                          className="shrink-0 p-1.5 text-xs font-mono text-accent hover:underline rounded hover:bg-accent/10 transition-colors"
-                          title="Vào phòng luyện tập tương ứng"
+                        <div
+                          className={`text-xs font-heading font-semibold line-clamp-2 ${
+                            t.completed ? 'line-through text-muted-foreground' : 'text-foreground'
+                          }`}
                         >
-                          <ArrowRight className="w-4 h-4" />
-                        </Link>
+                          {t.title}
+                        </div>
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="pt-3 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
-                    <span>
-                      Đã hoàn thành {activeRoadmapTasks.filter((t) => t.completed).length}/
-                      {activeRoadmapTasks.length} nhiệm vụ
-                    </span>
-                    <Link to="/readiness" className="text-accent hover:underline">
-                      Đo lường độ sẵn sàng thi →
-                    </Link>
+                      <Link
+                        to={t.targetPath || '/skills'}
+                        className="shrink-0 p-1.5 text-xs font-mono text-accent hover:underline rounded hover:bg-accent/10 transition-colors"
+                        title="Vào phòng luyện tập tương ứng"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs font-mono text-muted-foreground">
+                  <span>
+                    Đã hoàn thành {activeRoadmapTasks.filter((t) => t.completed).length}/
+                    {activeRoadmapTasks.length} nhiệm vụ
+                  </span>
+                  <Link to="/readiness" className="text-accent hover:underline">
+                    Đo lường độ sẵn sàng thi →
+                  </Link>
+                </div>
+              </>
+            );
+          })()
+        ) : (
+          <>
+            <div>
+              <div className="eyebrow mb-1">Kế hoạch hàng ngày</div>
+              <h2 className="font-display text-2xl font-bold text-foreground">
+                4 Nhiệm vụ học tập hôm nay
+              </h2>
+              <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
+                Hoàn thành các hoạt động để cộng điểm kinh nghiệm (XP) và duy trì chuỗi học.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
+              <Link
+                to="/review"
+                className="tap p-3.5 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] transition-colors flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                  <RotateCw className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-heading font-semibold text-foreground">
+                    1. Ôn thẻ từ vựng SRS
                   </div>
-                </>
-              );
-            })()
-          ) : (
-            <>
-              <div>
-                <div className="eyebrow mb-1">Kế hoạch hàng ngày</div>
-                <h2 className="font-display text-2xl font-bold text-foreground">
-                  4 Nhiệm vụ học tập hôm nay
-                </h2>
-                <p className="font-body text-xs text-muted-foreground mt-1 mb-4">
-                  Hoàn thành các hoạt động để cộng điểm kinh nghiệm (XP) và duy trì chuỗi học.
-                </p>
+                  <div className="text-[11px] text-muted-foreground font-body">
+                    {dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
+                  </div>
+                </div>
+              </Link>
+
+              <Link
+                to="/skills"
+                className="tap p-3.5 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] transition-colors flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-400/20 flex items-center justify-center text-blue-400 shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-heading font-semibold text-foreground">
+                    2. Luyện 1 kỹ năng ngôn ngữ
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-body">
+                    Nghe chính tả, nói đuổi, ngữ pháp...
+                  </div>
+                </div>
+              </Link>
+
+              <Link
+                to="/game"
+                className="tap p-3.5 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] transition-colors flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-heading font-semibold text-foreground">
+                    3. Phản xạ mạo từ Der/Die/Das
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-body">
+                    Chơi 1 vòng 15 câu nhận ngay XP
+                  </div>
+                </div>
+              </Link>
+
+              <Link
+                to="/elio"
+                className="tap p-3.5 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] transition-colors flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-400/20 flex items-center justify-center text-rose-400 shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-heading font-semibold text-foreground">
+                    4. Hỏi gia sư AI ELIO
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-body">
+                    Giải đáp thắc mắc ngữ pháp &amp; bài thi
+                  </div>
+                </div>
+              </Link>
+            </div>
+
+            <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs font-mono text-muted-foreground">
+              <span>Mỗi nhiệm vụ cộng dồn vào StudyLog trong ngày</span>
+              <Link to="/progress" className="text-accent hover:underline">
+                Xem tiến độ tuần →
+              </Link>
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* Hàng 3: từ vựng · ngữ pháp · điểm số */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Từ vựng */}
+        <section className="dash-glass p-5 flex flex-col">
+          <div className="eyebrow">Từ vựng · Wortschatz</div>
+          <h2 className="font-display text-xl font-bold text-foreground mt-0.5">
+            {dueCards.length} thẻ đến hạn
+          </h2>
+          <p className="font-body text-xs text-muted-foreground mt-1">
+            Tổng {cards.length} thẻ · {readiness.vocab.mastered} từ đã thuộc vững · {readiness.vocab.learned} đã học
+          </p>
+          <div className="space-y-2.5 mt-4 flex-1">
+            {dueWords.length > 0 ? dueWords.map((c) => (
+              <div key={c.id || `${c.article || ''}-${c.german}`} className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
+                <div className="font-heading font-semibold text-sm text-foreground">
+                  {c.article ? `${c.article} ` : ''}{c.german}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">{c.vietnamese || ''}</div>
               </div>
+            )) : (
+              <div className="text-sm text-muted-foreground">Đã hoàn thành hết thẻ hôm nay!</div>
+            )}
+          </div>
+          <Link
+            to="/review"
+            className="tap mt-4 px-3.5 py-2 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-medium rounded-lg inline-flex items-center justify-center gap-1.5"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            <span>Ôn ngay</span>
+          </Link>
+        </section>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-2">
-                {/* Task 1 */}
-                <Link
-                  to="/review"
-                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-                >
-                  <div className="w-8 h-8 rounded-sm bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                    <RotateCw className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-heading font-semibold text-foreground">
-                      1. Ôn thẻ từ vựng SRS
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-body">
-                      {dueCards.length > 0 ? `Còn ${dueCards.length} thẻ đến hạn` : 'Đã hoàn thành!'}
-                    </div>
-                  </div>
-                </Link>
+        {/* Ngữ pháp */}
+        <section className="dash-glass p-5 flex flex-col">
+          <div className="eyebrow">Ngữ pháp · Grammatik</div>
+          <h2 className="font-display text-xl font-bold text-foreground mt-0.5">{grammarToday.name}</h2>
+          <p className="font-body text-xs text-muted-foreground mt-1">{grammarToday.nameVi}</p>
+          <p className="font-body text-sm text-muted-foreground leading-relaxed mt-3 line-clamp-4 flex-1">
+            {grammarToday.intro}
+          </p>
+          <Link
+            to="/b2"
+            className="tap mt-4 px-3.5 py-2 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-xs font-medium rounded-lg inline-flex items-center justify-center gap-1.5"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-accent" />
+            <span>Học ngữ pháp trong lộ trình B2</span>
+          </Link>
+        </section>
 
-                {/* Task 2 */}
-                <Link
-                  to="/skills"
-                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-                >
-                  <div className="w-8 h-8 rounded-sm bg-blue-100 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 flex items-center justify-center text-blue-700 dark:text-blue-300 shrink-0">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-heading font-semibold text-foreground">
-                      2. Luyện 1 kỹ năng ngôn ngữ
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-body">
-                      Nghe chính tả, nói đuổi, ngữ pháp...
-                    </div>
-                  </div>
-                </Link>
-
-                {/* Task 3 */}
-                <Link
-                  to="/game"
-                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-                >
-                  <div className="w-8 h-8 rounded-sm bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-amber-800 dark:text-amber-300 shrink-0">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-heading font-semibold text-foreground">
-                      3. Phản xạ mạo từ Der/Die/Das
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-body">
-                      Chơi 1 vòng 15 câu nhận ngay XP
-                    </div>
-                  </div>
-                </Link>
-
-                {/* Task 4 */}
-                <Link
-                  to="/elio"
-                  className="tap p-3.5 rounded-sm border border-border bg-card/60 hover:bg-muted/40 transition-colors flex items-start gap-3"
-                >
-                  <div className="w-8 h-8 rounded-sm bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-800 dark:text-rose-300 shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-heading font-semibold text-foreground">
-                      4. Hỏi gia sư AI ELIO
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-body">
-                      Giải đáp thắc mắc ngữ pháp & bài thi
-                    </div>
-                  </div>
-                </Link>
+        {/* Điểm số */}
+        <section className="dash-glass p-5 flex flex-col">
+          <div className="eyebrow">Điểm số · Ergebnisse</div>
+          <h2 className="font-display text-xl font-bold text-foreground mt-0.5">Điểm chẩn đoán &amp; thi thử</h2>
+          <div className="mt-3 space-y-2.5 flex-1">
+            {latestDiagnostic ? (
+              <div className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2.5">
+                <div className="text-[11px] font-mono text-muted-foreground">Chẩn đoán Ngày 1</div>
+                <div className="font-heading font-semibold text-sm text-foreground mt-0.5">
+                  Đọc {latestDiagnostic.lesenRaw}/{latestDiagnostic.lesenMax} · Nghe {latestDiagnostic.hoerenRaw}/{latestDiagnostic.hoerenMax}
+                </div>
               </div>
-
-              <div className="pt-3 border-t border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
-                <span>Mỗi nhiệm vụ cộng dồn vào StudyLog trong ngày</span>
-                <Link to="/progress" className="text-accent hover:underline">
-                  Xem tiến độ tuần →
-                </Link>
+            ) : null}
+            {latestScore ? (
+              <div className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2.5">
+                <div className="text-[11px] font-mono text-muted-foreground">{latestScore.label || 'Thi thử'}</div>
+                <div className="font-heading font-semibold text-sm text-foreground mt-0.5">
+                  {[
+                    latestScore.lesen != null ? `Đọc ${latestScore.lesen}` : null,
+                    latestScore.sprachbausteine != null ? `Sprachb. ${latestScore.sprachbausteine}` : null,
+                    latestScore.hoeren != null ? `Nghe ${latestScore.hoeren}` : null,
+                    latestScore.schreiben != null ? `Viết ${latestScore.schreiben}` : null,
+                    latestScore.sprechen != null ? `Nói ${latestScore.sprechen}` : null,
+                  ].filter(Boolean).join(' · ') || 'Đã lưu điểm'}
+                </div>
               </div>
-            </>
-          )}
-        </div>
+            ) : null}
+            {!latestDiagnostic && !latestScore && (
+              <p className="font-body text-sm text-muted-foreground leading-relaxed">
+                Chưa có điểm chẩn đoán hay thi thử nào được lưu. Làm bài chẩn đoán Ngày 1 để có mốc so sánh cho cả lộ trình.
+              </p>
+            )}
+          </div>
+          <Link
+            to="/b2"
+            className="tap mt-4 px-3.5 py-2 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-xs font-medium rounded-lg inline-flex items-center justify-center gap-1.5"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-accent" />
+            <span>{latestDiagnostic || latestScore ? 'Xem bảng điểm' : 'Làm bài chẩn đoán'}</span>
+          </Link>
+        </section>
+      </div>
+
+      {/* Hàng 4: thử thách trò chơi + ELIO */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <section className="dash-glass p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
+            <Gamepad2 className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="eyebrow">Thử thách hôm nay</div>
+            <h3 className="font-display text-lg font-bold text-foreground mt-0.5">Tình huống giao tiếp</h3>
+            <p className="font-body text-xs text-muted-foreground mt-0.5">
+              Dịch câu giao tiếp, chọn câu trả lời, xếp câu — 10 câu một vòng, học nguyên câu theo tình huống thật.
+            </p>
+          </div>
+          <Link
+            to="/game"
+            className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg inline-flex items-center gap-2 shrink-0"
+          >
+            <span>Chơi ngay</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </section>
+
+        <section className="dash-glass p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+            <Bot className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="eyebrow">Gia sư AI riêng</div>
+            <h3 className="font-display text-lg font-bold text-foreground mt-0.5">Trợ lý ngôn ngữ ELIO</h3>
+            <p className="font-body text-xs text-muted-foreground mt-0.5">
+              Sửa lỗi ngữ pháp, chấm bài viết theo 4 tiêu chí chuẩn thi, đóng vai giám khảo phỏng vấn thi nói.
+            </p>
+          </div>
+          <Link
+            to="/elio"
+            className="tap px-4 py-2 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-sm font-medium rounded-lg inline-flex items-center gap-2 shrink-0"
+          >
+            <span>Trò chuyện</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </section>
       </div>
 
       {/* Starter Deck Card (If deck empty) */}
       {cards.length === 0 && (
-        <div className="surface p-6 border-accent/40 bg-accent/5">
+        <section className="dash-glass p-5 md:p-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
-                <BookOpen className="w-6 h-6" />
+                <BookMarked className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="font-display text-xl font-bold text-foreground">
@@ -407,41 +741,45 @@ export function HomePage() {
             </div>
             <button
               onClick={handleLoadStarterDeck}
-              className="tap px-5 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-sm border border-accent/40 shadow-sm shrink-0 inline-flex items-center gap-2"
+              className="tap px-5 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg shadow-sm shrink-0 inline-flex items-center gap-2"
             >
               <BookMarked className="w-4 h-4" />
               <span>Nạp bộ thẻ mẫu StarterDeck</span>
             </button>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* AI Tutor ELIO Introduction Banner */}
-      <div className="surface p-6 bg-card/60">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0 mt-1 md:mt-0">
-              <Bot className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="eyebrow mb-0.5">GIA SƯ AI RIÊNG</div>
-              <h3 className="font-display text-xl font-bold text-foreground">
-                Trợ lý ngôn ngữ ELIO
-              </h3>
-              <p className="font-body text-xs md:text-sm text-muted-foreground max-w-2xl mt-0.5">
-                ELIO đồng hành cùng bạn 24/7: sửa lỗi ngữ pháp, chấm bài viết luận theo 4 tiêu chí chuẩn thi, đóng vai giám khảo phỏng vấn thi nói và đưa ra lộ trình ôn tập tuần.
-              </p>
-            </div>
-          </div>
-          <Link
-            to="/elio"
-            className="tap px-4 py-2 border border-border bg-card hover:bg-muted text-foreground text-xs font-mono font-medium rounded-sm inline-flex items-center gap-2 shrink-0"
-          >
-            <span>Trò chuyện với ELIO</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      </div>
+      {/* Khoảng trống cho dock cố định */}
+      <div aria-hidden className="h-20 md:h-24" />
+
+      {/* Dock module (desktop) */}
+      <nav aria-label="Module chính" className="dash-dock dash-glass fixed bottom-4 left-0 right-0 mx-auto w-max max-w-[calc(100vw-2rem)] z-40 hidden md:flex items-end gap-1 px-3 py-2">
+        {dockItems.map((item) => {
+          const Icon = item.icon;
+          const active = isDockActive(item);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => navigate(item.path)}
+              title={item.label}
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              className={`dash-dock-item relative flex flex-col items-center justify-center w-12 h-12 rounded-xl ${
+                active
+                  ? 'bg-accent text-accent-foreground shadow-lg'
+                  : 'text-foreground/75 hover:bg-white/10 hover:text-foreground'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="dash-tip absolute -top-9 left-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-lg">
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
