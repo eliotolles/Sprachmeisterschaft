@@ -776,15 +776,17 @@ export const db = {
 
       state.userProfiles[userId] = { ...existing, ...updates };
 
-      // Sync display name with curUser & state.users if present
+      // Sync display name with curUser & state.users if present.
+      // Never mutate the object from db.auth.getUser(): in core-auth mode it
+      // is frozen (Object.freeze), so `curUser.name = ...` throws
+      // "Cannot assign to read only property 'name'" and the whole save fails.
       if (updates.display_name && curUser) {
-        curUser.name = updates.display_name;
-        localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ ...curUser, name: updates.display_name }));
         const uIdx = (state.users || []).findIndex(
           (u) => u.id === curUser.id || u.email?.toLowerCase() === curUser?.email?.toLowerCase()
         );
         if (uIdx !== -1) {
-          state.users[uIdx].name = updates.display_name;
+          state.users[uIdx] = { ...state.users[uIdx], name: updates.display_name };
         }
       }
 
@@ -1351,8 +1353,8 @@ export const db = {
         task.completed = !task.completed;
         saveDatabase(state);
 
-        curUser.study_plan = plan;
-        localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+        // Never mutate the object from db.auth.getUser(): it is frozen in core-auth mode.
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ ...curUser, study_plan: plan }));
         window.dispatchEvent(new CustomEvent('sprach_db_change'));
         return true;
       }
@@ -1372,8 +1374,8 @@ export const db = {
       state.users[idx].study_plan = newPlan;
       saveDatabase(state);
 
-      curUser.study_plan = newPlan;
-      localStorage.setItem(AUTH_KEY, JSON.stringify(curUser));
+      // Never mutate the object from db.auth.getUser(): it is frozen in core-auth mode.
+      localStorage.setItem(AUTH_KEY, JSON.stringify({ ...curUser, study_plan: newPlan }));
       window.dispatchEvent(new CustomEvent('sprach_db_change'));
       return newPlan;
     },
