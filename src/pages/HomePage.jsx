@@ -138,17 +138,6 @@ export function HomePage() {
         />
       </div>
 
-      {/* Lộ trình telc B2 */}
-      <Link to="/b2" className="surface p-5 flex items-center gap-4 hover:border-accent/60 transition-colors">
-        <img src="/mascot/red-panda-mini.png" alt="Pandi" className="h-14 w-14 shrink-0 rounded-full object-cover border border-border" />
-        <span className="min-w-0 flex-1">
-          <span className="block eyebrow">Lộ trình telc B2 · 60 ngày</span>
-          <span className="block font-display text-xl font-bold text-foreground">Học telc B2 theo lộ trình — Pandi đồng hành</span>
-          <span className="block text-sm text-muted-foreground mt-0.5">Đề chẩn đoán Ngày 1 · 600 cụm từ có đồng nghĩa · Ngữ pháp B2 + nền B1 · Khung viết &amp; nói · Bảng điểm thi thử</span>
-        </span>
-        <ArrowRight className="w-5 h-5 shrink-0 text-accent" />
-      </Link>
-
       {/* Main Banner: Readiness + 4 Daily Quests */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Readiness Card */}
