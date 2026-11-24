@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Capi — mặt linh vật capybara đeo tai nghe">
+  <defs>
+    <radialGradient id="ca-bg" cx="68%" cy="20%" r="78%">
+      <stop offset="0%" stop-color="#3d2c1e"/>
+      <stop offset="48%" stop-color="#241a13"/>
+      <stop offset="100%" stop-color="#120d0a"/>
+    </radialGradient>
+    <radialGradient id="ca-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f0a35e" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#f0a35e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ca-fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d6ab7c"/>
+      <stop offset="55%" stop-color="#b3814f"/>
+      <stop offset="100%" stop-color="#8a5a35"/>
+    </linearGradient>
+    <radialGradient id="ca-muzzle" cx="50%" cy="38%" r="68%">
+      <stop offset="0%" stop-color="#eccfa6"/>
+      <stop offset="100%" stop-color="#c69a68"/>
+    </radialGradient>
+    <linearGradient id="ca-hp" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <radialGradient id="ca-cup" cx="35%" cy="28%" r="78%">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </radialGradient>
+    <linearGradient id="ca-scarf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34855f"/>
+      <stop offset="100%" stop-color="#1d5c40"/>
+    </linearGradient>
+    <filter id="ca-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <rect width="480" height="480" fill="url(#ca-bg)"/>
+  <circle cx="320" cy="130" r="125" fill="url(#ca-glow)"/>
+
+  <!-- Tai -->
+  <ellipse cx="132" cy="128" rx="30" ry="34" fill="#a9764f"/>
+  <ellipse cx="132" cy="130" rx="15" ry="19" fill="#8a5a35"/>
+  <ellipse cx="348" cy="122" rx="30" ry="34" fill="#a9764f"/>
+  <ellipse cx="348" cy="124" rx="15" ry="19" fill="#8a5a35"/>
+
+  <!-- Đầu -->
+  <ellipse cx="240" cy="238" rx="138" ry="128" fill="url(#ca-fur)"/>
+  <!-- Mõm sáng -->
+  <ellipse cx="258" cy="300" rx="92" ry="54" fill="url(#ca-muzzle)"/>
+
+  <!-- Mắt -->
+  <circle cx="184" cy="224" r="17" fill="#2b1a12"/>
+  <circle cx="296" cy="218" r="17" fill="#2b1a12"/>
+  <circle cx="190" cy="218" r="6" fill="#ffffff"/>
+  <circle cx="302" cy="212" r="6" fill="#ffffff"/>
+  <!-- Lông mày -->
+  <path d="M 168 196 Q 184 186 200 196" fill="none" stroke="#8a5a35" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 280 190 Q 296 180 312 190" fill="none" stroke="#8a5a35" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Mũi + miệng -->
+  <ellipse cx="262" cy="282" r="26" ry="19" fill="#4a3226"/>
+  <ellipse cx="254" cy="276" r="5" fill="#ffffff" opacity="0.5"/>
+  <path d="M 262 300 L 262 318" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 262 318 Q 262 336 236 332" fill="none" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 262 318 Q 262 336 288 332" fill="none" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <!-- Râu -->
+  <g stroke="#6b4a2f" stroke-width="2" stroke-linecap="round" opacity="0.45">
+    <line x1="150" y1="296" x2="192" y2="302"/>
+    <line x1="152" y1="314" x2="192" y2="312"/>
+    <line x1="362" y1="292" x2="322" y2="298"/>
+    <line x1="360" y1="310" x2="322" y2="308"/>
+  </g>
+
+  <!-- Viền sáng ấm bên phải -->
+  <path d="M 366 150 Q 382 230 366 308" fill="none" stroke="#f7b955" stroke-width="5" stroke-linecap="round" opacity="0.85" filter="url(#ca-soft)"/>
+
+  <!-- Tai nghe: vòng qua đầu -->
+  <path d="M 92 224 Q 84 104 240 102 Q 396 104 388 218" fill="none" stroke="url(#ca-hp)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M 106 192 Q 102 120 240 118" fill="none" stroke="#5eead4" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <!-- Củ tai -->
+  <rect x="64" y="180" width="56" height="108" rx="26" fill="#0f766e"/>
+  <rect x="75" y="195" width="34" height="78" rx="17" fill="url(#ca-cup)"/>
+  <rect x="360" y="174" width="56" height="108" rx="26" fill="#0f766e"/>
+  <rect x="371" y="189" width="34" height="78" rx="17" fill="url(#ca-cup)"/>
+
+  <!-- Khăn xanh -->
+  <path d="M 118 368 Q 240 400 362 366 L 366 404 Q 240 438 114 406 Z" fill="url(#ca-scarf)"/>
+  <g stroke="#123f2c" stroke-width="3" stroke-linecap="round" opacity="0.55">
+    <line x1="160" y1="378" x2="156" y2="402"/>
+    <line x1="204" y1="386" x2="202" y2="410"/>
+    <line x1="248" y1="388" x2="248" y2="412"/>
+    <line x1="292" y1="384" x2="296" y2="408"/>
+    <line x1="332" y1="376" x2="338" y2="398"/>
+  </g>
+  <!-- Thẻ tên CAPI -->
+  <circle cx="240" cy="428" r="24" fill="#eab308" stroke="#b45309" stroke-width="2"/>
+  <text x="240" y="434" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#422006">CAPI</text>
+</svg>

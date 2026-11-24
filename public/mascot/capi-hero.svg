@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 720" role="img" aria-label="Capi — linh vật capybara đeo tai nghe, quàng khăn xanh">
+  <defs>
+    <radialGradient id="ch-bg" cx="68%" cy="20%" r="78%">
+      <stop offset="0%" stop-color="#3d2c1e"/>
+      <stop offset="48%" stop-color="#241a13"/>
+      <stop offset="100%" stop-color="#120d0a"/>
+    </radialGradient>
+    <radialGradient id="ch-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f0a35e" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#f0a35e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ch-fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d6ab7c"/>
+      <stop offset="55%" stop-color="#b3814f"/>
+      <stop offset="100%" stop-color="#8a5a35"/>
+    </linearGradient>
+    <linearGradient id="ch-fur-dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9c6b3f"/>
+      <stop offset="100%" stop-color="#6e4423"/>
+    </linearGradient>
+    <radialGradient id="ch-muzzle" cx="50%" cy="38%" r="68%">
+      <stop offset="0%" stop-color="#eccfa6"/>
+      <stop offset="100%" stop-color="#c69a68"/>
+    </radialGradient>
+    <linearGradient id="ch-hp" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <radialGradient id="ch-cup" cx="35%" cy="28%" r="78%">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </radialGradient>
+    <linearGradient id="ch-scarf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34855f"/>
+      <stop offset="100%" stop-color="#1d5c40"/>
+    </linearGradient>
+    <filter id="ch-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- Nền tối + hào quang ấm -->
+  <rect width="560" height="720" fill="url(#ch-bg)"/>
+  <circle cx="380" cy="160" r="150" fill="url(#ch-glow)"/>
+  <g fill="#f5b942" opacity="0.16">
+    <circle cx="88" cy="118" r="10"/>
+    <circle cx="492" cy="88" r="7"/>
+    <circle cx="58" cy="300" r="6"/>
+    <circle cx="512" cy="330" r="9"/>
+    <circle cx="120" cy="480" r="5"/>
+  </g>
+
+  <!-- Bóng dưới chân -->
+  <ellipse cx="280" cy="672" rx="195" ry="24" fill="#000000" opacity="0.45" filter="url(#ch-soft)"/>
+
+  <!-- Chồng sách góc phải -->
+  <g>
+    <rect x="396" y="614" width="132" height="26" rx="4" fill="#7c3f21"/>
+    <rect x="396" y="614" width="12" height="26" fill="#5d2d15"/>
+    <rect x="404" y="588" width="120" height="26" rx="4" fill="#2f5d3a"/>
+    <rect x="404" y="588" width="12" height="26" fill="#22472c"/>
+    <rect x="412" y="562" width="106" height="26" rx="4" fill="#8a6d1f"/>
+    <rect x="412" y="562" width="12" height="26" fill="#6b5417"/>
+    <text x="424" y="631" font-family="Georgia, serif" font-size="11" letter-spacing="1" fill="#f3e2c7">DEUTSCH</text>
+    <text x="430" y="605" font-family="Georgia, serif" font-size="11" letter-spacing="1" fill="#dcead9">GRAMMATIK</text>
+  </g>
+  <!-- Bánh pretzel trên sách -->
+  <g transform="translate(465 542)" fill="none" stroke="#d99a55" stroke-width="9" stroke-linecap="round">
+    <path d="M-16 8 C-16 -12 16 -12 16 8 C16 18 6 20 -1 12"/>
+    <path d="M-1 12 C-6 4 -14 10 -16 8"/>
+    <path d="M-1 12 C4 18 12 16 14 10"/>
+  </g>
+
+  <!-- Thân -->
+  <ellipse cx="278" cy="530" rx="158" ry="132" fill="url(#ch-fur-dark)"/>
+  <ellipse cx="278" cy="556" rx="100" ry="82" fill="#c99a68" opacity="0.5"/>
+
+  <!-- Tay phải giơ chào -->
+  <path d="M 402 478 Q 438 410 448 344" fill="none" stroke="url(#ch-fur-dark)" stroke-width="46" stroke-linecap="round"/>
+  <ellipse cx="450" cy="316" rx="27" ry="42" fill="url(#ch-fur)" transform="rotate(-14 450 316)"/>
+  <g stroke="#7a4e28" stroke-width="3" stroke-linecap="round" opacity="0.6">
+    <line x1="440" y1="284" x2="444" y2="302"/>
+    <line x1="452" y1="282" x2="454" y2="300"/>
+  </g>
+  <!-- Chân trước trái -->
+  <ellipse cx="176" cy="612" rx="34" ry="22" fill="#a9764f"/>
+  <!-- Vệt lông sáng trên thân -->
+  <path d="M 150 470 Q 170 540 150 610" fill="none" stroke="#d6ab7c" stroke-width="5" stroke-linecap="round" opacity="0.35"/>
+  <g stroke="#7a4e28" stroke-width="3" stroke-linecap="round" opacity="0.45">
+    <path d="M 330 470 Q 344 520 332 580"/>
+    <path d="M 355 480 Q 366 530 356 585"/>
+  </g>
+
+  <!-- Tai -->
+  <ellipse cx="172" cy="142" rx="27" ry="31" fill="#a9764f"/>
+  <ellipse cx="172" cy="144" rx="14" ry="18" fill="#8a5a35"/>
+  <ellipse cx="378" cy="136" rx="27" ry="31" fill="#a9764f"/>
+  <ellipse cx="378" cy="138" rx="14" ry="18" fill="#8a5a35"/>
+
+  <!-- Đầu -->
+  <ellipse cx="276" cy="248" rx="128" ry="118" fill="url(#ch-fur)"/>
+  <!-- Mõm sáng (lệch phải — góc 3/4) -->
+  <ellipse cx="296" cy="306" rx="86" ry="50" fill="url(#ch-muzzle)"/>
+
+  <!-- Mắt -->
+  <circle cx="228" cy="232" r="16" fill="#2b1a12"/>
+  <circle cx="326" cy="226" r="16" fill="#2b1a12"/>
+  <circle cx="234" cy="226" r="6" fill="#ffffff"/>
+  <circle cx="332" cy="220" r="6" fill="#ffffff"/>
+  <!-- Lông mày -->
+  <path d="M 212 204 Q 228 194 244 204" fill="none" stroke="#8a5a35" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 310 198 Q 326 188 342 198" fill="none" stroke="#8a5a35" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Mũi + miệng -->
+  <ellipse cx="300" cy="290" rx="25" ry="18" fill="#4a3226"/>
+  <ellipse cx="292" cy="284" r="5" fill="#ffffff" opacity="0.5"/>
+  <path d="M 300 308 L 300 324" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 300 324 Q 300 340 276 336" fill="none" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 300 324 Q 300 340 324 336" fill="none" stroke="#4a3226" stroke-width="4" stroke-linecap="round"/>
+  <!-- Râu -->
+  <g stroke="#6b4a2f" stroke-width="2" stroke-linecap="round" opacity="0.45">
+    <line x1="196" y1="302" x2="236" y2="308"/>
+    <line x1="198" y1="320" x2="236" y2="318"/>
+    <line x1="396" y1="298" x2="356" y2="304"/>
+    <line x1="394" y1="316" x2="356" y2="314"/>
+  </g>
+
+  <!-- Viền sáng ấm bên phải (rim light) -->
+  <g fill="none" stroke="#f7b955" stroke-width="5" stroke-linecap="round" opacity="0.85" filter="url(#ch-soft)">
+    <path d="M 392 168 Q 408 240 392 312"/>
+    <path d="M 424 462 Q 440 540 414 616"/>
+  </g>
+
+  <!-- Tai nghe: vòng qua đầu -->
+  <path d="M 128 232 Q 120 112 276 112 Q 432 112 424 226" fill="none" stroke="url(#ch-hp)" stroke-width="20" stroke-linecap="round"/>
+  <path d="M 140 202 Q 136 128 276 126" fill="none" stroke="#5eead4" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <!-- Củ tai -->
+  <rect x="102" y="188" width="52" height="102" rx="24" fill="#0f766e"/>
+  <rect x="112" y="202" width="32" height="74" rx="16" fill="url(#ch-cup)"/>
+  <rect x="398" y="182" width="52" height="102" rx="24" fill="#0f766e"/>
+  <rect x="408" y="196" width="32" height="74" rx="16" fill="url(#ch-cup)"/>
+
+  <!-- Khăn xanh -->
+  <path d="M 158 372 Q 276 402 396 368 L 400 402 Q 276 436 154 406 Z" fill="url(#ch-scarf)"/>
+  <g stroke="#123f2c" stroke-width="3" stroke-linecap="round" opacity="0.55">
+    <line x1="196" y1="382" x2="192" y2="404"/>
+    <line x1="238" y1="390" x2="236" y2="412"/>
+    <line x1="282" y1="392" x2="282" y2="414"/>
+    <line x1="326" y1="388" x2="330" y2="410"/>
+    <line x1="366" y1="380" x2="372" y2="400"/>
+  </g>
+  <!-- Đuôi khăn buông xuống -->
+  <path d="M 336 398 L 392 394 L 384 486 Q 360 496 340 486 Z" fill="url(#ch-scarf)"/>
+  <g stroke="#123f2c" stroke-width="3" stroke-linecap="round" opacity="0.55">
+    <line x1="352" y1="408" x2="350" y2="478"/>
+    <line x1="370" y1="406" x2="372" y2="478"/>
+  </g>
+  <g stroke="#1d5c40" stroke-width="4" stroke-linecap="round">
+    <line x1="346" y1="488" x2="344" y2="500"/>
+    <line x1="360" y1="490" x2="360" y2="502"/>
+    <line x1="374" y1="488" x2="376" y2="500"/>
+  </g>
+
+  <!-- Thẻ tên CAPI -->
+  <circle cx="252" cy="440" r="27" fill="#eab308" stroke="#b45309" stroke-width="2"/>
+  <text x="252" y="446" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#422006">CAPI</text>
+</svg>

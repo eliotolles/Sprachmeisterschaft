@@ -152,6 +152,12 @@ export function HomePage() {
     const sorted = [...allEpisodes].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     return sorted[0];
   }, [allEpisodes]);
+  // Hai bài nghe kế tiếp trong thư viện (hàng "Tiếp theo / Sau đó" của thẻ nghe)
+  const nextEpisodes = useMemo(() => {
+    if (!allEpisodes.length) return [];
+    const sorted = [...allEpisodes].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    return sorted.slice(1, 3);
+  }, [allEpisodes]);
 
   const dueWords = dueCards.slice(0, 3);
 
@@ -160,15 +166,15 @@ export function HomePage() {
     ? `/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`
     : '/skills/listening';
   const dockItems = [
-    { id: 'start', label: 'Start', icon: Home, path: '/' },
-    { id: 'bibliothek', label: 'Bibliothek', icon: Library, path: '/skills/listening' },
-    { id: 'hoeren', label: 'Hören', icon: Headphones, path: hoerenPath },
-    { id: 'wortschatz', label: 'Wortschatz', icon: BookMarked, path: '/vocabulary' },
-    { id: 'grammatik', label: 'Grammatik', icon: BookOpen, path: '/b2' },
-    { id: 'b2', label: 'Lộ trình B2', icon: GraduationCap, path: '/b2' },
-    { id: 'statistik', label: 'Statistik', icon: TrendingUp, path: '/progress' },
-    { id: 'tools', label: 'Công cụ', icon: Wrench, path: '/skills/listening/personal' },
-    { id: 'settings', label: 'Einstellungen', icon: Settings, path: '/me/settings' },
+    { id: 'start', label: 'Start', icon: Home, path: '/', tile: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+    { id: 'bibliothek', label: 'Bibliothek', icon: Library, path: '/skills/listening', tile: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+    { id: 'hoeren', label: 'Hören', icon: Headphones, path: hoerenPath, tile: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
+    { id: 'wortschatz', label: 'Wortschatz', icon: BookMarked, path: '/vocabulary', tile: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
+    { id: 'grammatik', label: 'Grammatik', icon: BookOpen, path: '/b2', tile: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+    { id: 'b2', label: 'Lộ trình B2', icon: GraduationCap, path: '/b2', tile: 'bg-pink-500/15 text-pink-400 border-pink-500/30' },
+    { id: 'statistik', label: 'Statistik', icon: TrendingUp, path: '/progress', tile: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
+    { id: 'tools', label: 'Công cụ', icon: Wrench, path: '/skills/listening/personal', tile: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30' },
+    { id: 'settings', label: 'Einstellungen', icon: Settings, path: '/me/settings', tile: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30' },
   ];
   const isDockActive = (item) => {
     if (item.id === 'start') return currentPath === '/' || currentPath === '';
@@ -194,121 +200,131 @@ export function HomePage() {
 
   return (
     <div className="space-y-5 md:space-y-6 animate-rise">
-      {/* Hero: chào + Capi + số liệu tổng quan */}
-      <section className="dash-glass relative overflow-hidden p-5 md:p-7">
+      {/* Hero: chào + Capi 3D + số liệu tổng quan — bố cục 1:1 bản demo */}
+      <section className="dash-glass relative overflow-hidden">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{ background: 'radial-gradient(620px circle at 85% 0%, rgba(217, 84, 50, 0.30), transparent 65%)' }}
         />
-        <div className="relative flex flex-col md:flex-row gap-5 md:gap-6 items-center">
-          <div className="flex-1 min-w-0 w-full">
-            <div className="eyebrow">Sprachmeisterschaft · Dashboard</div>
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground mt-1">
-              {greeting}, {profile.display_name || 'Học viên'}!
-            </h1>
-            <p className="font-body text-sm text-muted-foreground mt-1">
-              {greetingVi} · Mục tiêu {profile.target_level || 'B1'} · Kỳ thi còn D-{diffDays} ngày · Hôm nay là Tag {b2Day} của lộ trình telc B2.
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
-              {heroStats.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <div key={s.label} className="rounded-lg border border-border/60 bg-white/[0.04] px-3 py-2.5">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                      <Icon className="w-3.5 h-3.5 text-accent" />
-                      <span>{s.label}</span>
-                    </div>
-                    <div className="font-display text-lg md:text-xl font-bold text-foreground mt-0.5">{s.value}</div>
-                  </div>
-                );
-              })}
+        <div className="relative flex flex-col lg:flex-row">
+          <div className="flex-1 min-w-0 p-5 md:p-7">
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full border border-accent/40 bg-accent/10 text-accent">
+                Lộ trình telc B2 · Tag {b2Day}/60
+              </span>
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full border border-border/70 bg-white/[0.05] text-foreground/85">
+                Chủ điểm hôm nay: {todayPlan.focus}
+              </span>
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full border border-border/70 bg-white/[0.05] text-foreground/85">
+                {grammarToday.name.split('—')[0].trim()} đang học
+              </span>
             </div>
+            <h1 className="font-display text-3xl md:text-[2.6rem] leading-tight font-bold text-foreground mt-4">
+              {greeting}, {profile.display_name || 'Học viên'}.
+              <span className="block italic text-accent">Weiter geht's!</span>
+            </h1>
+            <p className="font-body text-sm text-muted-foreground mt-3 leading-relaxed max-w-xl">
+              Hôm nay anh học tiếp ngày {b2Day} của lộ trình 60 ngày: nghe bài {latestEpisode ? (latestEpisode.deTitle || latestEpisode.title) : 'mới nhất trong thư viện'}, ôn {cardsLoaded ? `${dueCards.length} thẻ đến hạn` : 'thẻ đến hạn'} và chạm vào {grammarToday.name.split('—')[0].trim()}.
+            </p>
             <div className="flex flex-wrap gap-2.5 mt-5">
+              <button
+                type="button"
+                onClick={() => navigate(latestEpisode ? `/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}` : '/skills/listening')}
+                className="tap px-4 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg shadow-sm inline-flex items-center gap-2"
+              >
+                <Play className="w-4 h-4" />
+                <span>Nghe tiếp bài đang học</span>
+              </button>
               <Link
                 to="/review"
-                className="tap px-4 py-2 bg-accent hover:bg-accent/90 text-accent-foreground font-medium text-sm rounded-lg shadow-sm inline-flex items-center gap-2"
+                className="tap px-4 py-2.5 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-sm font-medium rounded-lg inline-flex items-center gap-2"
               >
-                <RotateCw className="w-4 h-4" />
-                <span>{cardsLoaded ? `Ôn ${dueCards.length} thẻ đến hạn` : 'Đang tải số thẻ…'}</span>
-              </Link>
-              <Link
-                to="/b2"
-                className="tap px-4 py-2 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-sm font-medium rounded-lg inline-flex items-center gap-2"
-              >
-                <GraduationCap className="w-4 h-4 text-accent" />
-                <span>Lộ trình B2 · Tag {b2Day}</span>
+                <RotateCw className="w-4 h-4 text-accent" />
+                <span>Ôn từ vựng hôm nay</span>
               </Link>
             </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-6">
+              {heroStats.map((s) => (
+                <div key={s.label} className="rounded-lg border border-border/60 bg-white/[0.04] px-3 py-2.5">
+                  <div className="font-display text-lg md:text-xl font-bold text-foreground">{s.value}</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">{s.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="shrink-0 text-center">
+          <div className="relative shrink-0 lg:w-[340px] xl:w-[380px]">
             <img
-              src="/mascot/capi.svg"
+              src="/mascot/capi-hero.svg"
               alt="Capi — linh vật capybara của Sprachmeisterschaft"
-              className="dash-float h-44 w-44 md:h-56 md:w-56 rounded-2xl object-cover border border-border/60 shadow-xl"
+              className="dash-float h-72 w-full lg:h-full object-cover object-[center_18%]"
+              loading="eager"
+              decoding="async"
             />
-            <div className="mt-2 text-xs font-mono text-muted-foreground">
-              Capi · linh vật học cùng bạn
+            <div className="dash-bubble absolute bottom-3 left-3 right-3 rounded-xl bg-black/55 backdrop-blur-md border border-white/15 px-3.5 py-2.5">
+              <div className="text-[13px] font-semibold text-white">Capi sagt: „Langsam, aber jeden Tag."</div>
+              <div className="text-xs text-white/75 mt-0.5">Chậm cũng được, miễn là ngày nào cũng học. Capi chờ anh ở thẻ từ vựng bên dưới đó.</div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Hàng 2: bài nghe + kế hoạch B2 hôm nay | sẵn sàng thi */}
+      {/* Hàng 2: bài nghe tiếp theo + panel Start — bố cục 1:1 bản demo */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          {/* Bài nghe tiếp theo */}
-          <section className="dash-glass p-5 md:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="eyebrow">Luyện nghe · Hören</div>
-                <h2 className="font-display text-xl font-bold text-foreground mt-0.5">Bài nghe tiếp theo</h2>
-              </div>
-              <Link to="/skills/listening" className="tap text-xs font-mono text-accent hover:underline inline-flex items-center gap-1 shrink-0">
-                <span>Thư viện nghe</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
+        {/* Bài nghe tiếp theo */}
+        <section className="dash-glass p-5 md:p-6 lg:col-span-2">
+            <div className="eyebrow">Tiếp tục học · Hören</div>
             {latestEpisode ? (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-4">
-                <button
-                  type="button"
-                  onClick={() => navigate(`/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`)}
-                  className="tap w-14 h-14 shrink-0 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center shadow-lg"
-                  title="Mở trình nghe"
-                >
-                  <Play className="w-6 h-6 ml-0.5" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <div className="font-heading font-semibold text-foreground truncate">
-                    {latestEpisode.deTitle || latestEpisode.title}
+              <>
+                <div className="flex items-start justify-between gap-4 mt-1">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-xl md:text-2xl font-bold text-foreground truncate">
+                      {latestEpisode.deTitle || latestEpisode.title}
+                    </h2>
+                    <p className="font-body text-xs text-muted-foreground mt-1 truncate">
+                      {latestEpisode.collection?.title || 'Luyện nghe'}
+                      {latestEpisode.level ? ` · ${latestEpisode.level}` : ''}
+                      {latestEpisode.subtitles?.length ? ` · ${latestEpisode.subtitles.length} câu phụ đề · Bấm vào từng từ để tra` : ''}
+                      {latestEpisode.quiz?.length ? ` · ${latestEpisode.quiz.length} câu quiz` : ''}
+                    </p>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {latestEpisode.collection?.title || 'Luyện nghe'}
-                    {latestEpisode.level ? ` · ${latestEpisode.level}` : ''}
-                    {latestEpisode.duration ? ` · ${latestEpisode.duration}` : ''}
-                    {latestEpisode.subtitles?.length ? ` · ${latestEpisode.subtitles.length} câu phụ đề` : ''}
-                    {latestEpisode.quiz?.length ? ` · ${latestEpisode.quiz.length} câu quiz` : ''}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`)}
+                    className="tap w-14 h-14 shrink-0 rounded-full bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center shadow-lg"
+                    title="Mở trình nghe"
+                  >
+                    <Play className="w-6 h-6 ml-0.5" />
+                  </button>
+                </div>
+                <div className="mt-5">
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full rounded-full bg-accent" style={{ width: '0%' }} />
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}`)}
-                      className="tap px-3.5 py-1.5 bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-medium rounded-lg inline-flex items-center gap-1.5"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Nghe ngay</span>
-                    </button>
-                    <Link
-                      to="/skills/listening"
-                      className="tap px-3.5 py-1.5 border border-border bg-white/[0.05] hover:bg-white/10 text-foreground text-xs font-medium rounded-lg inline-flex items-center gap-1.5"
-                    >
-                      <Headphones className="w-3.5 h-3.5 text-accent" />
-                      <span>Chọn bài khác</span>
-                    </Link>
+                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground mt-1.5">
+                    <span>0:00</span>
+                    <span>{latestEpisode.duration || '03:00'}</span>
                   </div>
                 </div>
-              </div>
+                {nextEpisodes.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-4">
+                    {nextEpisodes.map((ep, idx) => (
+                      <button
+                        key={ep.id || idx}
+                        type="button"
+                        onClick={() => navigate(`/skills/listening/${ep.collectionId}/${ep.id}`)}
+                        className="tap text-left rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2.5"
+                      >
+                        <div className="text-[11px] font-mono text-muted-foreground">{idx === 0 ? 'Tiếp theo' : 'Sau đó'}</div>
+                        <div className="font-heading font-semibold text-sm text-foreground truncate mt-0.5">
+                          {ep.deTitle || ep.title}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{ep.duration || '03:00'}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="mt-4 text-sm text-muted-foreground">
                 Chưa có bài nghe nào trong thư viện.
@@ -319,12 +335,73 @@ export function HomePage() {
             )}
           </section>
 
+        {/* Panel Start: tổng quan ngày học hôm nay — 1:1 bản demo */}
+        <section className="dash-glass p-5 md:p-6 flex flex-col">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+              <Home className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-bold text-foreground leading-tight">Start</h2>
+              <p className="text-[11px] text-muted-foreground">Trang chủ · Tổng quan ngày học hôm nay của anh.</p>
+            </div>
+          </div>
+          <div className="space-y-2.5 mt-4 flex-1">
+            <Link
+              to="/b2"
+              className="tap flex items-start gap-3 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2.5"
+            >
+              <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <span className="min-w-0">
+                <span className="block font-heading font-semibold text-sm text-foreground">Lộ trình telc B2</span>
+                <span className="block text-[11px] text-muted-foreground">Tag {b2Day}/60 · đang học</span>
+              </span>
+            </Link>
+            <Link
+              to="/review"
+              className="tap flex items-start gap-3 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2.5"
+            >
+              <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <span className="min-w-0">
+                <span className="block font-heading font-semibold text-sm text-foreground">Từ vựng hôm nay</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {cardsLoaded ? `${dueCards.length} thẻ đến hạn` : 'Đang tải…'}
+                </span>
+              </span>
+            </Link>
+            <Link
+              to={latestEpisode ? `/skills/listening/${latestEpisode.collectionId}/${latestEpisode.id}` : '/skills/listening'}
+              className="tap flex items-start gap-3 rounded-lg border border-border/60 bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2.5"
+            >
+              <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+              <span className="min-w-0">
+                <span className="block font-heading font-semibold text-sm text-foreground">Bài nghe đang mở</span>
+                <span className="block text-[11px] text-muted-foreground truncate">
+                  {latestEpisode ? (latestEpisode.deTitle || latestEpisode.title) : 'Chưa có bài nghe'}
+                </span>
+              </span>
+            </Link>
+          </div>
+          <Link
+            to="/b2"
+            className="tap mt-4 px-4 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-medium rounded-lg inline-flex items-center justify-center gap-2"
+          >
+            <span>Tiếp tục học Tag {b2Day}</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </section>
+      </div>
+
+      {/* Hàng 3: kế hoạch B2 hôm nay + sẵn sàng thi */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2">
           {/* Kế hoạch B2 hôm nay */}
           <section className="dash-glass p-5 md:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="eyebrow">Lộ trình telc B2 · Tag {b2Day}/60</div>
-                <h2 className="font-display text-xl font-bold text-foreground mt-0.5">{todayPlan.focus}</h2>
+                <div className="eyebrow">Heute · Tag {b2Day}</div>
+                <h2 className="font-display text-xl font-bold text-foreground mt-0.5">Kế hoạch học hôm nay</h2>
+                <div className="text-xs text-muted-foreground mt-0.5">{todayPlan.focus} · Lộ trình telc B2 {b2Day}/60</div>
               </div>
               <Link to="/b2" className="tap text-xs font-mono text-accent hover:underline inline-flex items-center gap-1 shrink-0">
                 <span>Mở lộ trình</span>
@@ -595,7 +672,7 @@ export function HomePage() {
         )}
       </section>
 
-      {/* Hàng 3: từ vựng · ngữ pháp · điểm số */}
+      {/* Hàng 5: từ vựng · ngữ pháp · điểm số */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Từ vựng */}
         <section className="dash-glass p-5 flex flex-col">
@@ -691,7 +768,7 @@ export function HomePage() {
         </section>
       </div>
 
-      {/* Hàng 4: thử thách trò chơi + ELIO */}
+      {/* Hàng 6: thử thách trò chơi + ELIO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <section className="dash-glass p-5 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
@@ -762,8 +839,32 @@ export function HomePage() {
         </section>
       )}
 
-      {/* Khoảng trống cho dock cố định */}
-      <div aria-hidden className="h-20 md:h-24" />
+      {/* Dock module (mobile): hàng tĩnh, tự xuống dòng — giống bản mobile của demo */}
+      <nav aria-label="Module chính" className="dash-glass md:hidden flex flex-wrap justify-center gap-1.5 px-3 py-2.5">
+        {dockItems.map((item) => {
+          const Icon = item.icon;
+          const active = isDockActive(item);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => navigate(item.path)}
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              className={`tap relative flex items-center justify-center w-11 h-11 rounded-xl border ${
+                active
+                  ? 'bg-accent text-accent-foreground shadow-lg border-accent'
+                  : `${item.tile}`
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Khoảng trống cho dock cố định (desktop) */}
+      <div aria-hidden className="hidden md:block h-24" />
 
       {/* Dock module (desktop) — portal ra body để position:fixed neo theo
           viewport, không bị .animate-rise của main/HomePage (transform
@@ -781,10 +882,10 @@ export function HomePage() {
                 title={item.label}
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
-                className={`dash-dock-item relative flex flex-col items-center justify-center w-12 h-12 rounded-xl ${
+                className={`dash-dock-item relative flex flex-col items-center justify-center w-12 h-12 rounded-xl border ${
                   active
-                    ? 'bg-accent text-accent-foreground shadow-lg'
-                    : 'text-foreground/75 hover:bg-white/10 hover:text-foreground'
+                    ? 'bg-accent text-accent-foreground shadow-lg border-accent'
+                    : `${item.tile} hover:bg-white/10`
                 }`}
               >
                 <Icon className="w-5 h-5" />
