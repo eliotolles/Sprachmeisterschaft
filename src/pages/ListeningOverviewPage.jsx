@@ -7,11 +7,11 @@ import { db } from '@/lib/db';
 import {elioImport} from '@/lib/elio-import-runtime';
 import {listeningCoreActive,elioListening} from '@/lib/elio-listening-runtime';
 import { useRouter, Link } from '@/lib/router';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { UniversalImportModal } from '@/components/common/UniversalImportModal';
 import { LEVEL_IDS } from '@/data/levels';
 import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
+import './listening-elio.css';
 import {
   Headphones,
   Plus,
@@ -21,6 +21,7 @@ import {
   Sparkles,
   BookOpen,
   ArrowRight,
+  ArrowUpRight,
   Globe,
   Lock,
   User,
@@ -37,7 +38,17 @@ export function ListeningOverviewPage({ initialTab = null }) {
   const mode=listenParams.get('listenMode');
   const setMode=value=>{const next=new URLSearchParams(search);next.set('listenMode',value);next.delete('listenGroup');next.delete('listenLevel');next.delete('listenSearch');next.delete('listenCatalogLevel');navigate(currentPath+'?'+next.toString());};
     const [managing,setManaging]=useState(false),[creatingGroup,setCreatingGroup]=useState(false),[importTarget,setImportTarget]=useState(null),[groupBusy,setGroupBusy]=useState(false);
-  const selectedLevel='ALL'; const setSelectedLevel=()=>{};
+  const selectedLevel = listenParams.get('listenLevel') || 'ALL';
+  const setLevel = (level) => {
+    const next = new URLSearchParams(search);
+    next.set('listenMode', 'youtube');
+    if (level && level !== 'ALL') next.set('listenLevel', level);
+    else next.delete('listenLevel');
+    next.delete('listenGroup');
+    next.delete('listenSearch');
+    next.delete('listenCatalogLevel');
+    navigate(currentPath + '?' + next.toString());
+  };
   const activeScopeTab=listenParams.get('listenScope')==='personal'?'personal':listenParams.get('listenScope')==='all'?'all':initialTab||((currentPath.includes('personal'))?'personal':'all');
   const setActiveScopeTab=value=>{const next=new URLSearchParams(search);next.set('listenScope',value);for(const key of ['listenGroup','listenLevel','listenSearch','listenCatalogLevel'])next.delete(key);navigate(currentPath+'?'+next.toString());};
   const [collections, setCollections] = useState(() => db.listening.getCollections());
@@ -144,48 +155,44 @@ export function ListeningOverviewPage({ initialTab = null }) {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
-      <PageHeader
-        eyebrow="PHÒNG KỸ NĂNG NGÔN NGỮ"
-        title="Luyện nghe tiếng Đức"
-        deTitle="Hörverstehen & Video-Studio"
-        subtitle="Học qua video YouTube có phụ đề song ngữ Đức - Việt, đồng bộ thời gian thực theo lời nói, tự động dừng từng câu và chép chính tả chuẩn CEFR."
-        actions={
-          <div className="flex items-center gap-2">
-            {activeScopeTab === 'personal' ? (
-              <button
-                onClick={() => setIsImportOpen(true)}
-                className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
-                title="Dán link video YouTube vào kho cá nhân của bạn"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Thêm video cá nhân</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsImportOpen(true)}
-                className="tap px-3.5 py-1.5 rounded-sm bg-accent hover:bg-accent/90 text-accent-foreground font-mono text-xs font-semibold shadow-sm flex items-center gap-1.5"
-                title="Import video YouTube vào kho chung"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{isAdmin ? 'Import Video vào Kho chung (Publish)' : '+ Đóng góp Video'}</span>
-              </button>
-            )}
-          </div>
-        }
-      />
+    <div className="li-elio animate-rise">
+      {/* Header kiểu Elio: tiêu đề serif + nút import */}
+      <div className="li-row li-between">
+        <div>
+          <h1 className="li-page-title">Luyện nghe</h1>
+          <p className="li-page-sub">Học qua video YouTube có phụ đề song ngữ Đức - Việt, đồng bộ thời gian thực theo lời nói, tự động dừng từng câu và chép chính tả chuẩn CEFR.</p>
+        </div>
+        <button
+          onClick={() => setIsImportOpen(true)}
+          className="li-pill li-primary"
+          title={activeScopeTab === 'personal' ? 'Dán link video YouTube vào kho cá nhân của bạn' : 'Import video YouTube vào kho chung'}
+        >
+          <Plus className="w-4 h-4" />
+          <span>{activeScopeTab === 'personal' ? '+ Thêm video cá nhân' : (isAdmin ? 'Import Video vào Kho chung (Publish)' : '+ Đóng góp Video')}</span>
+        </button>
+      </div>
 
-      <section aria-label="Chế độ luyện nghe" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">{studioModes.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>item.id==='quiz'?navigate('/practice?skill=listening'):setMode(item.id)} className={'surface rounded-2xl border p-5 text-left min-h-44 flex flex-col gap-4 '+(mode===item.id?'border-accent':'border-border')}><Icon className="w-6 h-6 text-accent"/><div className="space-y-2"><h2 className="font-heading text-lg font-semibold">{item.title}</h2><p className="font-body text-sm text-muted-foreground leading-relaxed">{item.description} · {item.count} video</p></div></button>;})}</section>
+      <h2 className="li-section-title">Chọn cách học</h2>
+      <section aria-label="Chế độ luyện nghe" className="li-mode-grid">{studioModes.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>item.id==='quiz'?navigate('/practice?skill=listening'):setMode(item.id)} className={'li-mode-card'+(mode===item.id?' is-active':'')}><span className="li-mark"><Icon/></span><div><strong>{item.title}</strong><small>{item.description} · {item.count} video</small></div></button>;})}</section>
+
+      <h2 className="li-section-title">Theo cấp độ</h2>
+      <section aria-label="Lọc video theo cấp độ" className="li-mode-grid">
+        {['A1', 'A2', 'B1', 'B2'].map((lvl) => {
+          const count = allEpisodes.filter((e) => (e.collection.levels || [e.collection.level]).includes(lvl)).length;
+          return (
+            <button key={lvl} onClick={() => setLevel(lvl)} className={'li-mode-card' + (selectedLevel === lvl ? ' is-active' : '')}>
+              <span className="li-mark"><ArrowUpRight className="w-6 h-6" /></span>
+              <div><strong>{lvl}</strong><small>{count} video</small></div>
+            </button>
+          );
+        })}
+      </section>
       {/* Scope Navigation Tabs: Kho Chung vs Video Cá Nhân */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-2">
-        <div className="flex items-center gap-2">
+      <div className="li-row li-between" style={{ marginTop: 26, paddingBottom: 12, borderBottom: '1px solid var(--li-line)' }}>
+        <div className="li-row">
           <button
             onClick={() => setActiveScopeTab('all')}
-            className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
-              activeScopeTab === 'all'
-                ? 'bg-accent text-accent-foreground shadow-sm'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-            }`}
+            className={'li-pill' + (activeScopeTab === 'all' ? ' is-active' : '')}
           >
             <Globe className="w-4 h-4" />
             <span>Kho video chung toàn hệ thống</span>
@@ -193,11 +200,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
 
           <button
             onClick={() => setActiveScopeTab('personal')}
-            className={`tap px-4 py-2 rounded-sm text-xs font-mono font-bold flex items-center gap-2 transition-all ${
-              activeScopeTab === 'personal'
-                ? 'bg-accent text-accent-foreground shadow-sm'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-            }`}
+            className={'li-pill' + (activeScopeTab === 'personal' ? ' is-active' : '')}
           >
             <User className="w-4 h-4" />
             <span>Video cá nhân của tôi (My Videos)</span>
@@ -207,7 +210,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
         {activeScopeTab === 'personal' && (
           <button
             onClick={() => setIsImportOpen(true)}
-            className="tap px-3 py-1.5 rounded bg-accent/10 border border-accent/30 text-accent text-xs font-mono font-bold hover:bg-accent/20 flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+            className="li-pill li-sm"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>+ Bỏ video cá nhân vào đây</span>
@@ -216,14 +219,16 @@ export function ListeningOverviewPage({ initialTab = null }) {
       </div>
 
       {mode && (
-        <ListeningLibraryBrowser
-          collections={filteredCollections}
-          mode={mode}
-          onAdd={addToGroup}
-          onEdit={(col) => setEditingCollection({ ...col })}
-          onDelete={handleDeleteCollection}
-          canManage={(col) => isAdmin || col?.created_by === currentUser?.id || !col?.created_by}
-        />
+        <div className="li-lib" style={{ marginTop: 18 }}>
+          <ListeningLibraryBrowser
+            collections={filteredCollections}
+            mode={mode}
+            onAdd={addToGroup}
+            onEdit={(col) => setEditingCollection({ ...col })}
+            onDelete={handleDeleteCollection}
+            canManage={(col) => isAdmin || col?.created_by === currentUser?.id || !col?.created_by}
+          />
+        </div>
       )}
       <CreateCollectionDialog open={creatingGroup} onClose={()=>setCreatingGroup(false)} initialSkill="listening" onCreated={async folder=>{setCreatingGroup(false);setSelectedLevel('ALL');setActiveScopeTab(folder.visibility==='private'?'personal':'all');await elioListening()?.hydrate();navigate(currentPath+'?listenMode=youtube&listenGroup='+encodeURIComponent('folder-'+folder.id));toast.success('Đã tạo bộ nghe riêng. Chọn Thêm video vào bộ này.');}}/>
       {managing&&<ImportedContentManager onClose={()=>setManaging(false)}/>}
@@ -242,7 +247,7 @@ export function ListeningOverviewPage({ initialTab = null }) {
       {/* Edit Collection Modal */}
       {editingCollection && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="surface p-6 max-w-md w-full space-y-4 rounded-sm border border-border shadow-2xl">
+          <div className="surface li-modal-card p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="font-display text-lg font-bold text-foreground">
                 Chỉnh sửa bộ video luyện nghe

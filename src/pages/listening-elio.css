@@ -1,0 +1,475 @@
+/* ------------------------------------------------------------------
+   Luyện nghe — giao diện Elio Einfach (1:1 với elio-einfach)
+   Phạm vi: chỉ bọc trong .li-elio (2 trang Luyện nghe). Không đụng tới
+   shell macOS, không đổi biến theme toàn cục. Màu cố định (kem + xanh
+   lá #286747) để luôn giống bản gốc, kể cả khi app đang ở dark mode.
+   ------------------------------------------------------------------ */
+.li-elio {
+  --li-bg: #f7f3e8;
+  --li-card: #fffdf6;
+  --li-accent: #286747;
+  --li-accent-dark: #1f5138;
+  --li-muted: #666b62;
+  --li-ink: #20221e;
+  --li-line: rgba(32, 34, 30, 0.14);
+  --li-sage: #e6efe7;
+  --li-serif: 'Lora', Georgia, 'Times New Roman', serif;
+
+  /* Ghi đè biến theme của app CHỈ trong phạm vi này: mọi class Tailwind
+     (bg-card, bg-accent, text-muted-foreground, border-border...) tự
+     render theo bảng màu Elio mà không cần sửa logic. */
+  --background: 44 48% 94%;
+  --foreground: 90 6% 13%;
+  --card: 47 100% 98%;
+  --card-foreground: 90 6% 13%;
+  --primary: 150 44% 28%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 44 42% 89%;
+  --secondary-foreground: 90 6% 13%;
+  --muted: 44 42% 89%;
+  --muted-foreground: 93 4% 40%;
+  --accent: 150 44% 28%;
+  --accent-foreground: 0 0% 100%;
+  --border: 46 15% 83%;
+  --input: 46 15% 83%;
+  --ring: 150 44% 28%;
+
+  background: var(--li-bg);
+  color: var(--li-ink);
+  /* Tràn ra mép cửa sổ macOS (main có padding p-4/md:p-6/lg:p-8). */
+  margin: -1rem;
+  padding: 1rem;
+  min-height: 60vh;
+  border-radius: 0 0 16px 16px;
+}
+@media (min-width: 768px) {
+  .li-elio { margin: -1.5rem; padding: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .li-elio { margin: -2rem; padding: 2rem; }
+}
+.li-elio * { box-sizing: border-box; }
+.li-elio button:focus-visible,
+.li-elio a:focus-visible,
+.li-elio input:focus-visible,
+.li-elio select:focus-visible,
+.li-elio textarea:focus-visible {
+  outline: 3px solid var(--li-accent);
+  outline-offset: 2px;
+}
+.li-elio button:disabled { opacity: 0.48; cursor: not-allowed; }
+
+/* ---------- Tiêu đề serif kiểu Elio ---------- */
+.li-elio .li-page-title {
+  font-family: var(--li-serif);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--li-ink);
+  margin: 4px 0 6px;
+}
+.li-elio .li-page-sub {
+  color: var(--li-muted);
+  font-size: 0.95em;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 46rem;
+}
+.li-elio .li-section-title {
+  font-family: var(--li-serif);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--li-ink);
+  margin: 26px 0 14px;
+}
+.li-elio .li-section-title:first-child { margin-top: 6px; }
+
+/* ---------- Nút pill kiểu Elio ---------- */
+.li-elio .li-pill {
+  padding: 10px 14px;
+  min-height: 43px;
+  border: 1px solid var(--li-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--li-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  white-space: nowrap;
+}
+.li-elio .li-pill:hover { border-color: var(--li-accent); }
+.li-elio .li-pill.is-active,
+.li-elio .li-pill.li-primary {
+  background: var(--li-accent) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+.li-elio .li-pill.li-primary:hover { background: var(--li-accent-dark) !important; }
+.li-elio .li-pill.li-sm {
+  padding: 7px 11px;
+  min-height: 36px;
+  font-size: 0.88em;
+}
+.li-elio .li-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.li-elio .li-between { justify-content: space-between; }
+.li-elio .li-tools { margin: 12px 0; }
+.li-elio .li-status {
+  padding: 10px 0;
+  line-height: 1.55;
+  color: var(--li-muted);
+  overflow-wrap: anywhere;
+}
+.li-elio .li-status:empty { display: none; }
+.li-elio .li-muted { color: var(--li-muted); font-size: 0.92em; }
+
+/* ---------- Lưới thẻ chế độ / cấp độ ---------- */
+.li-elio .li-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.li-elio .li-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--li-line);
+  border-radius: 14px;
+  background: var(--li-card);
+  color: inherit;
+  text-decoration: none;
+  padding: 22px;
+  min-height: 145px;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+}
+.li-elio .li-mode-card:hover { border-color: var(--li-accent); }
+.li-elio .li-mode-card.is-active {
+  border-color: var(--li-accent);
+  box-shadow: 0 0 0 1px var(--li-accent);
+}
+.li-elio .li-mode-card .li-mark {
+  font-size: 26px;
+  color: var(--li-accent);
+  display: flex;
+  align-items: center;
+}
+.li-elio .li-mode-card .li-mark svg { width: 26px; height: 26px; }
+.li-elio .li-mode-card strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.4;
+  color: var(--li-ink);
+}
+.li-elio .li-mode-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--li-muted);
+  font-size: 0.92em;
+  line-height: 1.55;
+}
+
+/* ---------- Panel trắng ---------- */
+.li-elio .li-panel {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 16px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+/* ---------- Thư viện (ListeningLibraryBrowser) ---------- */
+.li-elio .li-lib section { border-radius: 14px; }
+.li-elio .li-lib h2,
+.li-elio .li-lib h3 { font-family: var(--li-serif); }
+.li-elio .li-lib input[type="search"],
+.li-elio .li-lib select {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 9px;
+  padding: 12px;
+  color: var(--li-ink);
+  font: inherit;
+}
+.li-elio .li-lib .surface { border-radius: 14px; }
+
+/* ---------- Trang học: lưới 2 cột video + phụ đề ---------- */
+.li-elio .li-study-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.li-elio .li-video-card {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 16px;
+  padding: 20px;
+}
+.li-elio .li-video-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.li-elio .li-video-head .li-thumb {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--li-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+.li-elio .li-video-title {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--li-ink);
+  margin: 0;
+}
+.li-elio .li-video-channel {
+  color: var(--li-muted);
+  font-size: 0.9em;
+  margin-top: 2px;
+}
+.li-elio .li-video-box {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #101712;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.li-elio .li-video-box iframe,
+.li-elio .li-video-box > div:first-child { width: 100%; height: 100%; border: 0; }
+.li-elio .li-video-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.li-elio .li-video-foot .li-time {
+  font-weight: 700;
+  color: var(--li-muted);
+  font-size: 0.95em;
+}
+.li-elio .li-next-video {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--li-muted);
+  padding: 4px;
+  text-align: right;
+}
+.li-elio .li-next-video img {
+  width: 74px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--li-line);
+}
+.li-elio .li-next-video strong {
+  display: block;
+  color: var(--li-ink);
+  font-size: 0.9em;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.li-elio .li-icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--li-muted);
+  font: inherit;
+  padding: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+}
+.li-elio .li-icon-btn:hover { color: var(--li-accent); background: var(--li-sage); }
+.li-elio .li-icon-btn.is-on { color: var(--li-accent); }
+
+/* Hộp phụ đề nổi trên video (giữ kiểu YouTube gọn sẵn có) */
+.li-elio .li-overlay-wrap { z-index: 20; }
+
+/* ---------- Danh sách câu phụ đề ---------- */
+.li-elio .li-sub-panel {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.li-elio .li-sub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--li-line);
+}
+.li-elio .li-sub-head .li-sub-count {
+  font-weight: 700;
+  font-size: 0.98em;
+  color: var(--li-ink);
+}
+.li-elio .li-subtitles {
+  max-height: min(68vh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.li-elio .li-cue {
+  padding: 15px;
+  border-bottom: 1px solid var(--li-line);
+  line-height: 1.65;
+  cursor: pointer;
+  position: relative;
+}
+.li-elio .li-cue:hover { background: rgba(40, 103, 71, 0.04); }
+.li-elio .li-cue.is-current {
+  background: var(--li-sage);
+  border-left: 3px solid var(--li-accent);
+}
+.li-elio .li-cue-header { display: flex; align-items: start; gap: 10px; }
+.li-elio .li-cue-time {
+  flex: none;
+  color: var(--li-accent);
+  background: transparent;
+  border: 0;
+  font-size: 14px;
+  font-weight: 700;
+  padding-top: 5px;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.li-elio .li-cue-text {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+  flex: 1;
+  color: var(--li-ink);
+}
+.li-elio .li-cue-vi {
+  color: var(--li-muted);
+  margin: 7px 0 0;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+.li-elio .li-cue-side {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding-top: 2px;
+}
+.li-elio .li-cue-side button {
+  border: 0;
+  background: transparent;
+  color: var(--li-muted);
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: inline-flex;
+}
+.li-elio .li-cue-side button:hover { color: var(--li-accent); background: rgba(40, 103, 71, 0.08); }
+.li-elio .li-cue-side button.is-saved { color: var(--li-accent); }
+.li-elio .li-cue .li-learned-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--li-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.li-elio .li-sub-foot {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-top: 1px solid var(--li-line);
+}
+.li-elio .li-sub-empty { padding: 34px 16px; text-align: center; color: var(--li-muted); }
+
+/* ---------- Chép chính tả ---------- */
+.li-elio .li-dict textarea,
+.li-elio .li-cue textarea {
+  width: 100%;
+  border: 1px solid var(--li-line);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--li-card);
+  color: var(--li-ink);
+  font: inherit;
+  min-height: 110px;
+  resize: vertical;
+}
+.li-elio .li-dict textarea:focus { outline: 3px solid var(--li-accent); outline-offset: 2px; }
+.li-elio .li-result ins { background: #d5ecd1; color: #16421d; text-decoration: none; padding: 2px 4px; }
+.li-elio .li-result del { background: #ffe0dc; color: #8f2520; padding: 2px 4px; }
+
+/* ---------- details nhập phụ đề ---------- */
+.li-elio details > summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 8px 0;
+  color: var(--li-ink);
+}
+
+/* ---------- Modal sửa (kế thừa biến Elio) ---------- */
+.li-elio .li-modal-card {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 16px;
+}
+.li-elio .li-modal-card input,
+.li-elio .li-modal-card select,
+.li-elio .li-modal-card textarea {
+  background: var(--li-card);
+  border: 1px solid var(--li-line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: var(--li-ink);
+  font: inherit;
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 760px) {
+  .li-elio .li-study-grid { grid-template-columns: 1fr; }
+  .li-elio .li-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .li-elio .li-mode-card { padding: 16px; min-height: 135px; }
+  .li-elio .li-mode-card strong { font-size: 16px; }
+  .li-elio .li-panel { padding: 15px; margin: 12px 0; }
+  .li-elio .li-video-card { padding: 14px; }
+  .li-elio .li-subtitles { max-height: 55vh; }
+  .li-elio .li-pill { padding: 9px 11px; }
+  .li-elio .li-section-title { font-size: 22px; }
+}
+@media (max-width: 380px) {
+  .li-elio .li-mode-grid { grid-template-columns: 1fr; }
+}

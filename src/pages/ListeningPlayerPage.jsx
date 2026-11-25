@@ -40,9 +40,16 @@ import {
   X,
   Maximize,
   Minimize,
+  Pause,
+  Settings,
+  Share2,
+  Clock,
+  Video,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { showConfirmModal } from '@/components/ui/ConfirmModal';
+import './listening-elio.css';
 
 export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = 'nw-a1-ep1' }) {
   const { navigate } = useRouter();
@@ -870,6 +877,81 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
     toast.success(`Đã tải file phụ đề ${fileName} (${subtitles.length} câu)!`);
   };
 
+  // Tạm dừng video (nút "Dừng" kiểu Elio).
+  const handlePauseVideo = () => {
+    if (!playerRef.current || typeof playerRef.current.pauseVideo !== 'function') return;
+    playerRef.current.pauseVideo();
+    setIsPlaying(false);
+  };
+
+  // Chia sẻ: sao chép link video hiện tại.
+  const handleShareVideo = () => {
+    const url = window.location.href;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => toast.success('Đã sao chép link video!')).catch(() => toast.error('Không sao chép được link.'));
+    } else {
+      toast.error('Trình duyệt không hỗ trợ sao chép link.');
+    }
+  };
+
+  // Định dạng giây -> m:ss (đồng hồ "1:36 / 1:37" kiểu Elio).
+  const formatClock = (seconds) => {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  };
+
+  // Video khác trong cùng bộ (nút "Video khác" kiểu Elio).
+  const currentEpisodeIndex = episodes.findIndex((e) => e.id === currentEpisode.id);
+  const nextEpisode = episodes.length > 1
+    ? episodes[(currentEpisodeIndex + 1) % episodes.length]
+    : null;
+
+  // Tải phụ đề đang có về máy dưới dạng file .vtt.
+  const formatVttTime = (seconds) => {
+    const total = Number.isFinite(Number(seconds)) ? Math.max(0, Number(seconds)) : 0;
+    const ms = Math.round(total * 1000);
+    const h = String(Math.floor(ms / 3600000)).padStart(2, '0');
+    const m = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0');
+    const s = String(Math.floor((ms % 60000) / 1000)).padStart(2, '0');
+    const milli = String(ms % 1000).padStart(3, '0');
+    return `${h}:${m}:${s}.${milli}`;
+  };
+  const handleDownloadVtt = () => {
+    if (!subtitles.length) return toast.error('Chưa có phụ đề để tải.');
+    const blocks = subtitles.map((sub, idx) => {
+      const start = Number.isFinite(Number(sub.start)) ? Math.max(0, Number(sub.start)) : 0;
+      const end = Number.isFinite(Number(sub.end)) && Number(sub.end) > start
+        ? Number(sub.end)
+        : start + 4;
+      const lines = [];
+      String(sub.de || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((l) => lines.push(l));
+      const vi = String(sub.vi || '').trim();
+      if (vi) vi.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((l) => lines.push(l));
+      if (!lines.length) lines.push('');
+      return `${idx + 1}\n${formatVttTime(start)} --> ${formatVttTime(end)}\n${lines.join('\n')}`;
+    });
+    const content = `WEBVTT\n\n${blocks.join('\n\n')}\n`;
+    const base = String(currentEpisode.title || 'phu-de').trim() || 'phu-de';
+    const fileName = `${base.replace(/[\\/\\?%*:|"<>]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 80) || 'phu-de'}.vtt`;
+    const blob = new Blob([content], { type: 'text/vtt;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Đã tải file phụ đề ${fileName} (${subtitles.length} câu)!`);
+  };
+
+  // Đánh dấu câu hiện tại đã học (footer panel phụ đề kiểu Elio).
+  const handleMarkLearned = () => {
+    if (!subtitles.length) return;
+    setLearnedSubs((prev) => new Set(prev).add(currentSub.id || activeSubIndex));
+    toast.success(`Đã đánh dấu câu #${activeSubIndex + 1} là đã học!`);
+  };
+
   const handleSaveSentenceAsCard = async (sub) => {
     if(coreActive&&sub.recordId){const epoch=coreEpoch.current;try{const result=await elioClient.saveListeningCue({recordId:sub.recordId,...(sub.itemId!==undefined?{itemId:sub.itemId}:{}),cueIndex:sub.cueIndex,cueRevision:sub.cueRevision});if(epoch===coreEpoch.current){window.dispatchEvent(new CustomEvent('sprach_core_vocabulary_changed'));toast.success(result.skipped?'Câu này đã có trong bộ riêng.':'Đã lưu câu phụ đề vào bộ riêng; không tự tạo bản dịch.');}}catch(error){if(epoch===coreEpoch.current)toast.error(error.message);}return;}
     db.vocabulary.create({
@@ -931,103 +1013,79 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
   }
 
   return (
-    <div className="space-y-4 animate-rise max-w-7xl mx-auto">
-      {/* Top Breadcrumb Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono pb-2 border-b border-border">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Link to="/" className="hover:text-accent">
-            Trang chủ
-          </Link>
-          <span>/</span>
-          <Link to="/skills/listening" className="hover:text-accent">
-            Kỹ năng nghe
-          </Link>
-          <span>/</span>
-          <span className="text-foreground font-semibold">{collection.title}</span>
-          <span>/</span>
-          <span className="text-accent truncate max-w-xs">{currentEpisode.title}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {canManage && (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setEditingEpisode({ ...currentEpisode })}
-                className="tap px-2.5 py-1 text-xs font-mono rounded border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1 shadow-sm"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-blue-500" />
-                <span>Sửa video</span>
-              </button>
-              <button
-                onClick={handleDeleteEpisode}
-                className="tap px-2.5 py-1 text-xs font-mono rounded border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 flex items-center gap-1 shadow-sm"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Xóa video</span>
-              </button>
-            </div>
-          )}
-
-          <Link
-            to="/skills/listening"
-            className="tap inline-flex items-center gap-1 text-xs font-mono text-muted-foreground hover:text-foreground ml-2"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Về danh sách tập</span>
-          </Link>
-        </div>
+    <div className="li-elio animate-rise">
+      {/* Hàng trên: về danh sách + sửa/xóa video */}
+      <div className="li-row li-between">
+        <Link to="/skills/listening" className="li-icon-btn">
+          <ArrowLeft className="w-4 h-4" />
+          <span>Về danh sách tập</span>
+        </Link>
+        {canManage && (
+          <div className="li-row">
+            <button onClick={() => setEditingEpisode({ ...currentEpisode })} className="li-pill li-sm">
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Sửa video</span>
+            </button>
+            <button onClick={handleDeleteEpisode} className="li-pill li-sm" style={{ color: '#a13d30' }}>
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Xóa video</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Mode Tabs */}
-      <div className="flex items-center justify-between border-b border-border pb-2 gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          {[
-            { id: 'video', label: 'Xem & Luyện nghe theo câu', icon: Play },
-            { id: 'dictation', label: 'Chép chính tả (Diktat)', icon: FileText },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`tap px-3.5 py-1.5 rounded-sm text-xs font-mono font-medium flex items-center gap-2 transition-all ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground font-semibold shadow-sm'
-                    : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+      {/* Tab chế độ kiểu Elio: Xem video / Chép chính tả / Shadowing / Quiz */}
+      <div className="li-row li-between" style={{ marginTop: 14 }}>
+        <div className="li-row" role="tablist" aria-label="Chế độ học">
+          <button type="button" onClick={() => setActiveTab('video')} className={'li-pill' + (activeTab === 'video' ? ' is-active' : '')} aria-selected={activeTab === 'video'}>
+            <Play className="w-4 h-4" />
+            <span>Xem video</span>
+          </button>
+          <button type="button" onClick={() => setActiveTab('dictation')} className={'li-pill' + (activeTab === 'dictation' ? ' is-active' : '')} aria-selected={activeTab === 'dictation'}>
+            <FileText className="w-4 h-4" />
+            <span>Chép chính tả</span>
+          </button>
+          <button type="button" onClick={() => navigate('/skills/listening?listenMode=shadowing')} className="li-pill">
+            <Video className="w-4 h-4" />
+            <span>Shadowing</span>
+          </button>
+          <button type="button" onClick={() => navigate('/practice?skill=listening')} className="li-pill">
+            <HelpCircle className="w-4 h-4" />
+            <span>Quiz</span>
+          </button>
         </div>
-
-        {/* Satz-für-Satz Auto-Pause Toggle (Requirement 2) */}
-        <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-foreground bg-accent/5 px-3 py-1 rounded-sm border border-accent/20">
-          <input
-            type="checkbox"
-            checked={isPauseAfterSentence}
-            onChange={(e) => setIsPauseAfterSentence(e.target.checked)}
-            className="rounded-sm text-accent focus:ring-accent"
-          />
-          <span className="font-semibold text-accent flex items-center gap-1">
-            <Flame className="w-3.5 h-3.5" />
-            <span>Tự dừng sau mỗi câu (Dừng để học)</span>
-          </span>
+        <label className="li-pill li-sm" style={{ cursor: 'pointer' }} title="Tự dừng sau mỗi câu để học">
+          <input type="checkbox" checked={isPauseAfterSentence} onChange={(e) => setIsPauseAfterSentence(e.target.checked)} />
+          <Flame className="w-3.5 h-3.5" />
+          <span>Tự dừng sau mỗi câu</span>
         </label>
       </div>
 
-      {/* MAIN STUDIO GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Video Player & Sentence Control Bar (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
-          {/* YouTube Embed Player with Floating Subtitles Overlay */}
-          <div
-            ref={videoFrameRef}
-            className="surface overflow-hidden border border-border shadow-md aspect-video relative bg-black rounded-sm"
-          >
+      {/* MAIN STUDIO GRID kiểu Elio: video trái, phụ đề phải */}
+      <div className="li-study-grid" style={{ marginTop: 16 }}>
+        {/* LEFT COLUMN: Video Player */}
+        <div className="space-y-4" style={{ minWidth: 0 }}>
+          {/* Thẻ video trắng kiểu Elio */}
+          <div className="li-video-card">
+            <div className="li-video-head">
+              <span className="li-thumb">{(collection.provider || collection.title || 'L').trim().charAt(0).toUpperCase()}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h2 className="li-video-title">{currentEpisode.title || 'Video luyện nghe'}</h2>
+                <div className="li-video-channel">{collection.provider || collection.title}</div>
+              </div>
+              <div className="li-row" style={{ flex: 'none' }}>
+                <button type="button" onClick={handleShareVideo} className="li-icon-btn" title="Chia sẻ link video">
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={() => setSubtitleOn((v) => !v)} className={'li-icon-btn' + (subtitleOn ? ' is-on' : '')} title={subtitleOn ? 'Tắt phụ đề trên video (CC)' : 'Bật phụ đề trên video (CC)'}>
+                  <Captions className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div
+              ref={videoFrameRef}
+              className="li-video-box"
+            >
             {isLocalEpisode ? (
               localVideoUrl ? (
                 <video
@@ -1091,108 +1149,201 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
               </div>
             )}
 
-          </div>
-
-          {/* Under-video Sentence Navigation & Control Bar (Requirement 2) */}
-          <div className="surface p-4 border border-border space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {/* Previous / Replay / Next Sentence Navigation */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handlePreviousSentence}
-                  disabled={activeSubIndex <= 0}
-                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted disabled:opacity-40 flex items-center gap-1.5"
-                  title="Lùi về câu thoại trước"
-                >
-                  <SkipBack className="w-3.5 h-3.5" />
-                  <span>Câu trước</span>
-                </button>
-
-                <button
-                  onClick={handleReplayCurrentSentence}
-                  className="tap px-3 py-1.5 rounded-sm bg-accent/10 border border-accent/30 text-accent text-xs font-mono hover:bg-accent/20 font-bold flex items-center gap-1.5"
-                  title="Nghe lại câu thoại hiện tại"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Nghe lại câu này</span>
-                </button>
-
-                <button
-                  onClick={handleNextSentence}
-                  disabled={activeSubIndex >= subtitles.length - 1}
-                  className="tap px-3 py-1.5 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold hover:bg-accent/90 shadow-sm flex items-center gap-1.5 disabled:opacity-40"
-                  title="Chuyển sang câu tiếp theo"
-                >
-                  <span>Câu sau →</span>
-                  <SkipForward className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Speed selector + Toàn màn hình của app */}
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 text-xs font-mono">
-                  <span className="text-muted-foreground">Tốc độ đọc:</span>
-                  <select
-                    value={playbackSpeed}
-                    onChange={(e) => handleSpeedChange(Number(e.target.value))}
-                    className="px-2 py-1 rounded-sm border border-border bg-card text-foreground font-mono font-bold text-accent"
-                  >
-                    <option value={0.75}>0.75x (Chậm)</option>
-                    <option value={0.9}>0.9x (Hơi chậm)</option>
-                    <option value={1}>1.0x (Chuẩn)</option>
-                    <option value={1.25}>1.25x (Nhanh)</option>
-                  </select>
-                </div>
-
-                {/* Phóng to cả khung bao (video + phụ đề) nên phụ đề còn
-                    nguyên; nút toàn màn hình gốc của YouTube / thẻ video
-                    chỉ phóng to đúng video nên phụ đề sẽ mất. */}
-                <button
-                  onClick={toggleFullscreen}
-                  className="tap px-3 py-1.5 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted flex items-center gap-1.5"
-                  title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình — giữ nguyên phụ đề'}
-                >
-                  {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-                  <span>{isFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'}</span>
-                </button>
-              </div>
             </div>
 
-            {/* Status Indicator */}
-            {isSentencePaused && (
-              <div className="p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs font-mono text-amber-800 dark:text-amber-300 flex flex-wrap items-center justify-between gap-2">
-                <span>⏸️ Đã dừng ở cuối câu #{activeSubIndex + 1}. Mời bạn chép chính tả hoặc nghe lại câu này!</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleResumeAfterPause}
-                    className="tap px-2 py-1 rounded bg-accent text-accent-foreground text-xs font-mono font-bold"
-                  >
-                    ▶ Phát tiếp
+            {/* Chân thẻ video: thời gian + Video khác */}
+            <div className="li-video-foot">
+              <span className="li-time">
+                {subtitles.length ? `${formatClock(currentSub.start)} / ${currentEpisode.duration || formatClock(subtitles[subtitles.length - 1]?.end || 0)}` : (currentEpisode.duration || '')}
+              </span>
+              <span className="li-row">
+                <span className="li-icon-btn" title="Thời lượng video">
+                  <Clock className="w-4 h-4" />
+                  <span>{currentEpisode.duration || ''}</span>
+                </span>
+                {nextEpisode && (
+                  <button type="button" onClick={() => navigate(`/skills/listening/${collectionId}/${nextEpisode.id}`)} className="li-next-video" title="Mở video tiếp theo trong bộ">
+                    <span>
+                      <span style={{ display: 'block', fontSize: '0.85em' }}>Video khác</span>
+                      <strong>{nextEpisode.title}</strong>
+                    </span>
+                    {nextEpisode.youtubeId ? (
+                      <img alt="" loading="lazy" src={'https://img.youtube.com/vi/' + nextEpisode.youtubeId + '/mqdefault.jpg'} />
+                    ) : null}
                   </button>
-                  <button
-                    onClick={handleNextSentence}
-                    className="text-accent underline font-bold"
-                  >
-                    Sang câu sau →
-                  </button>
-                </div>
-              </div>
-            )}
+                )}
+              </span>
+            </div>
           </div>
 
-          {/* TAB CONTENT: DICTATION OR SHADOWING PRACTICE */}
+          {/* Hàng nút điều khiển kiểu Elio */}
+          <div className="li-tools li-row" role="group" aria-label="Điều khiển phát">
+            <button onClick={handleReplayCurrentSentence} className="li-pill" title="Nghe lại câu thoại hiện tại">
+              <RotateCcw className="w-4 h-4" />
+              <span>Phát lại</span>
+            </button>
+            <button onClick={handleResumeAfterPause} disabled={!isSentencePaused} className="li-pill" title="Phát tiếp sau khi dừng">
+              <Play className="w-4 h-4" />
+              <span>Chạy tiếp</span>
+            </button>
+            <button onClick={handlePauseVideo} disabled={!isPlaying} className="li-pill" title="Tạm dừng video">
+              <Pause className="w-4 h-4" />
+              <span>Dừng</span>
+            </button>
+            <button onClick={handlePreviousSentence} disabled={activeSubIndex <= 0} className="li-pill" title="Lùi về câu thoại trước">
+              <SkipBack className="w-4 h-4" />
+              <span>Câu trước</span>
+            </button>
+            <button onClick={handleNextSentence} disabled={activeSubIndex >= subtitles.length - 1} className="li-pill" title="Chuyển sang câu tiếp theo">
+              <span>Câu sau</span>
+              <SkipForward className="w-4 h-4" />
+            </button>
+            <span className="li-pill" style={{ gap: 8 }}>
+              <span style={{ fontWeight: 700 }}>Tốc độ</span>
+              <select value={playbackSpeed} onChange={(e) => handleSpeedChange(Number(e.target.value))} style={{ border: 0, background: 'transparent', font: 'inherit', fontWeight: 700, color: 'var(--li-accent)', cursor: 'pointer' }} aria-label="Tốc độ phát">
+                <option value={0.75}>0.75x</option>
+                <option value={0.9}>0.9x</option>
+                <option value={1}>1.0x</option>
+                <option value={1.25}>1.25x</option>
+              </select>
+            </span>
+            <button type="button" onClick={() => setSubtitleOn((v) => !v)} className={'li-pill' + (subtitleOn ? ' is-active' : '')} title="Bật/tắt phụ đề nổi trên video">
+              <Captions className="w-4 h-4" />
+              <span>Phụ đề nổi</span>
+            </button>
+            <span className="relative" ref={subtitleMenuRef}>
+              <button type="button" onClick={() => setSubtitleMenuOpen((value) => !value)} aria-expanded={subtitleMenuOpen} aria-haspopup="true" className="li-pill" title="Cài đặt phụ đề trên video">
+                <Settings className="w-4 h-4" />
+                <span>Cài đặt</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${subtitleMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {subtitleMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-30 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card p-3 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono font-semibold">Bật phụ đề</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={subtitleOn}
+                      aria-label="Bật hoặc tắt phụ đề trên video"
+                      onClick={() => setSubtitleOn(value => !value)}
+                      className={`tap relative w-9 h-5 shrink-0 rounded-full transition-colors ${subtitleOn ? 'bg-accent' : 'bg-muted'}`}
+                    >
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${subtitleOn ? 'left-[18px]' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-mono font-semibold">Cỡ chữ</span>
+                    <div className="flex gap-1" role="group" aria-label="Cỡ chữ phụ đề trên video">
+                      {[
+                        ['small', 'Nhỏ'],
+                        ['medium', 'Vừa'],
+                        ['large', 'Lớn'],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setSubtitleSize(value)}
+                          aria-pressed={subtitleSize === value}
+                          className={`tap flex-1 px-2 py-1 rounded-sm border text-xs font-mono font-bold ${
+                            subtitleSize === value
+                              ? 'bg-accent/10 border-accent/30 text-accent'
+                              : 'bg-card border-border text-muted-foreground'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-mono font-semibold">Trễ phụ đề</span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs font-mono font-bold text-foreground">{formatSubtitleOffset(subtitleOffset)}</span>
+                        <button
+                          type="button"
+                          onClick={() => changeSubtitleOffset(0)}
+                          disabled={subtitleOffset === 0}
+                          className="tap px-1.5 py-0.5 rounded-sm border border-border bg-card text-foreground text-xs hover:bg-muted disabled:opacity-40"
+                          title="Đặt độ trễ phụ đề về 0"
+                        >
+                          ↺ 0
+                        </button>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-10}
+                      max={10}
+                      step={0.5}
+                      value={subtitleOffset}
+                      onChange={(e) => changeSubtitleOffset(Number(e.target.value))}
+                      className="w-full"
+                      aria-label="Độ trễ phụ đề (giây)"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. Lưu riêng cho video này.</p>
+                  </div>
+                </div>
+              )}
+            </span>
+            <button onClick={toggleFullscreen} className="li-pill" title={isFullscreen ? 'Thoát toàn màn hình (Esc)' : 'Toàn màn hình — giữ nguyên phụ đề'}>
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              <span>{isFullscreen ? 'Thu nhỏ' : 'Phóng to'}</span>
+            </button>
+          </div>
+
+          {/* Dòng trạng thái kiểu Elio */}
+          <div className="li-status" role="status">
+            {isSentencePaused
+              ? `⏸ Đã dừng ở cuối câu #${activeSubIndex + 1}. Mời bạn chép chính tả hoặc nghe lại câu này!`
+              : subtitles.length
+                ? 'Trình phát sẵn sàng. Bấm phát để nghe.'
+                : 'Chưa có phụ đề cho video này.'}
+          </div>
+
+          {/* Hàng CC/SRT kiểu Elio */}
+          <div>
+            <div className="li-status" style={{ fontWeight: 700, color: 'var(--li-ink)' }}>
+              {subtitles.length ? `CC/SRT đã có · ${subtitles.length} câu` : 'Chưa có phụ đề · 0 câu'}
+            </div>
+            <div className="li-row">
+              {currentEpisode.youtubeId && (
+                <button type="button" disabled={captionBusy || translatingBusy} onClick={fetchCaptions} className="li-pill">
+                  {captionBusy ? 'Đang lấy & dịch…' : 'Lấy / tiếp tục bản chép'}
+                </button>
+              )}
+              {subtitles.length > 0 && (
+                <>
+                  <button type="button" onClick={handleDownloadVtt} className="li-pill">Tải VTT</button>
+                  <button type="button" onClick={handleDownloadSrt} className="li-pill">Tải SRT</button>
+                </>
+              )}
+            </div>
+            <details>
+              <summary>Nhập phụ đề dự phòng (SRT/VTT/bản chép lời)</summary>
+              <div className="li-row" style={{ marginTop: 8 }}>
+                <button type="button" onClick={() => subtitleFileRef.current?.click()} className="li-pill">
+                  {subtitles.length ? 'Thay phụ đề (.srt / .vtt)' : 'Thêm phụ đề (.srt / .vtt)'}
+                </button>
+                <span className="li-muted">File phụ đề sẽ thay thế phụ đề hiện tại của video này.</span>
+              </div>
+            </details>
+          </div>
+
+          {/* TAB CONTENT: DICTATION */}
           {activeTab === 'dictation' && (
-            <div className="surface p-5 border border-border space-y-4 animate-rise">
+            <div className="li-panel li-dict space-y-4 animate-rise">
               <div className="flex items-center justify-between border-b border-border pb-2">
                 <div>
-                  <div className="eyebrow">CHẾ ĐỘ CHÉP CHÍNH TẢ (DIKTAT)</div>
-                  <h4 className="font-display font-bold text-lg text-foreground">
+                  <div className="li-muted" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.75em' }}>Chế độ chép chính tả (Diktat)</div>
+                  <h4 className="font-bold text-lg" style={{ fontFamily: 'var(--li-serif)' }}>
                     Câu #{activeSubIndex + 1} / {subtitles.length}
                   </h4>
                 </div>
                 <button
                   onClick={handleReplayCurrentSentence}
-                  className="tap px-2.5 py-1 rounded-sm bg-accent/10 text-accent font-mono text-xs flex items-center gap-1 font-semibold"
+                  className="li-pill li-sm"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
                   <span>Nghe lại</span>
@@ -1214,13 +1365,12 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   disabled={coreSaving}
                   onChange={(e) => setTypedInput(e.target.value)}
                   placeholder="Gõ tiếng Đức vào đây (chú ý viết hoa danh từ)..."
-                  className="w-full p-3 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
 
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="submit"
-                    className="tap px-4 py-2 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold shadow-sm"
+                    className="li-pill li-primary"
                   >
                     Kiểm tra đáp án
                   </button>
@@ -1228,7 +1378,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
                   <button
                     type="button"
                     onClick={handleNextSentence}
-                    className="tap px-4 py-2 rounded-sm border border-border bg-card text-xs font-mono font-semibold hover:bg-muted flex items-center gap-1.5"
+                    className="li-pill"
                   >
                     <span>Sang câu kế tiếp →</span>
                   </button>
@@ -1277,326 +1427,185 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
           )}
         </div>
 
-        {/* RIGHT COLUMN: Interactive Real-Time Transcript (5 cols) */}
-        <div className="lg:col-span-5 space-y-3">
-          {/* Transcript Top Bar */}
-          <div className="surface p-3.5 border border-border flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowGerman(!showGerman)}
-                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
-                  showGerman
-                    ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'bg-card border-border text-muted-foreground'
-                }`}
-              >
+        {/* RIGHT COLUMN: Panel phụ đề kiểu Elio */}
+        <div style={{ minWidth: 0 }}>
+          <div className="li-sub-panel">
+            <div className="li-sub-head">
+              <span className="li-sub-count">{subtitles.length} câu · Phụ đề đã nhập</span>
+              <div className="li-row">
+                <button type="button" onClick={() => setShowVietnamese(!showVietnamese)} className="li-pill li-sm" title="Ẩn/hiện nghĩa tiếng Việt">
+                  {showVietnamese ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <span>{showVietnamese ? 'Ẩn nghĩa Việt' : 'Hiện nghĩa Việt'}</span>
+                </button>
+                {subtitles.length > 0 && (
+                  <button type="button" disabled={translatingBusy || captionBusy} onClick={translateCaptions} className="li-pill li-sm" title="Dịch đúng bằng DeepL rồi tới AI — chỉ dịch câu chưa có bản dịch đúng; khi mọi câu đã đúng thì dịch lại toàn bộ">
+                    {translatingBusy ? 'Đang dịch…' : (missingAccurateCount > 0 ? `Dịch phụ đề (${missingAccurateCount})` : 'Dịch phụ đề')}
+                  </button>
+                )}
+                <button onClick={handleCopyTranscript} className="li-pill li-sm" title="Sao chép toàn bộ lời thoại">
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy lời thoại</span>
+                </button>
+              </div>
+            </div>
+            <div className="li-row" style={{ padding: '10px 16px', borderBottom: '1px solid var(--li-line)' }}>
+              <button type="button" onClick={() => setShowGerman(!showGerman)} className={'li-pill li-sm' + (showGerman ? ' is-active' : '')}>
                 {showGerman ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                 <span>Tiếng Đức</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setShowVietnamese(!showVietnamese)}
-                className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
-                  showVietnamese
-                    ? 'bg-accent/10 border-accent/30 text-accent'
-                    : 'bg-card border-border text-muted-foreground'
-                }`}
-              >
-                {showVietnamese ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                <span>Dịch Việt</span>
-              </button>
-
-              {/* Nút "Phụ đề": bấm mở menu cài đặt phụ đề (bật/tắt, cỡ chữ,
-                  độ trễ). Các chỉnh phụ đề nằm gọn trong menu để thanh trên
-                  chỉ còn 3 nút: Tiếng Đức, Dịch Việt, Phụ đề. */}
-              <div className="relative" ref={subtitleMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setSubtitleMenuOpen(value => !value)}
-                  aria-expanded={subtitleMenuOpen}
-                  aria-haspopup="true"
-                  className={`tap px-2.5 py-1 rounded-sm text-xs font-mono font-semibold border flex items-center gap-1.5 transition-all ${
-                    subtitleOn
-                      ? 'bg-accent/10 border-accent/30 text-accent'
-                      : 'bg-card border-border text-muted-foreground'
-                  }`}
-                  title="Cài đặt phụ đề trên video"
-                >
-                  <Captions className="w-3.5 h-3.5" />
-                  <span>Phụ đề</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform ${subtitleMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {subtitleMenuOpen && (
-                  <div className="absolute left-0 top-full mt-1 z-30 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card p-3 shadow-xl space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-mono font-semibold">Bật phụ đề</span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={subtitleOn}
-                        aria-label="Bật hoặc tắt phụ đề trên video"
-                        onClick={() => setSubtitleOn(value => !value)}
-                        className={`tap relative w-9 h-5 shrink-0 rounded-full transition-colors ${subtitleOn ? 'bg-accent' : 'bg-muted'}`}
-                      >
-                        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${subtitleOn ? 'left-[18px]' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-mono font-semibold">Cỡ chữ</span>
-                      <div className="flex gap-1" role="group" aria-label="Cỡ chữ phụ đề trên video">
-                        {[
-                          ['small', 'Nhỏ'],
-                          ['medium', 'Vừa'],
-                          ['large', 'Lớn'],
-                        ].map(([value, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setSubtitleSize(value)}
-                            aria-pressed={subtitleSize === value}
-                            className={`tap flex-1 px-2 py-1 rounded-sm border text-xs font-mono font-bold ${
-                              subtitleSize === value
-                                ? 'bg-accent/10 border-accent/30 text-accent'
-                                : 'bg-card border-border text-muted-foreground'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono font-semibold">Trễ phụ đề</span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-xs font-mono font-bold text-foreground">{formatSubtitleOffset(subtitleOffset)}</span>
-                          <button
-                            type="button"
-                            onClick={() => changeSubtitleOffset(0)}
-                            disabled={subtitleOffset === 0}
-                            className="tap px-1.5 py-0.5 rounded-sm border border-border bg-card text-foreground text-xs hover:bg-muted disabled:opacity-40"
-                            title="Đặt độ trễ phụ đề về 0"
-                          >
-                            ↺ 0
-                          </button>
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={-10}
-                        max={10}
-                        step={0.5}
-                        value={subtitleOffset}
-                        onChange={(e) => changeSubtitleOffset(Number(e.target.value))}
-                        className="w-full"
-                        aria-label="Độ trễ phụ đề (giây)"
-                      />
-                      <p className="text-[11px] text-muted-foreground">Phụ đề chậm hơn tiếng thì kéo sang +, nhanh hơn thì kéo sang -. Lưu riêng cho video này.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5">
               {currentEpisode.youtubeId && (
-                <button
-                  type="button"
-                  disabled={captionBusy || translatingBusy}
-                  onClick={fetchCaptions}
-                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors"
-                >
+                <button type="button" disabled={captionBusy || translatingBusy} onClick={fetchCaptions} className="li-pill li-sm">
                   {captionBusy ? 'Đang lấy & dịch…' : 'Lấy bản hiện lời'}
                 </button>
               )}
-              {(!currentEpisode.youtubeId || subtitles.length === 0) && (
-                <button
-                  type="button"
-                  onClick={() => subtitleFileRef.current?.click()}
-                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors"
-                >
-                  {subtitles.length ? 'Thay phụ đề' : 'Thêm phụ đề'}
-                </button>
-              )}
               {subtitles.length > 0 && (
-                <button
-                  type="button"
-                  disabled={translatingBusy || captionBusy}
-                  onClick={translateCaptions}
-                  className="tap px-2.5 py-1 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
-                  title="Dịch đúng bằng DeepL rồi tới AI — chỉ dịch câu chưa có bản dịch đúng; khi mọi câu đã đúng thì dịch lại toàn bộ"
-                >
-                  {translatingBusy ? 'Đang dịch…' : (missingAccurateCount > 0 ? `Dịch đúng ${missingAccurateCount} câu` : (subtitles.some(c => c.vi && String(c.vi).trim()) ? 'Dịch lại bằng AI' : 'Dịch tiếng Việt'))}
-                </button>
-              )}
-              <button
-                onClick={handleCopyTranscript}
-                className="tap p-1.5 rounded-sm hover:bg-muted text-muted-foreground hover:text-foreground"
-                title="Sao chép toàn bộ phụ đề"
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-              {subtitles.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleDownloadSrt}
-                  className="tap px-2.5 py-1 text-xs border border-border bg-card hover:bg-muted font-mono rounded-sm transition-colors flex items-center gap-1.5"
-                  title="Tải file phụ đề .srt về máy để mở ở ngoài (VLC...)"
-                >
+                <button type="button" onClick={handleDownloadSrt} className="li-pill li-sm" title="Tải file phụ đề .srt về máy để mở ở ngoài (VLC...)">
                   <Download className="w-3.5 h-3.5" />
                   <span>Tải .srt</span>
                 </button>
               )}
             </div>
-          </div>
-
-          {/* Transcript Scroll Container (Auto-highlight & auto-scroll) */}
-          <input
-            ref={subtitleFileRef}
-            type="file"
-            accept=".srt,.vtt"
-            className="hidden"
-            onChange={handleSubtitleFile}
-          />
-          <div className="surface p-2 border border-border max-h-[600px] overflow-y-auto space-y-2">
-            {subtitles.length === 0 ? (
-              <div className="p-8 text-center space-y-3">
-                <p className="text-xs font-mono text-muted-foreground">Chưa có phụ đề cho video này.</p>
-                <button
-                  type="button"
-                  onClick={() => subtitleFileRef.current?.click()}
-                  className="tap px-3 py-1.5 text-xs border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 font-mono rounded-sm transition-colors"
-                >
-                  Thêm phụ đề (.srt / .vtt)
-                </button>
-              </div>
-            ) : (
-              subtitles.map((sub, idx) => {
-                const isActive = activeSubIndex === idx;
-                const isLearned = learnedSubs.has(sub.id || idx);
-
-                const totalSec = Math.floor(Number(sub.start) || 0);
-                const min = String(Math.floor(totalSec / 60)).padStart(2, '0');
-                const sec = String(totalSec % 60).padStart(2, '0');
-
-                return (
-                  <div
-                    key={sub.id || idx}
-                    ref={(el) => (subItemsRef.current[idx] = el)}
-                    onClick={() => handleSeekAndPlay(sub.start, idx)}
-                    className={`tap p-3 rounded-sm border text-left transition-all cursor-pointer ${
-                      isActive
-                        ? 'border-accent bg-accent/10 ring-2 ring-accent shadow-sm'
-                        : 'border-border bg-card hover:bg-muted/50'
-                    }`}
+            <input
+              ref={subtitleFileRef}
+              type="file"
+              accept=".srt,.vtt"
+              className="hidden"
+              onChange={handleSubtitleFile}
+            />
+            <div className="li-subtitles">
+              {subtitles.length === 0 ? (
+                <div className="li-sub-empty">
+                  <p>Chưa có phụ đề cho video này.</p>
+                  <button
+                    type="button"
+                    onClick={() => subtitleFileRef.current?.click()}
+                    className="li-pill"
+                    style={{ marginTop: 12 }}
                   >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded ${
-                            isActive
-                              ? 'bg-accent text-accent-foreground'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {min}:{sec}
-                        </span>
-                        {isActive && (
-                          <span className="text-[10px] font-mono text-accent font-bold uppercase animate-pulse">
-                            ▶ Đang nói
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1">
+                    Thêm phụ đề (.srt / .vtt)
+                  </button>
+                </div>
+              ) : (
+                subtitles.map((sub, idx) => {
+                  const isActive = activeSubIndex === idx;
+                  const isLearned = learnedSubs.has(sub.id || idx);
+                  const totalSec = Math.floor(Number(sub.start) || 0);
+                  const min = String(Math.floor(totalSec / 60)).padStart(2, '0');
+                  const sec = String(totalSec % 60).padStart(2, '0');
+                  return (
+                    <div
+                      key={sub.id || idx}
+                      ref={(el) => (subItemsRef.current[idx] = el)}
+                      onClick={() => handleSeekAndPlay(sub.start, idx)}
+                      className={'li-cue' + (isActive ? ' is-current' : '')}
+                    >
+                      <div className="li-cue-header">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSaveSentenceAsCard(sub);
-                          }}
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent"
-                          title="Lưu câu vào Thẻ từ vựng"
+                          className="li-cue-time"
+                          onClick={(e) => { e.stopPropagation(); handleSeekAndPlay(sub.start, idx); }}
+                          title="Nhảy tới câu này"
                         >
-                          <BookmarkPlus className="w-3.5 h-3.5" />
+                          {min}:{sec}
                         </button>
-                        {canManage && (
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {editingSubIndex === idx ? (
+                            <div onClick={(e) => e.stopPropagation()} className="space-y-2 mt-1">
+                              <textarea
+                                rows={2}
+                                value={editingSubDe}
+                                onChange={(e) => setEditingSubDe(e.target.value)}
+                                placeholder="Câu tiếng Đức..."
+                                style={{ minHeight: 64 }}
+                              />
+                              <textarea
+                                rows={2}
+                                value={editingSubVi}
+                                onChange={(e) => setEditingSubVi(e.target.value)}
+                                placeholder="Dịch tiếng Việt (để trống nếu chưa có)..."
+                                style={{ minHeight: 64 }}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={savingSub}
+                                  onClick={(e) => { e.stopPropagation(); saveEditedSub(); }}
+                                  className="li-pill li-primary li-sm"
+                                >
+                                  {savingSub ? 'Đang lưu…' : 'Lưu câu này'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setEditingSubIndex(null); }}
+                                  className="li-pill li-sm"
+                                >
+                                  Hủy
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {showGerman && (
+                                <p className="li-cue-text">{sub.de}</p>
+                              )}
+                              {showVietnamese && sub.vi && (
+                                <p className="li-cue-vi">{sub.vi}</p>
+                              )}
+                              {isActive && (
+                                <span className="li-learned-tag" style={{ display: 'block', marginTop: 4 }}>▶ Đang nói</span>
+                              )}
+                              {isLearned && (
+                                <span className="li-learned-tag" style={{ display: 'block', marginTop: 4 }}>✓ Đã học</span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        <div className="li-cue-side">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              startEditingSub(idx);
+                              handleSaveSentenceAsCard(sub);
                             }}
-                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-accent"
-                            title="Sửa câu phụ đề này"
+                            className={isLearned ? 'is-saved' : ''}
+                            title="Lưu câu vào Thẻ từ vựng"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
+                            <BookmarkPlus className="w-4 h-4" />
                           </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {editingSubIndex === idx ? (
-                      <div onClick={(e) => e.stopPropagation()} className="space-y-2 mt-1">
-                        <textarea
-                          rows={2}
-                          value={editingSubDe}
-                          onChange={(e) => setEditingSubDe(e.target.value)}
-                          placeholder="Câu tiếng Đức..."
-                          className="w-full p-2 text-sm font-heading rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <textarea
-                          rows={2}
-                          value={editingSubVi}
-                          onChange={(e) => setEditingSubVi(e.target.value)}
-                          placeholder="Dịch tiếng Việt (để trống nếu chưa có)..."
-                          className="w-full p-2 text-sm rounded-sm border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={savingSub}
-                            onClick={(e) => { e.stopPropagation(); saveEditedSub(); }}
-                            className="tap px-3 py-1 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold disabled:opacity-50"
-                          >
-                            {savingSub ? 'Đang lưu…' : 'Lưu câu này'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setEditingSubIndex(null); }}
-                            className="tap px-3 py-1 rounded-sm border border-border bg-card text-xs font-mono hover:bg-muted"
-                          >
-                            Hủy
-                          </button>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditingSub(idx);
+                              }}
+                              title="Sửa câu phụ đề này"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <>
-                        {/* German Sentence */}
-                        {showGerman && (
-                          <div
-                            className={`font-heading text-sm leading-relaxed ${
-                              isActive ? 'font-bold text-foreground' : 'text-foreground/90'
-                            }`}
-                          >
-                            {sub.de}
-                          </div>
-                        )}
-
-                        {/* Vietnamese Translation */}
-                        {showVietnamese && sub.vi && (
-                          <div className="font-body text-xs text-muted-foreground mt-0.5 italic">
-                            {sub.vi}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })
-            )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="li-sub-foot">
+              <button type="button" onClick={handleMarkLearned} disabled={!subtitles.length} className="li-pill li-sm">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Đánh dấu đã học</span>
+              </button>
+              <button type="button" onClick={() => navigate('/review')} className="li-pill li-sm">
+                <BookOpen className="w-4 h-4" />
+                <span>Ôn câu đã lưu</span>
+              </button>
+              {learnedSubs.size > 0 && (
+                <span className="li-muted" style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+                  {learnedSubs.size} câu đã học
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1604,7 +1613,7 @@ export function ListeningPlayerPage({ collectionId = 'nicos-weg-a1', videoId = '
       {/* Edit Episode Modal */}
       {editingEpisode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="surface p-6 max-w-md w-full space-y-4 rounded-sm border border-border shadow-2xl">
+          <div className="surface li-modal-card p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="font-display text-lg font-bold text-foreground">
                 Chỉnh sửa tập video
