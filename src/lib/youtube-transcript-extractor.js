@@ -18,49 +18,27 @@ export async function getYouTubeTranscript(videoUrlOrId, lang = 'de') {
   if (!videoId) {
     return { available: false, reason: 'ID video YouTube không hợp lệ.', cues: [] };
   }
+  const sameLang = (a, b) => {
+    const x = String(a || '').toLowerCase(), y = String(b || '').toLowerCase();
+    return !!x && !!y && (x === y || x.startsWith(y + '-') || y.startsWith(x + '-'));
+  };
+  const toCues = list => list
+    .filter(c => typeof c?.text === 'string' && c.text.trim())
+    .map(c => {
+      const start = Math.max(0, Number(c.start) || 0);
+      const duration = Math.max(0.5, Number(c.duration) || 2);
+      return {
+        start: Math.round(start * 1000) / 1000,
+        end: Math.round((start + duration) * 1000) / 1000,
+        text: c.text.trim()
+      };
+    })
+    .sort((a, b) => a.start - b.start);
 
-  // 1. GỌI TRỰC TIẾP FreeTranscriptAPI (Hỗ trợ CORS toàn cầu access-control-allow-origin: *, không cần backend)
-  try {
-    const res = await fetch(`https://api.freetranscriptapi.com/v1/transcript?video_url=${videoId}&lang=${lang}`, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(30000)
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.transcript) && data.transcript.length > 0) {
-        const cues = data.transcript
-          .filter(c => typeof c?.text === 'string' && c.text.trim())
-          .map(c => {
-            const start = Math.max(0, Number(c.start) || 0);
-            const duration = Math.max(0.5, Number(c.duration) || 2);
-            return {
-              start: Math.round(start * 1000) / 1000,
-              end: Math.round((start + duration) * 1000) / 1000,
-              text: c.text.trim()
-            };
-          })
-          .sort((a, b) => a.start - b.start);
-
-        if (cues.length > 0) {
-          return {
-            available: true,
-            videoId,
-            language: data.language || lang,
-            source: 'youtube',
-            via: 'freetranscriptapi',
-            cues
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('FreeTranscriptAPI call error:', err);
-  }
-
-  // 2. GỌI BACKEND CỦA APP (/api/core/listening/transcript) — server có
-  // backend transcript riêng, không phụ thuộc dịch vụ miễn phí ngoài.
-  // (Đường cũ /api/listening/captions không tồn tại nên không bao giờ chạy.)
+  let serverError = null;
+  // 1. GỌI BACKEND CỦA APP TRƯỚC — server tự thử lại và chỉ chấp nhận đúng
+  // ngôn ngữ yêu cầu. (Trước đây gọi thẳng dịch vụ ngoài trước, vừa chậm
+  // vừa hay nhận nhầm ngôn ngữ khác thành tiếng Đức.)
   try {
     const { elioClient } = await import('@/lib/elio-auth-runtime');
     if (elioClient.getUser()) {
@@ -87,64 +65,53 @@ export async function getYouTubeTranscript(videoUrlOrId, lang = 'de') {
       }
     }
   } catch (err) {
+    serverError = err;
     console.warn('Server transcript call error:', err);
   }
 
-  // 3. THỬ QUA PROXY CORS DỰ PHÒNG (Cho trường hợp Direct YouTube timedtext)
+  // Server trả lỗi dứt khoát (sai ngôn ngữ / video không có phụ đề) thì
+  // không gọi lại dịch vụ ngoài — kết quả sẽ giống hệt, chỉ tốn thêm thời gian.
+  const DEFINITIVE_CODES = ['CAPTIONS_WRONG_LANGUAGE', 'CAPTIONS_NOT_CONFIGURED', 'CAPTIONS_DATA_MISMATCH', 'CAPTIONS_INVALID_DATA', 'CAPTIONS_TOO_LARGE', 'INVALID_VIDEO_ID'];
+  if (serverError && DEFINITIVE_CODES.includes(serverError.code)) {
+    return { available: false, reason: serverError.message || 'Không lấy được phụ đề tiếng Đức cho video này.', cues: [] };
+  }
+
+  // 2. GỌI TRỰC TIẾP FreeTranscriptAPI (dự phòng khi server bận / chưa đăng nhập).
+  // Chỉ chấp nhận đúng ngôn ngữ yêu cầu — dịch vụ này trả ngôn ngữ khác
+  // khi video không có track tiếng Đức.
   try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}&hl=${lang}`)}`;
-    const pageRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) });
-    if (pageRes.ok) {
-      const html = await pageRes.text();
-      const match = html.match(/\"captionTracks\":\s*(\[[^\]]+\])/);
-      if (match) {
-        const tracks = JSON.parse(match[1]);
-        const langRegex = new RegExp(`^${lang}(?:[-_]|$)`, 'i');
-        const candidate = tracks.find(t => langRegex.test(t.languageCode || '')) || tracks[0];
-        if (candidate?.baseUrl) {
-          const subUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(candidate.baseUrl + '&fmt=json3')}`;
-          const subRes = await fetch(subUrl, { signal: AbortSignal.timeout(20000) });
-          if (subRes.ok) {
-            const raw = await subRes.json().catch(() => null);
-            if (raw && Array.isArray(raw.events)) {
-              const cues = [];
-              for (const e of raw.events) {
-                if (!e || e.tStartMs === undefined) continue;
-                const text = (Array.isArray(e.segs) ? e.segs : [])
-                  .map(s => s?.utf8 || '')
-                  .join('')
-                  .replace(/\s+/g, ' ')
-                  .trim();
-                const start = Number(e.tStartMs) / 1000;
-                let end = (Number(e.tStartMs) + Number(e.dDurationMs)) / 1000;
-                if (isNaN(end) || end <= start) end = start + 3;
-                if (text && end > start) {
-                  cues.push({
-                    start: Math.round(start * 1000) / 1000,
-                    end: Math.round(end * 1000) / 1000,
-                    text
-                  });
-                }
-              }
-              if (cues.length > 0) {
-                return {
-                  available: true,
-                  videoId,
-                  language: candidate.languageCode,
-                  source: 'youtube',
-                  cues
-                };
-              }
-            }
-          }
-        }
+    const res = await fetch(`https://api.freetranscriptapi.com/v1/transcript?video_url=${videoId}&lang=${lang}`, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(20000)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const returnedLang = String(data?.language || '').toLowerCase();
+      if (returnedLang && !sameLang(returnedLang, lang)) {
+        return { available: false, reason: `Video này không có phụ đề tiếng Đức (chỉ có phụ đề tiếng ${returnedLang}).`, cues: [] };
+      }
+      const cues = toCues(Array.isArray(data?.transcript) ? data.transcript : []);
+      if (cues.length > 0) {
+        return {
+          available: true,
+          videoId,
+          language: data.language || lang,
+          source: 'youtube',
+          via: 'freetranscriptapi',
+          cues
+        };
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('FreeTranscriptAPI call error:', err);
+  }
 
+  // (Fallback cũ qua proxy allorigins đã bỏ: YouTube trả trang kiểm tra bot
+  // không còn captionTracks nên không bao giờ lấy được gì, chỉ tốn thêm ~20s.)
   return {
     available: false,
-    reason: 'Không lấy được phụ đề tiếng Đức tự động lúc này (YouTube đang hạn chế truy cập). Bạn có thể tải file .srt của bài lên thay thế.',
+    reason: serverError?.message || 'Không lấy được phụ đề tiếng Đức tự động lúc này (dịch vụ lấy lời đang bận). Bạn có thể tải file .srt của bài lên thay thế.',
     cues: []
   };
 }
