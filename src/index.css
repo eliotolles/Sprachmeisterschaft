@@ -33,7 +33,7 @@
     --border: 35 22% 81%;
     --input: 35 22% 81%;
     --ring: 6 52% 32%;
-    --radius: 0.25rem;
+    --radius: 0.75rem; /* macOS-like rounding */
 
     --paper-light: #fcf9f2;
     --paper-deep: #f1ebd9;
