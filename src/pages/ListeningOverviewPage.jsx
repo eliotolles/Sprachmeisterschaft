@@ -172,21 +172,26 @@ export function ListeningOverviewPage({ initialTab = null }) {
         </button>
       </div>
 
-      <h2 className="li-section-title">Chọn cách học</h2>
-      <section aria-label="Chế độ luyện nghe" className="li-mode-grid">{studioModes.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>item.id==='quiz'?navigate('/practice?skill=listening'):setMode(item.id)} className={'li-mode-card'+(mode===item.id?' is-active':'')}><span className="li-mark"><Icon/></span><div><strong>{item.title}</strong><small>{item.description} · {item.count} video</small></div></button>;})}</section>
+      {/* Khi đã vào một chế độ (YouTube/Shadowing/Podcast...), ẩn các tiêu đề chính "Chọn cách học" + "Theo cấp độ" như bên Elio Einfach — chỉ hiện nội dung của chế độ đó */}
+      {!mode && (
+        <>
+          <h2 className="li-section-title">Chọn cách học</h2>
+          <section aria-label="Chế độ luyện nghe" className="li-mode-grid">{studioModes.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>item.id==='quiz'?navigate('/practice?skill=listening'):setMode(item.id)} className={'li-mode-card'+(mode===item.id?' is-active':'')}><span className="li-mark"><Icon/></span><div><strong>{item.title}</strong><small>{item.description} · {item.count} video</small></div></button>;})}</section>
 
-      <h2 className="li-section-title">Theo cấp độ</h2>
-      <section aria-label="Lọc video theo cấp độ" className="li-mode-grid">
-        {['A1', 'A2', 'B1', 'B2'].map((lvl) => {
-          const count = allEpisodes.filter((e) => (e.collection.levels || [e.collection.level]).includes(lvl)).length;
-          return (
-            <button key={lvl} onClick={() => setLevel(lvl)} className={'li-mode-card' + (selectedLevel === lvl ? ' is-active' : '')}>
-              <span className="li-mark"><ArrowUpRight className="w-6 h-6" /></span>
-              <div><strong>{lvl}</strong><small>{count} video</small></div>
-            </button>
-          );
-        })}
-      </section>
+          <h2 className="li-section-title">Theo cấp độ</h2>
+          <section aria-label="Lọc video theo cấp độ" className="li-mode-grid">
+            {['A1', 'A2', 'B1', 'B2'].map((lvl) => {
+              const count = allEpisodes.filter((e) => (e.collection.levels || [e.collection.level]).includes(lvl)).length;
+              return (
+                <button key={lvl} onClick={() => setLevel(lvl)} className={'li-mode-card' + (selectedLevel === lvl ? ' is-active' : '')}>
+                  <span className="li-mark"><ArrowUpRight className="w-6 h-6" /></span>
+                  <div><strong>{lvl}</strong><small>{count} video</small></div>
+                </button>
+              );
+            })}
+          </section>
+        </>
+      )}
       {/* Scope Navigation Tabs: Kho Chung vs Video Cá Nhân */}
       <div className="li-row li-between" style={{ marginTop: 26, paddingBottom: 12, borderBottom: '1px solid var(--li-line)' }}>
         <div className="li-row">
