@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from '@/lib/router';
 import { db } from '@/lib/db';
 import {
@@ -7,7 +7,7 @@ import {
   listeningLevels,
   filterListeningEpisodes,
 } from '@/lib/listening-navigation';
-import { Edit3, Trash2, Plus, Video } from 'lucide-react';
+import { Edit3, Trash2, Plus, Search, Video, X } from 'lucide-react';
 
 const button = 'tap px-3 py-2 border border-border bg-card rounded-sm font-heading text-sm';
 
@@ -25,6 +25,8 @@ export function ListeningLibraryBrowser({
   const level = params.get('listenLevel');
   const query = params.get('listenSearch') || '';
   const catalogLevel = params.get('listenCatalogLevel') || 'ALL';
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchExpanded = searchOpen || query !== '';
 
   const go = (values) => {
     const next = new URLSearchParams(search);
@@ -116,50 +118,92 @@ export function ListeningLibraryBrowser({
           )}
         </div>
 
-        {/* Nút Sửa / Xóa / Thêm video khi đang xem chi tiết một bộ */}
-        {group && groupManageableCol && (
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Tìm kiếm (kính lúp) + Cấp độ + nút thao tác — cùng dòng với tiêu đề, phía đối diện */}
+        <div className="flex flex-wrap items-center gap-2">
+          {searchExpanded ? (
+            <label className="flex items-center gap-1.5 bg-card border border-border rounded-sm px-2 py-1.5">
+              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+              <input
+                type="search"
+                aria-label="Tìm trong bộ nghe đang mở"
+                placeholder={group ? 'Tìm video trong bộ này' : 'Tìm bộ hoặc video'}
+                value={query}
+                onChange={(e) => go({ listenSearch: e.target.value || null })}
+                className="bg-transparent outline-none text-sm w-44 sm:w-56"
+                autoFocus
+              />
+              <button
+                type="button"
+                aria-label="Xóa tìm kiếm"
+                title="Xóa tìm kiếm"
+                onClick={() => { go({ listenSearch: null }); setSearchOpen(false); }}
+                className="tap text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </label>
+          ) : (
             <button
               type="button"
-              onClick={() => onAdd?.(groupManageableCol)}
-              className="tap px-3 py-1.5 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold flex items-center gap-1.5 shadow-sm"
-              title="Thêm video vào bộ này"
+              aria-label="Tìm kiếm"
+              title={group ? 'Tìm video trong bộ này' : 'Tìm bộ hoặc video'}
+              onClick={() => setSearchOpen(true)}
+              className="tap p-2 border border-border bg-card rounded-sm text-foreground hover:bg-muted"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Thêm video</span>
+              <Search className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => onEdit?.(groupManageableCol)}
-              className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-foreground text-xs font-mono font-bold flex items-center gap-1.5"
-              title="Sửa tên / Cấp độ bộ video"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-accent" />
-              <span>Sửa bộ</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onDelete?.(groupManageableCol.id, group.title)}
-              className="tap px-3 py-1.5 rounded-sm border border-destructive/30 bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-mono font-bold flex items-center gap-1.5"
-              title="Xóa vĩnh viễn bộ video này"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Xóa bộ</span>
-            </button>
-          </div>
-        )}
-      </div>
+          )}
 
-      <label className="block space-y-2 font-heading text-sm">
-        {group ? 'Tìm video trong bộ này' : 'Tìm bộ hoặc video'}
-        <input
-          type="search"
-          aria-label="Tìm trong bộ nghe đang mở"
-          value={query}
-          onChange={(e) => go({ listenSearch: e.target.value || null })}
-          className="block w-full bg-card border border-border rounded-sm px-3 py-2.5"
-        />
-      </label>
+          {group && (
+            <select
+              aria-label="Cấp độ trong bộ đang mở"
+              value={level || ''}
+              onChange={(e) => go({ listenLevel: e.target.value || null })}
+              className={button + ' min-w-40'}
+            >
+              <option value="">Chọn cấp độ</option>
+              <option value="ALL">Tất cả cấp độ · {group.episodes.length} video</option>
+              {levels.map((l) => (
+                <option key={l} value={l}>
+                  {l} · {group.episodes.filter((e) => e.level === l).length} video
+                </option>
+              ))}
+            </select>
+          )}
+
+          {group && groupManageableCol && (
+            <>
+              <button
+                type="button"
+                onClick={() => onAdd?.(groupManageableCol)}
+                className="tap px-3 py-1.5 rounded-sm bg-accent text-accent-foreground text-xs font-mono font-bold flex items-center gap-1.5 shadow-sm"
+                title="Thêm video vào bộ này"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Thêm video</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onEdit?.(groupManageableCol)}
+                className="tap px-3 py-1.5 rounded-sm border border-border bg-card hover:bg-muted text-foreground text-xs font-mono font-bold flex items-center gap-1.5"
+                title="Sửa tên / Cấp độ bộ video"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-accent" />
+                <span>Sửa bộ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete?.(groupManageableCol.id, group.title)}
+                className="tap px-3 py-1.5 rounded-sm border border-destructive/30 bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-mono font-bold flex items-center gap-1.5"
+                title="Xóa vĩnh viễn bộ video này"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa bộ</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* DANH SÁCH CÁC BỘ NGHE (OVERVIEW CARDS) */}
       {!groupId && (
@@ -286,27 +330,6 @@ export function ListeningLibraryBrowser({
           </div>
           {!visibleGroups.length && <p>Chưa có bộ nghe khớp cấp độ và tìm kiếm đang chọn.</p>}
         </>
-      )}
-
-      {/* VIEW CHI TIẾT CỦA BỘ */}
-      {group && (
-        <label className="block font-heading text-sm">
-          Cấp độ trong bộ {group.title}
-          <select
-            aria-label="Cấp độ trong bộ đang mở"
-            value={level || ''}
-            onChange={(e) => go({ listenLevel: e.target.value || null })}
-            className={button + ' block mt-2 min-w-40'}
-          >
-            <option value="">Chọn cấp độ</option>
-            <option value="ALL">Tất cả cấp độ · {group.episodes.length} video</option>
-            {levels.map((l) => (
-              <option key={l} value={l}>
-                {l} · {group.episodes.filter((e) => e.level === l).length} video
-              </option>
-            ))}
-          </select>
-        </label>
       )}
 
       {groupId && !group && (
